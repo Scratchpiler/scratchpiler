@@ -202,6 +202,14 @@
         'volume','username','daysSince2000',
         // Sensing (expression context)
         'touching','key',
+        // Motion extras (v1.0)
+        'setDirection','pointTowards','goToFront','goToBack','moveForward','moveBackward',
+        // Looks extras (v1.0)
+        'setEffect','changeEffect',
+        // Sound extras (v1.0)
+        'setVolume','changeVolume',
+        // Sensing extras (v1.0)
+        'askAndWait','resetTimer',
     ];
 
     function registerLanguage(monaco) {
@@ -512,15 +520,16 @@
     }
 
     function buildSuggestions(monaco, range, hatRange) {
-        const CIK   = monaco.languages.CompletionItemKind;
-        const HR    = hatRange || range;
+        const CIK = monaco.languages.CompletionItemKind;
+        const IS  = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+        const HR  = hatRange || range;
         const items = [];
 
         const push = (label, kind, detail, insertText) =>
-            items.push({ label, kind, detail, insertText: insertText ?? label, range });
+            items.push({ label, kind, detail, insertText: insertText ?? label, insertTextRules: IS, range });
 
         const pushHat = (label, insertText) =>
-            items.push({ label, kind: CIK.Snippet, detail: 'Hat block', insertText, range: HR });
+            items.push({ label, kind: CIK.Snippet, detail: 'Hat block', insertText, insertTextRules: IS, range: HR });
 
         // Hat blocks
         pushHat('on flag {}',        'on flag {\n\t$0\n}');
@@ -4271,8 +4280,18 @@
 
                 // ── Custom block call ──
                 case 'CallStmt': {
+                    // yield() is sugar for wait(0) — handle before custom-block lookup
+                    if (node.name === 'yield') {
+                        addBlock({ id, opcode: 'control_wait', next: null, parent: parentId,
+                            inputs: { DURATION: numInput({ type: 'Num', value: 0 }, id) },
+                            fields: {}, shadow: false, topLevel: false });
+                        return id;
+                    }
+
                     // Find the procedure definition to get the proccode and arg IDs
-                    const target = vm.runtime.targets.find(t => t.sprite.name === spriteName);
+                    const target = spriteName === '__stage__'
+                        ? vm.runtime.targets.find(t => t.isStage)
+                        : vm.runtime.targets.find(t => !t.isStage && t.sprite.name === spriteName);
                     if (target) {
                         const protoBlock = Object.values(target.blocks._blocks).find(b =>
                             b.opcode === 'procedures_prototype' &&
