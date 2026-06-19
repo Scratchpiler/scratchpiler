@@ -508,8 +508,7 @@
     }
 
     function getActiveSpriteNameFromDropdown() {
-        const sel = document.getElementById('scratchpiler-sprite-select');
-        return sel ? sel.value : null;
+        return currentSpriteContext;
     }
 
     function buildSuggestions(monaco, range, hatRange) {
@@ -723,58 +722,62 @@
     // ─── [H] Overlay DOM ──────────────────────────────────────────────────────
 
     function buildOverlayDOM() {
+        const fontLink = document.createElement('link');
+        fontLink.rel = 'stylesheet';
+        fontLink.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap';
+        document.head.appendChild(fontLink);
+
         const style = document.createElement('style');
         style.textContent = `
             #scratchpiler-overlay {
                 position: fixed; top: 0; left: 0;
                 width: 100vw; height: 100vh;
                 z-index: 99999; display: none; flex-direction: column;
-                background: #002451;
-                font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+                background: #00152b;
+                font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             }
-            #scratchpiler-toolbar {
-                display: flex; align-items: center; gap: 0;
-                background: #002d62;
+            #scratchpiler-header {
+                display: flex; align-items: center;
+                background: #001d3d;
                 border-top: 2px solid #ff8c00;
-                border-bottom: 1px solid #0a4080;
-                flex-shrink: 0; height: 42px; padding: 0 6px;
+                border-bottom: 1px solid #002e5a;
+                flex-shrink: 0; height: 42px; padding: 0 12px;
+                box-sizing: border-box;
             }
             #scratchpiler-wordmark {
                 display: flex; align-items: center; gap: 8px;
-                padding: 0 14px 0 8px; flex-shrink: 0;
+                padding-right: 14px; flex-shrink: 0;
                 font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
                 text-transform: uppercase; color: #e8f4ff;
-                border-right: 1px solid #0a4080; height: 100%;
+                border-right: 1px solid #002e5a; height: 100%;
                 user-select: none;
             }
-            #scratchpiler-sprite-area {
-                display: flex; align-items: center; gap: 6px; padding: 0 12px;
+            #scratchpiler-menubar {
+                display: flex; align-items: center; gap: 2px;
+                padding-left: 12px; height: 100%;
+                position: relative;
             }
-            #scratchpiler-sprite-label {
-                color: #7285b7; font-size: 10px;
-                text-transform: uppercase; letter-spacing: 0.1em; white-space: nowrap;
+            .sp-menu-btn {
+                background: transparent; border: none; color: #7285b7;
+                font-family: inherit; font-size: 11px; letter-spacing: 0.03em;
+                padding: 0 12px; height: 28px; cursor: pointer; border-radius: 3px;
+                transition: color 0.1s, background 0.1s;
+                white-space: nowrap;
             }
-            #scratchpiler-sprite-select {
-                background: #001533; color: #bbdaff;
-                border: 1px solid #0a4080; border-radius: 3px;
-                padding: 2px 6px; font-size: 12px; font-family: inherit;
-                height: 26px; max-width: 150px; cursor: pointer;
+            .sp-menu-btn:hover, .sp-menu-btn.sp-menu-active { color: #e8f4ff; background: #002e5a; }
+            
+            #scratchpiler-header-center {
+                flex: 1; display: flex; justify-content: center;
+                overflow: hidden; text-overflow: ellipsis; padding: 0 12px;
             }
-            #scratchpiler-sprite-select:focus { outline: none; border-color: #ff8c00; }
-            #scratchpiler-actions {
-                display: flex; align-items: center; gap: 6px;
-                margin-left: auto; padding-right: 4px;
+            #scratchpiler-status {
+                color: #7285b7; font-size: 11px;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                font-family: ui-monospace, 'SF Mono', Consolas, monospace;
             }
-            #scratchpiler-import-btn, #scratchpiler-format-btn {
-                height: 26px; background: transparent; color: #7285b7;
-                border: 1px solid #0a4080; border-radius: 3px;
-                font-family: inherit; font-size: 11px; letter-spacing: 0.04em;
-                padding: 0 12px; cursor: pointer; white-space: nowrap;
-                transition: color 0.15s, border-color 0.15s, background 0.15s;
-            }
-            #scratchpiler-import-btn:hover, #scratchpiler-format-btn:hover {
-                color: #ff8c00; border-color: #ff8c00;
-                background: rgba(255,140,0,0.08);
+            
+            #scratchpiler-header-actions {
+                display: flex; align-items: center; gap: 8px; flex-shrink: 0;
             }
             #scratchpiler-compile-btn {
                 height: 26px; background: #ff8c00; color: #001a38;
@@ -787,51 +790,184 @@
                 background: #ffaa33; border-color: #ffaa33;
                 box-shadow: 0 0 16px rgba(255,140,0,0.4);
             }
-            #scratchpiler-status {
-                color: #7285b7; font-size: 11px; padding: 0 8px;
-                white-space: nowrap; max-width: 260px;
-                overflow: hidden; text-overflow: ellipsis;
-            }
             #scratchpiler-close-btn {
-                width: 34px; height: 34px; display: flex;
+                width: 26px; height: 26px; display: flex;
                 align-items: center; justify-content: center;
                 background: transparent; border: none; border-radius: 3px;
-                color: #7285b7; font-size: 15px; cursor: pointer;
+                color: #7285b7; font-size: 14px; cursor: pointer;
                 transition: color 0.15s, background 0.15s; flex-shrink: 0; padding: 0;
             }
-            #scratchpiler-close-btn:hover { color: #e8f4ff; background: #0a4080; }
-            #scratchpiler-editor-container { flex: 1; min-height: 0; }
-            #scratchpiler-trigger {
-                position: fixed; bottom: 20px; left: 16px; z-index: 9998;
-                display: flex; align-items: center; gap: 8px;
-                background: #002d62; color: #bbdaff;
-                border: 1px solid #0a4080; border-radius: 6px;
-                padding: 8px 14px; cursor: pointer;
-                font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
-                font-size: 12px; letter-spacing: 0.04em;
-                transition: border-color 0.15s, box-shadow 0.15s, color 0.15s;
+            #scratchpiler-close-btn:hover { color: #e8f4ff; background: #002e5a; }
+            
+            #scratchpiler-workspace {
+                display: flex; flex: 1; min-height: 0; width: 100%;
+            }
+            
+            #scratchpiler-activitybar {
+                width: 48px; background: #001326;
+                display: flex; flex-direction: column; align-items: center;
+                padding-top: 8px; gap: 12px; border-right: 1px solid #002e5a;
+                flex-shrink: 0;
+            }
+            .sp-activity-btn {
+                width: 36px; height: 36px; display: flex;
+                align-items: center; justify-content: center;
+                background: transparent; border: none; border-radius: 6px;
+                color: #567399; cursor: pointer; transition: color 0.15s, background 0.15s;
+                position: relative;
+            }
+            .sp-activity-btn:hover { color: #bbdaff; background: #001d3d; }
+            .sp-activity-btn.sp-active { color: #ffffff; background: #002447; }
+            .sp-activity-btn.sp-active::before {
+                content: ''; position: absolute; left: 0; top: 8px; bottom: 8px;
+                width: 2px; background: #ff8c00; border-radius: 0 2px 2px 0;
+            }
+            
+            #scratchpiler-sidebar {
+                width: 250px; background: #001a35;
+                border-right: 1px solid #002e5a; display: flex; flex-direction: column;
+                flex-shrink: 0; min-height: 0;
+            }
+            #scratchpiler-sidebar-title {
+                padding: 10px 14px; font-size: 10px; font-weight: 700;
+                letter-spacing: 0.08em; text-transform: uppercase;
+                color: #567399; border-bottom: 1px solid #002e5a;
                 user-select: none;
             }
-            #scratchpiler-trigger:hover {
-                border-color: #ff8c00; color: #e8f4ff;
-                box-shadow: 0 0 12px rgba(255,140,0,0.25);
+            #scratchpiler-sidebar-content {
+                flex: 1; overflow-y: auto; display: flex; flex-direction: column;
             }
-            #scratchpiler-menubar {
-                display: flex; align-items: center; gap: 0;
-                background: #002d62; border-bottom: 1px solid #0a3060;
-                flex-shrink: 0; height: 28px; padding: 0 6px; position: relative;
+            
+            .sp-sidebar-panel { display: none !important; flex-direction: column; height: 100%; }
+            .sp-sidebar-panel.active { display: flex !important; }
+            
+            /* Accordion */
+            .sp-accordion {
+                border-bottom: 1px solid #002e5a; display: flex; flex-direction: column;
             }
-            .sp-menu-btn {
-                background: transparent; border: none; color: #7285b7;
-                font-family: inherit; font-size: 11px; letter-spacing: 0.03em;
-                padding: 0 10px; height: 100%; cursor: pointer; border-radius: 3px;
-                transition: color 0.1s, background 0.1s;
+            .sp-accordion-header {
+                padding: 8px 12px; font-size: 11px; font-weight: 700;
+                letter-spacing: 0.06em; text-transform: uppercase;
+                color: #bbdaff; background: #002247; cursor: pointer;
+                user-select: none; display: flex; align-items: center; gap: 8px;
             }
-            .sp-menu-btn:hover, .sp-menu-btn.sp-menu-active { color: #e8f4ff; background: #0a4080; }
+            .sp-accordion-header:hover { background: #002c5c; }
+            .sp-accordion-content { display: none; padding: 4px 0; }
+            .sp-accordion-content.active { display: block; }
+            .sp-chevron { font-size: 8px; color: #567399; transition: transform 0.15s; }
+            
+            /* Sub-accordion inside Explorer */
+            .sp-sub-accordion {
+                margin: 2px 0;
+            }
+            .sp-sub-accordion-header {
+                padding: 6px 14px; font-size: 11px; font-weight: 600;
+                color: #7285b7; cursor: pointer; user-select: none;
+            }
+            .sp-sub-accordion-header:hover { color: #bbdaff; }
+            .sp-sub-accordion-content { display: none; padding: 2px 0; }
+            .sp-sub-accordion-content.active { display: block; }
+            
+            /* Explorer lists */
+            .sp-sidebar-list { display: flex; flex-direction: column; }
+            .sp-list-item {
+                display: flex; align-items: center; gap: 8px;
+                padding: 6px 16px; color: #8ba3c7; font-size: 12px;
+                cursor: pointer; user-select: none;
+            }
+            .sp-list-item:hover { background: #002852; color: #bbdaff; }
+            .sp-list-item.active { background: #00366f; color: #ffffff; font-weight: 600; }
+            .sp-item-icon { color: #567399; }
+            .sp-list-item.active .sp-item-icon { color: #ff8c00; }
+            
+            /* Details list */
+            .sp-detail-item {
+                padding: 4px 26px; font-size: 11px; color: #bbdaff;
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            }
+            .sp-detail-empty {
+                padding: 4px 26px; font-size: 11px; color: #567399; font-style: italic;
+            }
+            
+            /* Search Panel */
+            .sp-search-container {
+                padding: 12px; display: flex; flex-direction: column; gap: 8px;
+                border-bottom: 1px solid #002e5a;
+            }
+            .sp-search-container input {
+                background: #001021; border: 1px solid #002e5a; border-radius: 3px;
+                color: #ffffff; font-family: inherit; font-size: 12px;
+                padding: 6px 10px; width: 100%; box-sizing: border-box; outline: none;
+            }
+            .sp-search-container input:focus { border-color: #ff8c00; }
+            .sp-search-actions { display: flex; gap: 6px; }
+            .sp-search-actions button {
+                flex: 1; background: #002e5a; color: #bbdaff; border: none;
+                border-radius: 3px; padding: 6px; font-family: inherit; font-size: 11px;
+                cursor: pointer; transition: background 0.15s, color 0.15s;
+            }
+            .sp-search-actions button:hover { background: #003e7a; color: #ffffff; }
+            #scratchpiler-search-results { flex: 1; overflow-y: auto; padding: 8px 0; }
+            
+            .sp-search-no-results {
+                padding: 12px; text-align: center; color: #567399; font-size: 12px;
+            }
+            .sp-search-group-header {
+                padding: 6px 12px; background: #002247; font-size: 11px;
+                font-weight: 700; color: #bbdaff; border-top: 1px solid #002e5a;
+                border-bottom: 1px solid #002e5a;
+            }
+            .sp-search-result-item {
+                padding: 6px 16px; font-size: 11px; color: #8ba3c7; cursor: pointer;
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+            }
+            .sp-search-result-item:hover { background: #002852; color: #ffffff; }
+            .sp-search-line-num { color: #ff8c00; font-weight: 700; margin-right: 4px; }
+            
+            /* Settings Panel */
+            #sp-panel-settings { padding: 12px; display: flex; flex-direction: column; gap: 14px; }
+            .sp-settings-group { display: flex; flex-direction: column; gap: 6px; }
+            .sp-settings-group label { font-size: 11px; color: #bbdaff; font-weight: 600; }
+            .sp-settings-group select {
+                background: #001021; border: 1px solid #002e5a; border-radius: 3px;
+                color: #ffffff; font-family: inherit; font-size: 12px;
+                padding: 6px 10px; cursor: pointer; outline: none;
+            }
+            .sp-settings-group select:focus { border-color: #ff8c00; }
+            .sp-settings-group.checkbox { flex-direction: row; align-items: center; gap: 8px; cursor: pointer; }
+            .sp-settings-group.checkbox input { cursor: pointer; }
+            .sp-settings-group.checkbox label { cursor: pointer; }
+
+            /* Fixes Panel */
+            #sp-panel-fixes { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+            .sp-fix-action {
+                display: flex; align-items: center; gap: 10px;
+                background: #001021; border: 1px solid #002e5a; border-radius: 6px;
+                padding: 12px 14px; cursor: pointer; transition: all 0.15s ease;
+                text-align: left; width: 100%; box-sizing: border-box;
+            }
+            .sp-fix-action:hover { background: #002852; border-color: #ff8c00; }
+            .sp-fix-action-icon {
+                flex-shrink: 0; width: 28px; height: 28px; border-radius: 6px;
+                display: flex; align-items: center; justify-content: center;
+                background: rgba(255,140,0,0.1); color: #ff8c00;
+            }
+            .sp-fix-action-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+            .sp-fix-action-title { font-size: 12px; font-weight: 600; color: #e8f4ff; }
+            .sp-fix-action-desc { font-size: 10px; color: #6b8db5; line-height: 1.4; }
+            .sp-fix-action.destructive .sp-fix-action-icon { background: rgba(255,60,60,0.1); color: #ff5555; }
+            .sp-fix-action.destructive:hover { border-color: #ff5555; }
+            
+            #scratchpiler-editor-pane {
+                flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0;
+            }
+            #scratchpiler-editor-container { flex: 1; min-height: 0; }
+            
             .sp-dropdown {
                 position: absolute; top: 100%; left: 0;
-                background: #002451; border: 1px solid #0a4080; border-radius: 4px;
-                min-width: 200px; z-index: 100001;
+                background: #001d36; border: 1px solid #002e5a; border-radius: 4px;
+                min-width: 220px; z-index: 100001;
                 box-shadow: 0 6px 24px rgba(0,12,40,0.6); padding: 4px 0;
             }
             .sp-dropdown-item {
@@ -840,15 +976,16 @@
                 padding: 7px 16px; cursor: pointer; text-align: left;
                 transition: background 0.1s; box-sizing: border-box;
             }
-            .sp-dropdown-item:hover { background: #0a4080; }
-            .sp-dropdown-sep { height: 1px; background: #0a4080; margin: 3px 0; }
+            .sp-dropdown-item:hover { background: #002e5a; }
+            .sp-dropdown-sep { height: 1px; background: #002e5a; margin: 3px 0; }
+            
             #scratchpiler-dialog {
                 position: absolute; inset: 0; z-index: 100002;
-                align-items: center; justify-content: center;
-                background: rgba(0,18,50,0.75); backdrop-filter: blur(3px);
+                display: flex; align-items: center; justify-content: center;
+                background: rgba(0,10,25,0.75); backdrop-filter: blur(3px);
             }
             #scratchpiler-dialog-box {
-                background: #002d62; border: 1px solid #0a4080; border-radius: 6px;
+                background: #001d3d; border: 1px solid #002e5a; border-radius: 6px;
                 padding: 20px 22px; min-width: 280px;
                 box-shadow: 0 8px 40px rgba(0,10,36,0.6);
             }
@@ -858,15 +995,15 @@
             }
             #scratchpiler-dialog-input {
                 width: 100%; box-sizing: border-box;
-                background: #001533; color: #e8f4ff;
-                border: 1px solid #0a4080; border-radius: 3px;
+                background: #001021; color: #e8f4ff;
+                border: 1px solid #002e5a; border-radius: 3px;
                 padding: 7px 10px; font-family: inherit; font-size: 12px;
                 margin-bottom: 14px; outline: none;
             }
             #scratchpiler-dialog-input:focus { border-color: #ff8c00; }
             #scratchpiler-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
             .sp-dialog-btn {
-                background: transparent; color: #7285b7; border: 1px solid #0a4080;
+                background: transparent; color: #7285b7; border: 1px solid #002e5a;
                 border-radius: 3px; font-family: inherit; font-size: 11px;
                 padding: 5px 14px; cursor: pointer;
                 transition: color 0.1s, border-color 0.1s, background 0.1s;
@@ -876,8 +1013,23 @@
                 background: #ff8c00; color: #001a38; border-color: #ff8c00; font-weight: 700;
             }
             .sp-dialog-btn.sp-primary:hover { background: #ffaa33; border-color: #ffaa33; }
+            
+            #scratchpiler-trigger {
+                position: fixed; bottom: 20px; left: 16px; z-index: 9998;
+                display: flex; align-items: center; gap: 8px;
+                background: #001d3d; color: #bbdaff;
+                border: 1px solid #002e5a; border-radius: 6px;
+                padding: 8px 14px; cursor: pointer;
+                font-family: 'Inter', system-ui, -apple-system, sans-serif;
+                font-size: 12px; letter-spacing: 0.04em;
+                transition: border-color 0.15s, box-shadow 0.15s, color 0.15s;
+                user-select: none;
+            }
+            #scratchpiler-trigger:hover {
+                border-color: #ff8c00; color: #e8f4ff;
+                box-shadow: 0 0 12px rgba(255,140,0,0.25);
+            }
             @media (prefers-reduced-motion: reduce) {
-                #scratchpiler-import-btn, #scratchpiler-format-btn, #scratchpiler-compile-btn,
                 #scratchpiler-close-btn, #scratchpiler-trigger,
                 .sp-menu-btn, .sp-dialog-btn { transition: none; }
             }
@@ -887,7 +1039,7 @@
         const overlay = document.createElement('div');
         overlay.id = 'scratchpiler-overlay';
         overlay.innerHTML = `
-            <div id="scratchpiler-toolbar">
+            <div id="scratchpiler-header">
                 <div id="scratchpiler-wordmark">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M3.5 4l4.5 4-4.5 4" stroke="#ff8c00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -895,23 +1047,166 @@
                     </svg>
                     Scratchpiler
                 </div>
-                <div id="scratchpiler-sprite-area">
-                    <span id="scratchpiler-sprite-label">Sprite</span>
-                    <select id="scratchpiler-sprite-select"></select>
+                <div id="scratchpiler-menubar">
+                    <button class="sp-menu-btn" id="sp-menu-file">File</button>
+                    <button class="sp-menu-btn" id="sp-menu-edit">Edit</button>
+                    <button class="sp-menu-btn" id="sp-menu-variables">Variables</button>
+                    <button class="sp-menu-btn" id="sp-menu-lists">Lists</button>
+                    <button class="sp-menu-btn" id="sp-menu-help">Help</button>
                 </div>
-                <div id="scratchpiler-actions">
-                    <button id="scratchpiler-import-btn">Import</button>
-                    <button id="scratchpiler-format-btn">Format</button>
-                    <button id="scratchpiler-compile-btn">Compile &amp; Inject</button>
+                <div id="scratchpiler-header-center">
                     <span id="scratchpiler-status">&gt; Acquiring VM&hellip;</span>
+                </div>
+                <div id="scratchpiler-header-actions">
+                    <button id="scratchpiler-compile-btn">Compile &amp; Inject</button>
                     <button id="scratchpiler-close-btn" title="Close (Escape)">✕</button>
+                    
+                    <!-- Hidden compat buttons -->
+                    <button id="scratchpiler-import-btn" style="display:none"></button>
+                    <button id="scratchpiler-format-btn" style="display:none"></button>
                 </div>
             </div>
-            <div id="scratchpiler-menubar">
-                <button class="sp-menu-btn" id="sp-menu-variables">Variables</button>
-                <button class="sp-menu-btn" id="sp-menu-lists">Lists</button>
+            <div id="scratchpiler-workspace">
+                <div id="scratchpiler-activitybar">
+                    <button class="sp-activity-btn sp-active" id="sp-activity-explorer" title="Explorer">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4H4v16h16v-12l-4-4z"/><path d="M16 4v4h4"/></svg>
+                    </button>
+                    <button class="sp-activity-btn" id="sp-activity-search" title="Search">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </button>
+                    <button class="sp-activity-btn" id="sp-activity-settings" title="Settings">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    </button>
+                    <button class="sp-activity-btn" id="sp-activity-fixes" title="Fixes">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                    </button>
+                </div>
+                <div id="scratchpiler-sidebar">
+                    <div id="scratchpiler-sidebar-title">Explorer</div>
+                    <div id="scratchpiler-sidebar-content">
+                        <!-- Explorer Panel -->
+                        <div class="sp-sidebar-panel active" id="sp-panel-explorer">
+                            <!-- Sprites Accordion -->
+                            <div class="sp-accordion">
+                                <div class="sp-accordion-header active" id="sp-acc-sprites-header">
+                                    <span class="sp-chevron">▼</span> Sprites
+                                </div>
+                                <div class="sp-accordion-content active" id="sp-acc-sprites-content">
+                                    <div class="sp-sidebar-list" id="scratchpiler-sprites-list"></div>
+                                </div>
+                            </div>
+                            <!-- Sprite Details Accordion -->
+                            <div class="sp-accordion">
+                                <div class="sp-accordion-header active" id="sp-acc-details-header">
+                                    <span class="sp-chevron">▼</span> Sprite Details: <span id="scratchpiler-detail-spritename">-</span>
+                                </div>
+                                <div class="sp-accordion-content active" id="sp-acc-details-content">
+                                    <!-- Costumes sub-accordion -->
+                                    <div class="sp-sub-accordion">
+                                        <div class="sp-sub-accordion-header active" id="sp-subacc-costumes-header">▼ Costumes</div>
+                                        <div class="sp-sub-accordion-content active" id="sp-subacc-costumes-content"></div>
+                                    </div>
+                                    <!-- Sounds sub-accordion -->
+                                    <div class="sp-sub-accordion">
+                                        <div class="sp-sub-accordion-header active" id="sp-subacc-sounds-header">▼ Sounds</div>
+                                        <div class="sp-sub-accordion-content active" id="sp-subacc-sounds-content"></div>
+                                    </div>
+                                    <!-- Variables sub-accordion -->
+                                    <div class="sp-sub-accordion">
+                                        <div class="sp-sub-accordion-header active" id="sp-subacc-variables-header">▼ Local Variables</div>
+                                        <div class="sp-sub-accordion-content active" id="sp-subacc-variables-content"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Search Panel -->
+                        <div class="sp-sidebar-panel" id="sp-panel-search">
+                            <div class="sp-search-container">
+                                <input type="text" id="scratchpiler-search-input" placeholder="Search..." autocomplete="off" />
+                                <input type="text" id="scratchpiler-replace-input" placeholder="Replace" autocomplete="off" />
+                                <div class="sp-search-actions">
+                                    <button id="scratchpiler-search-btn" title="Search">Find</button>
+                                    <button id="scratchpiler-replace-btn" title="Replace Current">Replace</button>
+                                    <button id="scratchpiler-replace-all-btn" title="Replace All">All</button>
+                                </div>
+                            </div>
+                            <div id="scratchpiler-search-results"></div>
+                        </div>
+
+                        <!-- Settings Panel -->
+                        <div class="sp-sidebar-panel" id="sp-panel-settings">
+                            <div class="sp-settings-group">
+                                <label for="sp-setting-theme">Editor Theme</label>
+                                <select id="sp-setting-theme">
+                                    <option value="scratchpiler-dark">Scratchpiler Dark</option>
+                                    <option value="vs-dark">VS Code Dark</option>
+                                    <option value="hc-black">High Contrast Black</option>
+                                    <option value="vs">VS Code Light</option>
+                                </select>
+                            </div>
+                            <div class="sp-settings-group">
+                                <label for="sp-setting-fontsize">Font Size</label>
+                                <select id="sp-setting-fontsize">
+                                    <option value="12">12px</option>
+                                    <option value="13">13px</option>
+                                    <option value="14">14px</option>
+                                    <option value="15">15px</option>
+                                    <option value="16">16px</option>
+                                    <option value="18">18px</option>
+                                    <option value="20">20px</option>
+                                </select>
+                            </div>
+                            <div class="sp-settings-group checkbox">
+                                <input type="checkbox" id="sp-setting-wrap" />
+                                <label for="sp-setting-wrap">Line Wrap</label>
+                            </div>
+                            <div class="sp-settings-group checkbox">
+                                <input type="checkbox" id="sp-setting-minimap" />
+                                <label for="sp-setting-minimap">Show Minimap</label>
+                            </div>
+                        </div>
+
+                        <!-- Fixes Panel -->
+                        <div class="sp-sidebar-panel" id="sp-panel-fixes">
+                            <div style="font-size:11px; color:#6b8db5; margin-bottom:4px;">Maintenance & recovery actions</div>
+
+                            <button class="sp-fix-action" id="sp-fix-clear-cache">
+                                <div class="sp-fix-action-icon">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                </div>
+                                <div class="sp-fix-action-text">
+                                    <span class="sp-fix-action-title">Clear Local Code Cache</span>
+                                    <span class="sp-fix-action-desc">Purge all cached SDSL code from localStorage. The editor will decompile fresh from the VM on next sprite switch.</span>
+                                </div>
+                            </button>
+
+                            <button class="sp-fix-action" id="sp-fix-reindex">
+                                <div class="sp-fix-action-icon">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                </div>
+                                <div class="sp-fix-action-text">
+                                    <span class="sp-fix-action-title">Invalidate &amp; Re-Index</span>
+                                    <span class="sp-fix-action-desc">Re-scan all VM targets to rebuild the sprite index, variables, and custom blocks. Fixes stale sidebar data.</span>
+                                </div>
+                            </button>
+
+                            <button class="sp-fix-action destructive" id="sp-fix-reset-all">
+                                <div class="sp-fix-action-icon">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                </div>
+                                <div class="sp-fix-action-text">
+                                    <span class="sp-fix-action-title">Reset All Changes</span>
+                                    <span class="sp-fix-action-desc">Remove all Scratchpiler-injected blocks and clear cached code. Restores sprites to their last-saved project state.</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div id="scratchpiler-editor-pane">
+                    <div id="scratchpiler-editor-container"></div>
+                </div>
             </div>
-            <div id="scratchpiler-editor-container"></div>
             <div id="scratchpiler-dialog" style="display:none">
                 <div id="scratchpiler-dialog-box">
                     <div id="scratchpiler-dialog-title"></div>
@@ -941,42 +1236,573 @@
     let overlayVisible = false;
     let currentVM      = null;
 
-    function populateSpriteDropdown() {
-        const sel = document.getElementById('scratchpiler-sprite-select');
-        if (!sel) return;
-        const prev = sel.value;
-        sel.innerHTML = '';
-        const stageOpt = document.createElement('option');
-        stageOpt.value = '__stage__'; stageOpt.textContent = 'Stage';
-        sel.appendChild(stageOpt);
-        for (const s of scratchIndex.sprites) {
-            const opt = document.createElement('option');
-            opt.value = s.name; opt.textContent = s.name;
-            sel.appendChild(opt);
-        }
-        if (prev === '__stage__' || scratchIndex.sprites.some(s => s.name === prev)) sel.value = prev;
+    let applySettingsFn = null;
+    let currentActiveTab = 'explorer';
+    let sidebarExpanded = true;
 
-        // Wire up per-sprite save/load on sprite change (only once)
-        if (!sel._spriteChangeWired) {
-            sel._spriteChangeWired = true;
-            sel.addEventListener('change', () => {
-                const oldSprite = currentSpriteContext;
-                const newSprite = sel.value;
-                if (oldSprite) saveToLocalStorage(oldSprite);
-                currentSpriteContext = newSprite;
-                loadFromLocalStorage(newSprite);
-            });
+    function renderSidebarSprites() {
+        const listEl = document.getElementById('scratchpiler-sprites-list');
+        if (!listEl) return;
+        listEl.innerHTML = '';
+
+        // Add Stage first
+        const stageEl = document.createElement('div');
+        stageEl.className = 'sp-list-item';
+        stageEl.dataset.sprite = '__stage__';
+        stageEl.innerHTML = `
+            <svg class="sp-item-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+            <span class="sp-item-name">Stage.sp</span>
+        `;
+        stageEl.addEventListener('click', () => selectSidebarSprite('__stage__'));
+        listEl.appendChild(stageEl);
+
+        // Add all other sprites
+        for (const s of scratchIndex.sprites) {
+            const el = document.createElement('div');
+            el.className = 'sp-list-item';
+            el.dataset.sprite = s.name;
+            el.innerHTML = `
+                <svg class="sp-item-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span class="sp-item-name">${s.name}.sp</span>
+            `;
+            el.addEventListener('click', () => selectSidebarSprite(s.name));
+            listEl.appendChild(el);
         }
+
+        // Maintain active highlighting
+        if (currentSpriteContext) {
+            const activeItem = listEl.querySelector(`[data-sprite="${currentSpriteContext}"]`);
+            if (activeItem) activeItem.classList.add('active');
+        }
+    }
+
+    function selectSidebarSprite(spriteName) {
+        if (!spriteName) return;
+        const oldSprite = currentSpriteContext;
+        if (oldSprite && oldSprite !== spriteName) {
+            saveToLocalStorage(oldSprite);
+        }
+        currentSpriteContext = spriteName;
+        
+        // Switch editing target in VM if available
+        if (currentVM) {
+            const stage = currentVM.runtime.targets.find(t => t.isStage);
+            const target = (spriteName === '__stage__')
+                ? stage
+                : currentVM.runtime.targets.find(t => !t.isStage && t.sprite.name === spriteName);
+            if (target) {
+                try {
+                    currentVM.setEditingTarget(target.id);
+                } catch (_) {}
+            }
+        }
+        
+        // Highlight active item
+        const listEl = document.getElementById('scratchpiler-sprites-list');
+        if (listEl) {
+            for (const item of listEl.children) {
+                if (item.dataset.sprite === spriteName) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            }
+        }
+
+        loadFromLocalStorage(spriteName);
+        updateSpriteDetails(spriteName);
+    }
+
+    function updateSpriteDetails(spriteName) {
+        const detailTitle = document.getElementById('scratchpiler-detail-spritename');
+        if (detailTitle) {
+            detailTitle.textContent = spriteName === '__stage__' ? 'Stage' : spriteName;
+        }
+
+        const costumesContent = document.getElementById('sp-subacc-costumes-content');
+        const soundsContent = document.getElementById('sp-subacc-sounds-content');
+        const varsContent = document.getElementById('sp-subacc-variables-content');
+
+        if (!costumesContent || !soundsContent || !varsContent) return;
+
+        costumesContent.innerHTML = '';
+        soundsContent.innerHTML = '';
+        varsContent.innerHTML = '';
+
+        let costumes = [];
+        let sounds = [];
+        let vars = [];
+
+        if (spriteName === '__stage__') {
+            costumes = scratchIndex.stage.backdrops || [];
+            sounds = scratchIndex.stage.sounds || [];
+            vars = scratchIndex.globalVariables || [];
+        } else {
+            const sprite = scratchIndex.sprites.find(s => s.name === spriteName);
+            if (sprite) {
+                costumes = sprite.costumes || [];
+                sounds = sprite.sounds || [];
+            }
+            vars = scratchIndex.spriteVariables[spriteName] || [];
+        }
+
+        // Costumes
+        if (costumes.length === 0) {
+            costumesContent.innerHTML = '<div class="sp-detail-empty">No costumes</div>';
+        } else {
+            for (const c of costumes) {
+                const div = document.createElement('div');
+                div.className = 'sp-detail-item';
+                div.textContent = c;
+                costumesContent.appendChild(div);
+            }
+        }
+
+        // Sounds
+        if (sounds.length === 0) {
+            soundsContent.innerHTML = '<div class="sp-detail-empty">No sounds</div>';
+        } else {
+            for (const s of sounds) {
+                const div = document.createElement('div');
+                div.className = 'sp-detail-item';
+                div.textContent = s;
+                soundsContent.appendChild(div);
+            }
+        }
+
+        // Variables
+        if (vars.length === 0) {
+            varsContent.innerHTML = '<div class="sp-detail-empty">No variables</div>';
+        } else {
+            for (const v of vars) {
+                const div = document.createElement('div');
+                div.className = 'sp-detail-item';
+                div.textContent = `${v.name} (${v.type})`;
+                varsContent.appendChild(div);
+            }
+        }
+    }
+
+    function setupActivityBar() {
+        const sidebar = document.getElementById('scratchpiler-sidebar');
+        const actExplorer = document.getElementById('sp-activity-explorer');
+        const actSearch = document.getElementById('sp-activity-search');
+        const actSettings = document.getElementById('sp-activity-settings');
+        const actFixes = document.getElementById('sp-activity-fixes');
+
+        const panels = {
+            explorer: document.getElementById('sp-panel-explorer'),
+            search: document.getElementById('sp-panel-search'),
+            settings: document.getElementById('sp-panel-settings'),
+            fixes: document.getElementById('sp-panel-fixes')
+        };
+
+        const buttons = {
+            explorer: actExplorer,
+            search: actSearch,
+            settings: actSettings,
+            fixes: actFixes
+        };
+
+        function switchTab(tabId) {
+            const sidebarTitle = document.getElementById('scratchpiler-sidebar-title');
+            if (sidebarTitle) {
+                sidebarTitle.textContent = tabId.charAt(0).toUpperCase() + tabId.slice(1);
+            }
+
+            if (currentActiveTab === tabId && sidebarExpanded) {
+                // Collapse sidebar
+                sidebar.style.display = 'none';
+                sidebarExpanded = false;
+                buttons[tabId].classList.remove('sp-active');
+            } else {
+                // Show/switch sidebar tab
+                sidebar.style.display = 'flex';
+                sidebarExpanded = true;
+                
+                // Toggle active button class
+                Object.keys(buttons).forEach(k => {
+                    if (k === tabId) buttons[k].classList.add('sp-active');
+                    else buttons[k].classList.remove('sp-active');
+                });
+
+                // Toggle active panel class
+                Object.keys(panels).forEach(k => {
+                    if (k === tabId) panels[k].classList.add('active');
+                    else panels[k].classList.remove('active');
+                });
+
+                currentActiveTab = tabId;
+            }
+
+            // Force Monaco editor layout update
+            if (monacoEditor) {
+                setTimeout(() => monacoEditor.layout(), 50);
+            }
+        }
+
+        actExplorer.addEventListener('click', () => switchTab('explorer'));
+        actSearch.addEventListener('click', () => switchTab('search'));
+        actSettings.addEventListener('click', () => switchTab('settings'));
+        actFixes.addEventListener('click', () => switchTab('fixes'));
+
+        // ── Fixes panel actions ──
+        document.getElementById('sp-fix-clear-cache').addEventListener('click', () => {
+            let cleared = 0;
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('scratchpiler-content-')) keysToRemove.push(key);
+            }
+            keysToRemove.forEach(k => { localStorage.removeItem(k); cleared++; });
+            // Also clear the legacy key
+            try { localStorage.removeItem('scratchpiler-editor-content'); cleared++; } catch {}
+            updateStatus(`✓ Cleared ${cleared} cached entries`);
+            // Reload editor from VM for current sprite
+            if (currentSpriteContext) loadFromLocalStorage(currentSpriteContext);
+        });
+
+        document.getElementById('sp-fix-reindex').addEventListener('click', () => {
+            if (!currentVM) { updateStatus('Error: VM not available'); return; }
+            reindex(currentVM);
+            renderSidebarSprites();
+            if (currentSpriteContext) {
+                selectSidebarSprite(currentSpriteContext);
+            }
+            updateStatus('✓ Re-indexed all sprites & variables');
+        });
+
+        document.getElementById('sp-fix-reset-all').addEventListener('click', () => {
+            if (!currentVM) { updateStatus('Error: VM not available'); return; }
+            if (!confirm('Reset all Scratchpiler changes?\n\nThis will:\n• Remove all injected blocks from every sprite\n• Clear all cached SDSL code\n• Re-index the project\n\nThe project will return to its last-saved state.')) return;
+
+            // 1. Remove injected blocks from every sprite
+            let removedCount = 0;
+            for (const [spriteName, ids] of injectedBlockIds.entries()) {
+                const target = spriteName === '__stage__'
+                    ? currentVM.runtime.targets.find(t => t.isStage)
+                    : currentVM.runtime.targets.find(t => !t.isStage && t.sprite.name === spriteName);
+                if (target) {
+                    for (const id of ids) {
+                        try { target.blocks.deleteBlock(id); removedCount++; } catch {}
+                    }
+                }
+            }
+            injectedBlockIds.clear();
+
+            // 2. Clear all localStorage caches
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('scratchpiler-content-')) keysToRemove.push(key);
+            }
+            keysToRemove.forEach(k => localStorage.removeItem(k));
+            try { localStorage.removeItem('scratchpiler-editor-content'); } catch {}
+
+            // 3. Refresh workspace
+            try { currentVM.setEditingTarget(currentVM.editingTarget.id); } catch {}
+
+            // 4. Re-index
+            reindex(currentVM);
+            renderSidebarSprites();
+
+            // 5. Reset editor to decompile from VM
+            if (currentSpriteContext) {
+                selectSidebarSprite(currentSpriteContext);
+            } else {
+                if (monacoEditor) monacoEditor.setValue('');
+            }
+
+            updateStatus(`✓ Reset complete — removed ${removedCount} injected blocks, cleared ${keysToRemove.length} cache entries`);
+        });
+        
+        // Setup accordions inside Sidebar Explorer
+        document.querySelectorAll('.sp-accordion-header').forEach(hdr => {
+            hdr.addEventListener('click', () => {
+                const content = hdr.nextElementSibling;
+                hdr.classList.toggle('active');
+                content.classList.toggle('active');
+                const chevron = hdr.querySelector('.sp-chevron');
+                if (chevron) {
+                    chevron.textContent = hdr.classList.contains('active') ? '▼' : '▶';
+                }
+            });
+        });
+
+        document.querySelectorAll('.sp-sub-accordion-header').forEach(hdr => {
+            hdr.addEventListener('click', () => {
+                const content = hdr.nextElementSibling;
+                hdr.classList.toggle('active');
+                content.classList.toggle('active');
+                const isAct = hdr.classList.contains('active');
+                hdr.textContent = (isAct ? '▼ ' : '▶ ') + hdr.textContent.substring(2);
+            });
+        });
+
+        // Setup search & replace button click listeners
+        document.getElementById('scratchpiler-search-btn').addEventListener('click', runSearch);
+        document.getElementById('scratchpiler-search-input').addEventListener('keydown', e => {
+            if (e.key === 'Enter') runSearch();
+        });
+        document.getElementById('scratchpiler-replace-btn').addEventListener('click', runReplace);
+        document.getElementById('scratchpiler-replace-all-btn').addEventListener('click', runReplaceAll);
+    }
+
+    function runSearch() {
+        const query = document.getElementById('scratchpiler-search-input').value.trim();
+        const resultsEl = document.getElementById('scratchpiler-search-results');
+        if (!resultsEl) return;
+        resultsEl.innerHTML = '';
+
+        if (!query) {
+            resultsEl.innerHTML = '<div class="sp-search-no-results">Type a query to search</div>';
+            return;
+        }
+
+        const matches = [];
+
+        // Search Stage
+        const stageCode = localStorage.getItem('scratchpiler-content-__stage__') || '';
+        searchCode(stageCode, '__stage__', query, matches);
+
+        // Search Sprites
+        for (const s of scratchIndex.sprites) {
+            const code = localStorage.getItem(`scratchpiler-content-${s.name}`) || '';
+            searchCode(code, s.name, query, matches);
+        }
+
+        if (matches.length === 0) {
+            resultsEl.innerHTML = '<div class="sp-search-no-results">No results found</div>';
+            return;
+        }
+
+        // Group matches by sprite name
+        const groups = {};
+        for (const m of matches) {
+            if (!groups[m.spriteName]) groups[m.spriteName] = [];
+            groups[m.spriteName].push(m);
+        }
+
+        for (const [spriteName, groupMatches] of Object.entries(groups)) {
+            const groupHeader = document.createElement('div');
+            groupHeader.className = 'sp-search-group-header';
+            groupHeader.textContent = spriteName === '__stage__' ? 'Stage.sp' : `${spriteName}.sp`;
+            resultsEl.appendChild(groupHeader);
+
+            for (const m of groupMatches) {
+                const item = document.createElement('div');
+                item.className = 'sp-search-result-item';
+                item.innerHTML = `<span class="sp-search-line-num">${m.line}:</span> <span class="sp-search-line-text"></span>`;
+                item.querySelector('.sp-search-line-text').textContent = m.text;
+                
+                item.addEventListener('click', () => {
+                    selectSidebarSprite(m.spriteName);
+                    if (monacoEditor) {
+                        monacoEditor.setPosition({ lineNumber: m.line, column: 1 });
+                        monacoEditor.revealLineInCenter(m.line);
+                        monacoEditor.focus();
+                    }
+                });
+                resultsEl.appendChild(item);
+            }
+        }
+    }
+
+    function searchCode(code, spriteName, query, matches) {
+        const lines = code.split('\n');
+        const lowerQuery = query.toLowerCase();
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].toLowerCase().includes(lowerQuery)) {
+                matches.push({
+                    spriteName,
+                    line: i + 1,
+                    text: lines[i].trim()
+                });
+            }
+        }
+    }
+
+    function runReplace() {
+        const searchVal = document.getElementById('scratchpiler-search-input').value;
+        const replaceVal = document.getElementById('scratchpiler-replace-input').value;
+        if (!searchVal) return;
+
+        if (monacoEditor) {
+            const selection = monacoEditor.getSelection();
+            const selectedText = monacoEditor.getModel().getValueInRange(selection);
+            if (selectedText.toLowerCase().includes(searchVal.toLowerCase())) {
+                const range = new monaco.Range(
+                    selection.startLineNumber,
+                    selection.startColumn,
+                    selection.endLineNumber,
+                    selection.endColumn
+                );
+                monacoEditor.executeEdits('search-replace', [{
+                    range: range,
+                    text: replaceVal,
+                    forceMoveMarkers: true
+                }]);
+                saveToLocalStorage(currentSpriteContext);
+                runSearch();
+            } else {
+                const model = monacoEditor.getModel();
+                const matches = model.findMatches(searchVal, true, false, false, null, true);
+                if (matches.length > 0) {
+                    const match = matches[0];
+                    monacoEditor.setSelection(match.range);
+                    monacoEditor.revealRangeInCenter(match.range);
+                    monacoEditor.focus();
+                }
+            }
+        }
+    }
+
+    function runReplaceAll() {
+        const searchVal = document.getElementById('scratchpiler-search-input').value;
+        const replaceVal = document.getElementById('scratchpiler-replace-input').value;
+        if (!searchVal) return;
+
+        if (!confirm(`Are you sure you want to replace all occurrences of "${searchVal}" with "${replaceVal}" in all sprites?`)) {
+            return;
+        }
+
+        let replacedCount = 0;
+        replacedCount += replaceInSprite('__stage__', searchVal, replaceVal);
+        for (const s of scratchIndex.sprites) {
+            replacedCount += replaceInSprite(s.name, searchVal, replaceVal);
+        }
+
+        loadFromLocalStorage(currentSpriteContext);
+        updateStatus(`Replaced ${replacedCount} occurrence(s) across all sprites.`);
+        runSearch();
+    }
+
+    function replaceInSprite(spriteName, searchVal, replaceVal) {
+        const key = `scratchpiler-content-${spriteName}`;
+        const code = localStorage.getItem(key) || '';
+        if (!code) return 0;
+        
+        const escaped = searchVal.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const regex = new RegExp(escaped, 'gi');
+        let count = 0;
+        const newCode = code.replace(regex, () => {
+            count++;
+            return replaceVal;
+        });
+
+        if (count > 0) {
+            localStorage.setItem(key, newCode);
+        }
+        return count;
+    }
+
+    function setupSettings() {
+        const themeSelect = document.getElementById('sp-setting-theme');
+        const fontSizeSelect = document.getElementById('sp-setting-fontsize');
+        const wrapCheckbox = document.getElementById('sp-setting-wrap');
+        const minimapCheckbox = document.getElementById('sp-setting-minimap');
+
+        let settings = {};
+        try {
+            settings = JSON.parse(localStorage.getItem('scratchpiler-settings')) || {};
+        } catch (_) {}
+
+        if (!settings.theme) settings.theme = 'scratchpiler-dark';
+        if (!settings.fontSize) settings.fontSize = '14';
+        if (settings.wrap === undefined) settings.wrap = true;
+        if (settings.minimap === undefined) settings.minimap = false;
+
+        themeSelect.value = settings.theme;
+        fontSizeSelect.value = settings.fontSize;
+        wrapCheckbox.checked = settings.wrap;
+        minimapCheckbox.checked = settings.minimap;
+
+        function applySettings() {
+            if (!monacoEditor) return;
+            monaco.editor.setTheme(themeSelect.value);
+            monacoEditor.updateOptions({
+                fontSize: parseInt(fontSizeSelect.value, 10),
+                wordWrap: wrapCheckbox.checked ? 'on' : 'off',
+                minimap: { enabled: minimapCheckbox.checked }
+            });
+            localStorage.setItem('scratchpiler-settings', JSON.stringify({
+                theme: themeSelect.value,
+                fontSize: fontSizeSelect.value,
+                wrap: wrapCheckbox.checked,
+                minimap: minimapCheckbox.checked
+            }));
+        }
+
+        themeSelect.addEventListener('change', applySettings);
+        fontSizeSelect.addEventListener('change', applySettings);
+        wrapCheckbox.addEventListener('change', applySettings);
+        minimapCheckbox.addEventListener('change', applySettings);
+
+        return applySettings;
+    }
+
+    function importFromLocalFile() {
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = '.sp,.sdsl,.txt';
+        inp.onchange = e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const rdr = new FileReader();
+            rdr.onload = ev => {
+                if (monacoEditor) {
+                    monacoEditor.setValue(ev.target.result);
+                    updateStatus(`Loaded file: ${file.name}`);
+                }
+            };
+            rdr.readAsText(file);
+        };
+        inp.click();
+    }
+
+    function exportToLocalFile() {
+        if (!monacoEditor) return;
+        const code = monacoEditor.getValue();
+        const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const name = currentSpriteContext === '__stage__' ? 'Stage' : (currentSpriteContext || 'project');
+        a.download = `${name}.sp`;
+        a.href = url;
+        a.click();
+        URL.revokeObjectURL(url);
+        updateStatus(`Exported ${name}.sp`);
+    }
+
+    function loadExample(name) {
+        if (!monacoEditor) return;
+        let code = '';
+        if (name === 'hello-world') {
+            code = `// Hello World\n// A basic script: say hello when the flag is clicked.\n\non flag {\n    say("Hello, World!")\n    wait(2)\n    say("I'm a Scratch sprite!")\n    wait(2)\n    say("")\n}\n`;
+        } else if (name === 'chase-mouse') {
+            code = `// Chase Mouse\n// Point towards mouse and move forever\n\non flag {\n    forever {\n        point_towards("_mouse_")\n        move(5)\n    }\n}\n`;
+        } else if (name === 'bounce-loop') {
+            code = `// Bounce Loop\n// Move and bounce off edges forever\n\non flag {\n    forever {\n        move(10)\n        if_on_edge_bounce()\n    }\n}\n`;
+        }
+        if (code) {
+            monacoEditor.setValue(code);
+            updateStatus(`Loaded example: ${name}`);
+        }
+    }
+
+    function populateSpriteDropdown() {
+        renderSidebarSprites();
     }
 
     function openOverlay() {
         const overlay = document.getElementById('scratchpiler-overlay');
         overlay.style.display = 'flex';
         overlayVisible = true;
-        populateSpriteDropdown();
-        const spriteName = getActiveSpriteNameFromDropdown();
-        currentSpriteContext = spriteName;
-        loadFromLocalStorage(spriteName);
+        renderSidebarSprites();
+        if (!currentSpriteContext) {
+            currentSpriteContext = '__stage__';
+        }
+        selectSidebarSprite(currentSpriteContext);
         const trigger = document.getElementById('scratchpiler-trigger');
         if (trigger) trigger.style.display = 'none';
         if (monacoEditor) { monacoEditor.layout(); monacoEditor.focus(); }
@@ -1020,7 +1846,11 @@
     function saveToLocalStorage(spriteName) {
         if (!monacoEditor) return;
         const key = spriteName ? `scratchpiler-content-${spriteName}` : LS_KEY;
-        try { localStorage.setItem(key, monacoEditor.getValue()); } catch {}
+        const val = monacoEditor.getValue();
+        // Don't cache empty/whitespace-only content — it poisons future
+        // decompile attempts when the editor was set to '' before the VM loaded.
+        if (!val || !val.trim()) return;
+        try { localStorage.setItem(key, val); } catch {}
     }
 
     function loadFromLocalStorage(spriteName) {
@@ -1028,9 +1858,29 @@
         const key = spriteName ? `scratchpiler-content-${spriteName}` : LS_KEY;
         try {
             const v = localStorage.getItem(key);
-            if (v !== null) monacoEditor.setValue(v);
-            else monacoEditor.setValue('');
-        } catch {}
+            // Use cached value ONLY if it contains actual content.
+            // Empty/whitespace-only strings are treated as "no cache" so
+            // we always attempt a live decompile from the VM.
+            if (v !== null && v.trim() !== '') {
+                monacoEditor.setValue(v);
+            } else {
+                // No cached content — decompile live from the VM
+                if (currentVM) {
+                    try {
+                        const code = decompile(currentVM, spriteName);
+                        monacoEditor.setValue(code);
+                        updateStatus(`Decompiled "${spriteName === '__stage__' ? 'Stage' : spriteName}"`);
+                    } catch (e) {
+                        monacoEditor.setValue('');
+                        console.warn('[scratchpiler] decompile failed for', spriteName, e);
+                    }
+                } else {
+                    monacoEditor.setValue('');
+                }
+            }
+        } catch (e) {
+            monacoEditor.setValue('');
+        }
     }
 
     function updateStatus(text) {
@@ -3739,18 +4589,91 @@
 
         document.getElementById('scratchpiler-close-btn').addEventListener('click', closeOverlay);
 
+        document.getElementById('sp-menu-file').addEventListener('click', () => {
+            openMenu('sp-menu-file', [
+                { label: 'Import from active sprite', action: () => document.getElementById('scratchpiler-import-btn').click() },
+                { label: 'Compile & Inject (Ctrl+Enter)', action: () => document.getElementById('scratchpiler-compile-btn').click() },
+                '-',
+                { label: 'Open .sp file...', action: () => importFromLocalFile() },
+                { label: 'Save as .sp file...', action: () => exportToLocalFile() },
+                '-',
+                { label: 'Clear Editor', action: () => { if (confirm("Clear all editor content?")) monacoEditor.setValue(""); } }
+            ]);
+        });
+
+        document.getElementById('sp-menu-edit').addEventListener('click', () => {
+            openMenu('sp-menu-edit', [
+                { label: 'Format Document', action: () => monacoEditor.getAction('editor.action.formatDocument').run() },
+                { label: 'Find & Replace', action: () => {
+                    const searchBtn = document.getElementById('sp-activity-search');
+                    if (searchBtn) {
+                        const sidebar = document.getElementById('scratchpiler-sidebar');
+                        const panels = {
+                            explorer: document.getElementById('sp-panel-explorer'),
+                            search: document.getElementById('sp-panel-search'),
+                            settings: document.getElementById('sp-panel-settings'),
+                            fixes: document.getElementById('sp-panel-fixes')
+                        };
+                        const buttons = {
+                            explorer: document.getElementById('sp-activity-explorer'),
+                            search: searchBtn,
+                            settings: document.getElementById('sp-activity-settings'),
+                            fixes: document.getElementById('sp-activity-fixes')
+                        };
+                        sidebar.style.display = 'flex';
+                        sidebarExpanded = true;
+                        document.getElementById('scratchpiler-sidebar-title').textContent = 'Search';
+                        Object.keys(buttons).forEach(k => {
+                            if (k === 'search') buttons[k].classList.add('sp-active');
+                            else buttons[k].classList.remove('sp-active');
+                        });
+                        Object.keys(panels).forEach(k => {
+                            if (k === 'search') panels[k].classList.add('active');
+                            else panels[k].classList.remove('active');
+                        });
+                        currentActiveTab = 'search';
+                        if (monacoEditor) monacoEditor.layout();
+                    }
+                    const searchInput = document.getElementById('scratchpiler-search-input');
+                    if (searchInput) searchInput.focus();
+                } },
+                '-',
+                { label: 'Toggle Line Wrap', action: () => {
+                    const wrapChk = document.getElementById('sp-setting-wrap');
+                    if (wrapChk) { wrapChk.checked = !wrapChk.checked; wrapChk.dispatchEvent(new Event('change')); }
+                } },
+                { label: 'Toggle Minimap', action: () => {
+                    const miniChk = document.getElementById('sp-setting-minimap');
+                    if (miniChk) { miniChk.checked = !miniChk.checked; miniChk.dispatchEvent(new Event('change')); }
+                } }
+            ]);
+        });
+
         document.getElementById('sp-menu-variables').addEventListener('click', () => {
             openMenu('sp-menu-variables', [
                 { label: 'New global variable…', action: () => showCreateDialog('New Global Variable', n => doCreateVariable(n, true, false)) },
                 { label: 'New local variable…',  action: () => showCreateDialog('New Local Variable',  n => doCreateVariable(n, false, false)) },
             ]);
         });
+
         document.getElementById('sp-menu-lists').addEventListener('click', () => {
             openMenu('sp-menu-lists', [
                 { label: 'New global list…', action: () => showCreateDialog('New Global List', n => doCreateVariable(n, true, true)) },
                 { label: 'New local list…',  action: () => showCreateDialog('New Local List',  n => doCreateVariable(n, false, true)) },
             ]);
         });
+
+        document.getElementById('sp-menu-help').addEventListener('click', () => {
+            openMenu('sp-menu-help', [
+                { label: 'GitHub Repository', action: () => window.open('https://www.github.com/Earth1283/scratchpiler/', '_blank') },
+                '-',
+                { label: 'Load Example: Hello World', action: () => loadExample('hello-world') },
+                { label: 'Load Example: Chase Mouse', action: () => loadExample('chase-mouse') },
+                { label: 'Load Example: Bounce Loop', action: () => loadExample('bounce-loop') }
+            ]);
+        });
+
+        setupActivityBar();
 
         const confirmDialog = () => {
             if (dialogCallback) dialogCallback(document.getElementById('scratchpiler-dialog-input').value);
@@ -3807,11 +4730,14 @@
                 }
             );
 
+            applySettingsFn = setupSettings();
+            if (applySettingsFn) applySettingsFn();
+
             monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
                 document.getElementById('scratchpiler-compile-btn').click();
             });
 
-            // Format button
+            // Format button (hidden compatibility button listener)
             document.getElementById('scratchpiler-format-btn').addEventListener('click', () => {
                 monacoEditor.getAction('editor.action.formatDocument').run();
             });
@@ -3885,6 +4811,13 @@
                     reindex(vm);
                     vm.on('targetsUpdate',   () => { reindex(vm); if (overlayVisible) populateSpriteDropdown(); });
                     vm.runtime.on('PROJECT_LOADED', () => reindex(vm));
+
+                    // If the overlay was opened before the VM was acquired,
+                    // re-trigger the sprite selection so the editor decompiles live code.
+                    if (overlayVisible && currentSpriteContext) {
+                        renderSidebarSprites();
+                        selectSidebarSprite(currentSpriteContext);
+                    }
                 },
                 () => updateStatus('Warning: VM not found after 15s')
             );
