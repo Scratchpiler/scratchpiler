@@ -1,16 +1,16 @@
 # Control Flow
 
-Scratchpiler's control structures map directly to Scratch's control blocks. No new semantics are introduced. What you see is what Scratch runs.
+Scratchpiler's control structures map directly to Scratch's control blocks. No new semantics are introduced, no matter how much you wish you had access to standard asynchronous promises. What you see is what Scratch runs.
 
 ---
 
 ## Hat blocks
 
-Hat blocks are the entry points of a script. Every script must start with one. Without a hat block, your code is orphaned and Scratch will never run it. This is a metaphor.
+Hat blocks are the entry points of a script. Every script must start with one. Without a hat block, your code is orphaned, floating around in the ether, compiled but never invoked. This is a metaphor for your career if you keep writing Scratch programs.
 
 ### on flag
 
-Runs when the green flag is clicked.
+Runs when the green flag is clicked, starting the project. It's the beginning of the end.
 
 ```
 on flag {
@@ -20,7 +20,7 @@ on flag {
 
 ### on click
 
-Runs when the sprite is clicked. For the Stage, this is `event_whenstageclicked`.
+Runs when the sprite is clicked. For the Stage, this is `event_whenstageclicked`. This block responds to mouse clicks, which is the closest your sprite gets to interacting with its creator.
 
 ```
 on click {
@@ -30,7 +30,7 @@ on click {
 
 ### on clone
 
-Runs when this sprite starts as a clone.
+Runs when this sprite starts as a clone. Clones are temporary, ephemeral beings, created to perform a short task and then be purged from memory when they call `deleteClone()`.
 
 ```
 on clone {
@@ -79,7 +79,7 @@ on backdrop "Level 2" {
 
 ### on timer > n
 
-Runs when the timer exceeds a threshold value. Useful for timed events. The threshold can be any expression.
+Runs when the timer exceeds a threshold value. Useful for timed events, or for reminding the player that time is slipping away. The threshold can be any expression.
 
 ```
 on timer > 10 {
@@ -94,7 +94,7 @@ on timer > [timeLimit] {
 
 ### on loudness > n
 
-Runs when the microphone loudness exceeds a threshold. Requires microphone permission, which the user will probably deny.
+Runs when the microphone loudness exceeds a threshold. Requires microphone permission, which the browser will request, and which the user will immediately deny out of fear that your Scratch project is a covert surveillance operation.
 
 ```
 on loudness > 50 {
@@ -118,7 +118,7 @@ if [x] > 0 {
 }
 ```
 
-There is no `else if`. Nest your ifs if you need a chain. Scratch doesn't have an `else if` block either, so this is a feature, not an oversight.
+There is no `else if` in scratchpiler. Nest your `if` statements inside the `else` blocks if you need a chain. Scratch doesn't have an `else if` block in its graphical palette either, so this is considered a "feature," which is marketing speak for a platform limitation we cannot bypass.
 
 ```
 if [x] > 10 {
@@ -153,7 +153,7 @@ repeat [count] {
 
 ## forever
 
-Runs the body forever. Any code after a `forever` block in the same scope is unreachable and the linter will tell you so.
+Runs the body forever. Literally. It is an infinite loop that will consume CPU cycles until the browser tab is mercifully terminated or the heat death of the universe occurs. Any code after a `forever` block in the same scope is unreachable. The linter will tell you so, trying to save you from your own logical dead ends.
 
 ```
 on flag {
@@ -161,7 +161,7 @@ on flag {
         move(5)
         bounce()
     }
-    say("this never runs")  // linter warning: unreachable
+    say("this never runs")  // linter warning: unreachable code
 }
 ```
 
@@ -169,7 +169,7 @@ on flag {
 
 ## repeat until
 
-Loops until a condition becomes true. Note the parentheses around the condition — they're required.
+Loops until a condition becomes true. Note the parentheses around the condition — they are required because the parser demands syntactic discipline to compensate for the VM's loose runtime rules.
 
 ```
 repeat until ([health] = 0) {
@@ -191,7 +191,7 @@ while ([health] > 0) {
 }
 ```
 
-This compiles to `control_repeat_until` with a `not` wrapper on the condition. The decompiler reconstructs it as `while`.
+This compiles to `control_repeat_until` with a `not` wrapper wrapped around the condition. The decompiler is smart enough to detect this pattern and reconstruct it as a `while` loop, hiding the ugly truth of the underlying blocks.
 
 ---
 
@@ -264,7 +264,7 @@ stopThis()           // stop this script only
 stopOtherScripts()   // stop other scripts in this sprite
 ```
 
-Any code after `stopAll()` or `stopThis()` is unreachable. The linter will warn you. `stopOtherScripts()` is not a terminator — the current script continues running after it.
+Any code after `stopAll()` or `stopThis()` is unreachable. The linter will warn you. `stopOtherScripts()` is not a terminator — the current script continues running after it, leaving it alone in a silent room after it has silenced its peers.
 
 ---
 
@@ -277,17 +277,17 @@ createClone("Sprite2")    // clone another sprite
 deleteClone()             // delete this clone (from within on clone { })
 ```
 
-`deleteClone()` is a terminator — code after it is unreachable.
+`deleteClone()` is a terminator — code after it is unreachable. Once a clone deletes itself, it is garbage collected, and its existence is completely erased from browser memory. Do not put code after this unless you enjoy writing statements that will never feel the warmth of execution.
 
 ---
 
 ## yield
 
-Not a Scratch block — scratchpiler sugar that compiles to `wait(0)`. Yields execution for one tick, allowing other scripts to run. Useful in tight loops that would otherwise freeze Scratch.
+Not a Scratch block — scratchpiler sugar that compiles to `wait(0)`. Yields execution for one tick, allowing other scripts to run. Useful in tight loops that would otherwise freeze Scratch's single-threaded web-worker runtime and prompt the browser to ask if you want to kill the page.
 
 ```
 forever {
-    // expensive work here
-    yield()    // let other scripts breathe
+    // expensive work here (e.g. searching a 10,000 item list)
+    yield()    // let other scripts breathe before the VM suffocates
 }
 ```

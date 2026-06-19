@@ -228,7 +228,7 @@ and  or  not              // boolean
 ## Comments
 
 ```
-// Everything after // is ignored by the compiler
+// Everything after // is stripped by the tokenizer, never to be seen by the VM.
 ```
 
 ---
@@ -244,9 +244,18 @@ and  or  not              // boolean
 
 | Key | Action |
 |---|---|
-| `Alt+M` | Open / close scratchpiler |
-| `Ctrl+Enter` | Compile & inject |
-| `Ctrl+S` | Compile & inject |
-| `Alt+Shift+F` | Format / auto-indent |
-| `Ctrl+Space` | Trigger autocomplete |
+| `Alt+M` | Open / close scratchpiler overlay |
+| `Ctrl+Enter` | Compile & inject (the moment of truth) |
+| `Ctrl+S` | Compile & inject (for standard editor muscle memory) |
+| `Alt+Shift+F` | Format / auto-indent (hiding structural chaos with spacing) |
+| `Ctrl+Space` | Trigger autocomplete (request assistance from Monaco) |
 | `Esc` | Close overlay |
+
+---
+
+## Tips for Survival
+
+- **Save Often**: Chrome likes to discard inactive tab states. If your browser crashes because you ran an unyielded `forever` loop, unsaved code is gone.
+- **Warp Mode Speed**: Custom blocks default to their Scratch palette settings. If you need speed, edit the prototype in Scratch's graphical editor to "run without screen refresh."
+- **Decompiler Opacity**: Opcode comments like `// unsupported` mean you're using extensions or blocks scratchpiler has not cataloged. Dragging them around in Scratch is your only recourse.
+- **Keep it Simple**: Trying to implement a 3D raycaster in a Tampermonkey-injected DSL is a path to enlightenment or madness. Usually the latter.

@@ -62,7 +62,7 @@ ln(exp(5))  // 5 (approximately)
 
 ## Trigonometry
 
-**Scratch uses degrees, not radians.** This is non-negotiable. All trig functions take and return degrees. If your code expects radians, multiply by `180 / pi` before calling and by `pi / 180` after — where `pi ≈ 3.14159` is a variable you define yourself because Scratch doesn't have a `pi` constant. Welcome to Scratch math.
+**Scratch uses degrees, not radians.** This is non-negotiable. All trig functions take and return degrees. If your code expects radians, multiply by `180 / pi` before calling and by `pi / 180` after — where `pi ≈ 3.14159` is a variable you must define yourself because Scratch has no mathematical constant library. Welcome to Scratch math, where circles have 360 degrees and your mathematical sanity has 0.
 
 | Function | Description |
 |---|---|
@@ -76,13 +76,13 @@ ln(exp(5))  // 5 (approximately)
 ```
 sin(90)     // 1
 cos(0)      // 1
-tan(45)     // 1 (approximately — floating point)
+tan(45)     // 1 (approximately — standard floating point inaccuracy)
 asin(1)     // 90
 acos(1)     // 0
 atan(1)     // 45
 ```
 
-Circular motion example:
+Circular motion example, or how to spin in circles indefinitely:
 
 ```
 on flag {
@@ -184,4 +184,4 @@ answer.length()         // how long the user's response was
 
 ## No bitwise operators
 
-Scratch has no bitwise operators. You cannot XOR, AND-mask, or bit-shift in Scratch. If you need bitwise operations, reconsider your approach, and if reconsidering doesn't help, implement them with `mod` and division and a lot of patience.
+Scratch has absolutely no bitwise operators. You cannot XOR, AND-mask, or bit-shift in Scratch. If you need bitwise operations, reconsider your life choices and your approach. If reconsidering doesn't help, you will have to implement them using `mod` loops, division, and an abundance of patience. Or simply accept that binary arithmetic is a luxury reserved for developers who aren't writing code inside a browser plugin.

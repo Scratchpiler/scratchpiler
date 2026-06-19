@@ -1,6 +1,6 @@
 # Syntax
 
-Scratchpiler's syntax is deliberately boring. If you've used JavaScript, Python, or any language where a statement is a word followed by parentheses, you already know most of it. The main difference is that variables are written in brackets.
+Scratchpiler's syntax is deliberately, mercifully boring. If you've used JavaScript, Python, or any language where a statement is a word followed by parentheses, you already know most of it. The main difference is that variables are written in brackets, serving as a constant visual reminder that you are coding in a sandbox.
 
 ---
 
@@ -8,7 +8,7 @@ Scratchpiler's syntax is deliberately boring. If you've used JavaScript, Python,
 
 ### Numbers
 
-Plain decimal numbers. Negative numbers are written with a leading `-` (which the parser handles as unary minus, not as part of the token).
+Plain decimal numbers. Negative numbers are written with a leading `-` (which the parser handles as unary minus at compile time, not as part of the token, because parsing negative literals natively was deemed a luxury we could not afford).
 
 ```
 10
@@ -19,7 +19,7 @@ Plain decimal numbers. Negative numbers are written with a leading `-` (which th
 
 ### Strings
 
-Double-quoted. No escape sequences are supported. This is a Scratch limitation, not a scratchpiler limitation, and there is nothing either of us can do about it.
+Double-quoted. No escape sequences are supported. No `\n`, no `\t`, no hex escapes. This is a Scratch limitation, not a scratchpiler limitation, and there is absolutely nothing either of us can do about it. If you want a newline, you must accept that Scratch believes in flat, single-line thoughts. Much like its target audience.
 
 ```
 "Hello, World!"
@@ -29,7 +29,7 @@ Double-quoted. No escape sequences are supported. This is a Scratch limitation, 
 
 ### Variables
 
-Names surrounded by square brackets. Case-sensitive. Must match a variable or list that exists in the Scratch project.
+Names surrounded by square brackets. Case-sensitive. Must match a variable or list that exists in the Scratch project. If you write `[Score]` but Scratch only knows `[score]`, the compiler will error out and refuse to generate blocks. It will not try to guess your intent; it is a machine.
 
 ```
 [score]
@@ -49,11 +49,11 @@ Six-digit hex colors with a `#` prefix. These generate Scratch `colour_picker` b
 
 ### Comments
 
-Line comments only, starting with `//`. Comments are stripped during tokenization and do not appear in compiled output.
+Line comments only, starting with `//`. Comments are stripped during tokenization and do not appear in compiled output. They will not survive compilation. Tragic. Like tears in the rain, or variables you forgot to create in the editor.
 
 ```
 // This is a comment. It will not survive compilation.
-move(10)  // This comment also disappears. Tragic.
+move(10)  // This comment also disappears. It had so much to say.
 ```
 
 ---
@@ -72,7 +72,7 @@ move(10)  // This comment also disappears. Tragic.
 
 ### Comparison
 
-Scratch has three comparison operators. All three produce boolean values.
+Scratch has exactly three comparison operators. All three produce boolean values.
 
 ```
 [x] < 10       // less than
@@ -80,7 +80,7 @@ Scratch has three comparison operators. All three produce boolean values.
 [x] = "hello"  // equal (works for both numbers and strings)
 ```
 
-Note: there is no `!=`, `<=`, or `>=`. To check "not equal", use `not ([x] = [y])`. To check "greater than or equal to", use `[x] > [y] - 1` and question your life choices.
+Note: there is no `!=`, `<=`, or `>=`. Scratch's block palette doesn't have them, so neither do we. To check "not equal", use `not ([x] = [y])`. To check "greater than or equal to", use `not ([x] < [y])` or write `[x] > [y] - 1` and question your life choices. We make these compromises to survive in this environment.
 
 ### Boolean
 
@@ -89,6 +89,8 @@ cond1 and cond2
 cond1 or cond2
 not cond
 ```
+
+Logical operators. Remember, `and` and `or` have short-circuiting behavior in modern languages, but Scratch evaluates everything because it doesn't believe in efficiency or protecting you from division-by-zero inside condition branches.
 
 ### Compound assignment
 
@@ -101,7 +103,7 @@ Shorthand for changing a variable in place. These desugar to `set`/`change` stat
 [score] /= 4       // same as: set [score] to [score] / 4
 ```
 
-`+=` compiles directly to `data_changevariableby`. The others compile to `data_setvariableto` with an expression.
+`+=` compiles directly to `data_changevariableby`, which is a single block. The others compile to `data_setvariableto` containing an arithmetic expression tree. This means `[score] *= 2` generates two blocks, bloating your script size and accelerating the heat death of your browser's CPU. You're welcome.
 
 ### Operator precedence
 

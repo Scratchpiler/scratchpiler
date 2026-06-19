@@ -93,7 +93,7 @@ say(join("Time: ", timer))
 
 ### resetTimer()
 
-Resets the timer to 0.
+Resets the timer to 0, restarting the count. Useful for pacing actions before the timer ticks too high and crashes your logic.
 
 ```
 on flag {
@@ -107,11 +107,11 @@ on flag {
 
 ### loudness (reporter)
 
-Returns the current microphone loudness from 0 to 100. Requires browser microphone permission. Many users deny this, which returns a constant 0, which will not trigger your `on loudness > 50` hat block, which is fine, this is fine.
+Returns the current microphone loudness from 0 to 100. Requires browser microphone permission, which the user will prompt-deny. If denied, it returns a constant 0, meaning your `on loudness > 50` hat block will never trigger. This is probably for the best, preventing your code from listening to the player sighing at their keyboard.
 
 ```
 if loudness > 40 {
-    say("Shh!")
+    say("Shh! Quiet down.")
 }
 ```
 
@@ -121,11 +121,11 @@ if loudness > 40 {
 
 ### currentTime("unit")
 
-Returns the current real-world time as a number.
+Returns the current real-world time read from the user's local system clock.
 
 | Unit | Returns |
 |---|---|
-| `"year"` | Four-digit year (e.g. 2025) |
+| `"year"` | Four-digit year (e.g. 2026) |
 | `"month"` | Month number (1–12) |
 | `"date"` | Day of the month (1–31) |
 | `"day"` | Day of the week (1=Sunday, 7=Saturday) |
@@ -135,7 +135,7 @@ Returns the current real-world time as a number.
 
 ```
 if currentTime("hour") > 20 {
-    say("It's late. Maybe go to bed.")
+    say("It's past 8 PM. Maybe go to bed. Or don't, I'm just a sprite.")
 }
 
 say(join(currentTime("hour"), join(":", currentTime("minute"))))
@@ -143,7 +143,7 @@ say(join(currentTime("hour"), join(":", currentTime("minute"))))
 
 ### daysSince2000 (reporter)
 
-Returns the number of days (including fractional days) since January 1, 2000. Rarely useful, but it's there.
+Returns the number of days (including fractional parts) since January 1, 2000. Use this to calculate how long humanity has survived the Y2K bug, or to track how much time has slipped away while you dragged virtual lego blocks around.
 
 ```
 say(daysSince2000)
@@ -151,7 +151,7 @@ say(daysSince2000)
 
 ### username (reporter)
 
-Returns the Scratch username of the logged-in user, if any. Returns an empty string for logged-out users, which is most people.
+Returns the Scratch username of the logged-in user, if any. Returns an empty string for logged-out users, which is most people. Useful for personalizing messages or tracking who is using your project to avoid their actual responsibilities.
 
 ```
 say(join("Hello, ", username))

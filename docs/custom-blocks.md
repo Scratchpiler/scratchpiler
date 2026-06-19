@@ -1,6 +1,6 @@
 # Custom Blocks
 
-Custom blocks are Scratch's version of functions. They take parameters and execute a body. They do not return values — Scratch has no return mechanism. If you need to "return" something, store it in a variable and read it afterward. This is Scratch's architectural gift to you.
+Custom blocks are Scratch's approximation of functions. They take parameters and execute a body. They do not return values — Scratch has no return mechanism. If you need to "return" something, you must store it in a global variable and read it afterward. This is Scratch's architectural gift to you, transforming every function call into a high-stakes game of global variable roulette.
 
 ---
 
@@ -32,7 +32,7 @@ define setHealthBar(value, maxValue) {
 }
 ```
 
-Parameter names inside the body are referenced as variables with brackets: `[direction]`, `[speed]`, etc. These are Scratch's "argument" reporter blocks.
+Parameter names inside the body are referenced as variables with brackets: `[direction]`, `[speed]`, etc. These are Scratch's "argument" reporter blocks. They look like variables, but they are read-only. Attempting to write to them will result in compilation failure and a reminder that parameters are not variables.
 
 ---
 
@@ -92,16 +92,16 @@ clampHealth([rawHealth])
 set [health] to [_clampResult]
 ```
 
-This is the accepted pattern. It works. It is not elegant.
+This is the standard, community-accepted pattern. It works. It is not elegant. It is the architectural equivalent of using a global bucket to carry water from room to room because your house lacks plumbing.
 
 ---
 
 ## Recursion
 
-Scratch custom blocks technically support recursion but it is not recommended for deep recursion since Scratch has no call stack overflow protection and will simply freeze. Shallow recursion (a few levels) works fine. Deep recursion turns your project into a loading spinner that spins forever.
+Scratch custom blocks technically support recursion, but it is not recommended for anything deep. Because Scratch has no call stack overflow protection, it will simply freeze, locking up the thread and turning your project into a loading spinner that spins until you kill the tab. Shallow recursion (a few levels) works fine; deep recursion is a great way to stress-test your browser's crash reporter.
 
 ---
 
 ## Scope
 
-Custom block bodies run with access to all variables of the sprite. There is no local variable scope in Scratch — everything is global to the sprite. Parameters are special block-argument reporters that live only within the block's execution context, but all regular `[variables]` are shared.
+Custom block bodies run with access to all variables of the sprite. There is no local variable scope in Scratch — everything is global to the sprite. Parameters are special block-argument reporters that live only within the block's execution context, but all regular `[variables]` are shared. If you modify `[score]` inside a custom block, it changes for the entire sprite, ensuring that side-effects are plentiful and tracking down state mutation bugs is a nightmare. Enjoy.

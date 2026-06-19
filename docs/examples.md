@@ -1,27 +1,27 @@
 # Examples
 
-Full example programs demonstrating scratchpiler features. Paste any `.sdsl` file from the `examples/` folder directly into the editor.
+Full example programs demonstrating scratchpiler features. Paste any `.sdsl` file from the `examples/` folder directly into the editor. To avoid making the Scratch VM question its own reality, compile them sprite-by-sprite, making sure you select the correct sprite from the dropdown before injecting.
 
 ## Example files
 
 | File | Demonstrates |
 |---|---|
-| `hello-world.sdsl` | First script, `say`, `wait` |
-| `bounce-loop.sdsl` | `forever`, `move`, `bounce` |
-| `chase-mouse.sdsl` | `glide`, `mouseX`/`mouseY`, `sayFor` |
-| `counter.sdsl` | Variables, `set`, `change`, `on key` |
-| `custom-blocks.sdsl` | `define`, custom block calls |
-| `platformer-move.sdsl` | Multiple hat blocks, arrow key movement |
-| `for-loop-spiral.sdsl` | `for` loop, growing step sizes |
-| `trig-circle.sdsl` | `sin`/`cos`, circular motion |
+| `hello-world.sdsl` | First script, `say`, `wait`, minimal block generation |
+| `bounce-loop.sdsl` | `forever`, `move`, `bounce`, trapping threads |
+| `chase-mouse.sdsl` | `glide`, `mouseX`/`mouseY`, `sayFor`, following input |
+| `counter.sdsl` | Variables, `set`, `change`, `on key`, handling mutable state |
+| `custom-blocks.sdsl` | `define`, custom block calls, parameter passing |
+| `platformer-move.sdsl` | Multiple hat blocks, arrow key movement, concurrent event handlers |
+| `for-loop-spiral.sdsl` | `for` loop, growing step sizes, arithmetic transformations |
+| `trig-circle.sdsl` | `sin`/`cos`, circular motion, fighting degree limits |
 | `list-inventory.sdsl` | List operations, dot methods, `.contains`, `.indexOf` |
-| `clones-burst.sdsl` | Clone creation, `on clone`, data passing |
-| `ask-quiz.sdsl` | `askAndWait`, `answer`, `contains` |
-| `graphic-effects.sdsl` | All seven graphic effects |
-| `broadcast-game.sdsl` | `broadcast`, `broadcastAndWait`, game state machine |
-| `timer-countdown.sdsl` | `timer`, `resetTimer`, `on timer >` |
+| `clones-burst.sdsl` | Clone creation, `on clone`, data passing, thread explosion |
+| `ask-quiz.sdsl` | `askAndWait`, `answer`, `contains`, prompting for input |
+| `graphic-effects.sdsl` | All seven graphic effects, visual distortion |
+| `broadcast-game.sdsl` | `broadcast`, `broadcastAndWait`, game state machine patterns |
+| `timer-countdown.sdsl` | `timer`, `resetTimer`, `on timer >`, dealing with real-world time |
 | `math-functions.sdsl` | `abs`, `round`, `clamp`, `random`, `mod`, compound assignment |
-| `string-ops.sdsl` | `join`, `letterOf`, `.length()`, string reversal |
+| `string-ops.sdsl` | `join`, `letterOf`, `.length()`, string reversal without utility libraries |
 | `platformer-full.sdsl` | Full movement system with gravity, lives, score, broadcasts |
 | `sensing-radar.sdsl` | `distanceTo`, `xOf`, `yOf`, `directionOf`, `costumeNameOf` |
 
@@ -29,13 +29,13 @@ Full example programs demonstrating scratchpiler features. Paste any `.sdsl` fil
 
 ## Hello World
 
-The minimum viable Scratch program.
+The minimum viable Scratch program, expressing a standard greeting before returning to its default state of silent execution.
 
 ```
 on flag {
     say("Hello, World!")
     wait(2)
-    say("")
+    say("") // Closes the speech bubble to spare the user's view
 }
 ```
 
@@ -45,13 +45,13 @@ See `examples/hello-world.sdsl`.
 
 ## Platformer movement
 
-Arrow-key controlled movement. Four hat blocks, one per direction. Classic pattern — no state machine needed.
+Arrow-key controlled movement. Five independent threads (hat blocks) running concurrently. A classic Scratch pattern that avoids a complex centralized state machine, instead relying on the browser's thread scheduler to not drop inputs.
 
 ```
 on flag {
     forever {
         if touching("edge") {
-            bounce()
+            bounce() // Reflects direction when hitting the boundaries of the stage
         }
     }
 }
@@ -61,6 +61,9 @@ on key "left arrow"  { changeX(-5) }
 on key "up arrow"    { changeY(5) }
 on key "down arrow"  { changeY(-5) }
 ```
+
+> [!TIP]
+> This event-driven pattern is simple but can feel sluggish due to Scratch's repeat-delay handling. For a smoother, professional feel, use a polling loop (checking `key()` status inside a `forever` block) as shown in `examples/platformer-full.sdsl`. Your users will thank you, assuming they exist.
 
 See `examples/platformer-move.sdsl`.
 

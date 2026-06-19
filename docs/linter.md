@@ -1,12 +1,12 @@
 # Linter
 
-Scratchpiler runs a linter on every keystroke (with a 350ms debounce — it's not watching you that closely). Lint warnings appear as yellow underlines in the editor. Errors from the parser appear as red underlines. Neither prevents you from saving your content; only errors prevent compilation.
+Scratchpiler runs a linter on every keystroke (with a 350ms debounce — it's not watching you that closely, though it is silently judging). Lint warnings appear as yellow underlines in the editor. Errors from the parser appear as red underlines. Neither prevents you from saving your content; only errors prevent compilation, keeping broken ASTs from polluting the VM.
 
 ---
 
 ## Dead code
 
-Some statements unconditionally end the current script's execution. Any code after them in the same block is unreachable — Scratch will never run it, and the linter will tell you.
+Some statements unconditionally end the current script's execution. Any code after them in the same block is unreachable — Scratch will never run it, and the linter will tell you. Dead code, much like dead dreams, will simply sit there, a silent monument to your developer hubris.
 
 **Terminators:**
 
@@ -14,8 +14,8 @@ Some statements unconditionally end the current script's execution. Any code aft
 |---|---|
 | `stopAll()` | Stops all scripts in the project |
 | `stopThis()` | Stops the current script |
-| `forever { }` | Loops forever; nothing after it can execute |
-| `deleteClone()` | Destroys the clone running this script |
+| `forever { }` | Loops forever; nothing after it in this scope can execute |
+| `deleteClone()` | Destroys the clone running this script, erasing it from browser memory |
 
 ```
 on flag {
@@ -72,7 +72,7 @@ Orphaned blocks are a warning, not an error. They inject successfully and appear
 
 ## Recursion into nested blocks
 
-The linter recurses into if/else branches, loop bodies, and custom block bodies. Dead code in deeply nested positions is still flagged.
+The linter recurses into if/else branches, loop bodies, and custom block bodies. Dead code in deeply nested positions is still flagged. No matter how deep you bury your unreachable logic, the linter will find it and point it out, like an unwanted relative at a family gathering.
 
 ```
 on flag {
@@ -89,11 +89,11 @@ on flag {
 
 ## What the linter does not check
 
-- Whether variables exist (that's a compile-time error, not a lint warning)
-- Logic errors ("you're setting `[lives]` to 0 before checking it")
-- Performance issues ("that `forever` loop has no `wait`")
-- Type mismatches (Scratch has no types)
-- Division by zero
-- Whether your game design is good
+- Whether variables exist (that's a compile-time error, not a lint warning. The compiler will deal with you then.)
+- Logic errors ("you're setting `[lives]` to 0 before checking if it's less than 1. Classic.")
+- Performance issues ("that `forever` loop has no `wait` and is currently melting the client's GPU.")
+- Type mismatches (Scratch has no types, treating numbers, strings, and booleans as one chaotic family.)
+- Division by zero (Scratch handles this by returning `Infinity`. We encourage you to use this to calculate your chances of landing a real software engineering job after building your resume on Scratch.)
+- Whether your game design is actually fun or good (you are on your own here; the machine has no taste.)
 
-The linter is not a static analysis engine. It catches the mechanical problems that are trivially detectable from the AST. The rest is your responsibility.
+The linter is not a sophisticated static analysis engine. It catches the mechanical problems that are trivially detectable from the AST. The rest of the bugs are yours to keep.

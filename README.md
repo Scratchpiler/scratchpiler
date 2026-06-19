@@ -1,23 +1,23 @@
 # scratchpiler
 
-A text-based DSL that compiles directly into Scratch's block VM. Because sometimes you want to write a platformer without playing Tetris with puzzle pieces first.
+A text-based DSL that compiles directly into Scratch's block VM. Because sometimes you want to write a platformer without playing Tetris with puzzle pieces, or because you've finally realized that dragging colorful plastic shapes with a mouse is a slow descent into developer madness.
 
 ---
 
 ## What it is
 
-Scratchpiler lets you write Scratch programs in a real text editor (Monaco, the one from VS Code), then injects the compiled blocks directly into the running Scratch project. You can also decompile existing Scratch scripts back into scratchpiler source. It's not magic — it's just a Tampermonkey userscript doing unspeakable things to the Scratch VM.
+Scratchpiler lets you write Scratch programs in a real text editor (Monaco, the one from VS Code), then injects the compiled blocks directly into the running Scratch project. You can also decompile existing Scratch scripts back into scratchpiler source. It's not magic — it's just a Tampermonkey userscript doing unspeakable, borderline-sacrilegious things to the Scratch VM's internal block registry.
 
-The language maps 1:1 with Scratch's block palette. Every statement, every reporter, every hat block has a text equivalent. The goal isn't to replace Scratch; it's to give programmers a faster path to the same output.
+The language maps 1:1 with Scratch's block palette. Every statement, every reporter, every hat block has a text equivalent. The goal isn't to replace Scratch; it's to give programmers a faster path to the same output, shielding them from the blinding glare of Scratch's default aesthetic while they contemplate their life choices.
 
 ---
 
 ## Requirements
 
-- [Tampermonkey](https://www.tampermonkey.net/) (Chrome) or [Violentmonkey](https://violentmonkey.github.io/) (Firefox/Chrome)
-- A modern browser
-- A Scratch account, or at least an open project at `scratch.mit.edu/projects/*/editor`
-- The ability to tolerate a DSL that uses `camelCase` for everything
+- [Tampermonkey](https://www.tampermonkey.net/) (Chrome) or [Violentmonkey](https://violentmonkey.github.io/) (Firefox/Chrome) to run our payload.
+- A modern browser capable of rendering the Monaco editor before it exhausts your system memory.
+- A Scratch account, or at least an open project at `scratch.mit.edu/projects/*/editor` where you can summon your creation.
+- The ability to tolerate a DSL that uses `camelCase` for everything, because the Scratch VM's internals demand it and it lacks any concept of self-respect.
 
 ---
 
@@ -50,12 +50,12 @@ on flag {
 }
 ```
 
-1. Select a sprite from the dropdown in the toolbar
+1. Select a sprite from the dropdown in the toolbar (preferably one you don't mind breaking)
 2. Type (or paste) your script
 3. Press **Ctrl+Enter** (or click **Compile & Inject**)
-4. Watch the blocks appear in Scratch
+4. Watch the blocks appear in Scratch like digital weeds.
 
-Blocks are injected into the selected sprite. Variables must already exist in Scratch — scratchpiler resolves them by name, not by wishful thinking.
+Blocks are injected into the selected sprite. Variables must already exist in Scratch — scratchpiler resolves them by name, not by wishful thinking or hoping Scratch will figure out your intent. It won't. It doesn't care.
 
 ---
 

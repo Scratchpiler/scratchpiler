@@ -1,6 +1,6 @@
 # Sound
 
-Audio playback and volume control. Sound names must match sounds that exist in the sprite's sound library. Scratchpiler cannot add sounds to a project — it can only play the ones already there.
+Audio playback and volume control. Sound names must match sounds that exist in the sprite's sound library. Scratchpiler cannot synthesize audio or add new sounds to a project — it can only play the ones already registered in the project assets. If you try to play a non-existent sound, Scratch will fail silently, preserving your acoustic sanity at the expense of your script logic.
 
 ---
 
@@ -8,7 +8,7 @@ Audio playback and volume control. Sound names must match sounds that exist in t
 
 ### play("sound")
 
-Starts playing a sound and immediately continues execution. The sound plays in the background.
+Starts playing a sound and immediately continues execution. The sound plays in the background, overlapping with any other sounds currently playing.
 
 ```
 play("Meow")
@@ -18,11 +18,11 @@ play([soundName])
 
 ### playUntilDone("sound")
 
-Plays a sound and waits for it to finish before continuing. Useful for sequential audio.
+Plays a sound and waits for it to finish before continuing. Useful for sequential audio or cutscenes, but it will block your script thread completely until the audio finishes playing. If you pass a 10-minute audio track, prepare for a long wait.
 
 ```
 playUntilDone("intro music")
-say("The intro has concluded.")
+say("The intro has concluded. Finally.")
 ```
 
 ### stopSounds()
@@ -97,17 +97,19 @@ clearSoundEffects()
 
 ## Notes on audio in Scratch
 
-Scratch's audio engine runs asynchronously in the browser. `play()` does not block. `playUntilDone()` blocks. If you call `play()` in a tight loop, you will produce what audio engineers call "a crime" and what users call "why is this website screaming at me".
+Scratch's audio engine runs asynchronously in the browser. `play()` does not block. `playUntilDone()` blocks, halting your script thread until the sound wave has completed its passage.
+
+If you call `play()` in a tight loop without yields or waits, you will produce what audio engineers call "a crime" and what users call "why is this website screaming at me." The browser will attempt to initialize 60 sound instances per second, resulting in a cacophony of sound that may crash your browser's audio driver or summon neighbors to your door. A fitting end.
 
 ```
 // Bad
 forever {
-    play("Meow")   // a new Meow starts every frame
+    play("Meow")   // a new Meow starts 30-60 times a second. Do not do this.
 }
 
 // Good
 forever {
     play("Meow")
-    wait(0.8)      // wait approximately as long as the sound
+    wait(0.8)      // wait approximately as long as the sound to avoid sound stack bloat
 }
 ```

@@ -1,22 +1,22 @@
 # Getting Started
 
-This tutorial walks through scratchpiler from scratch (pun acknowledged, moving on). By the end you'll have written, compiled, and run a real program. Prior Scratch experience helps; prior programming experience helps more.
+This tutorial walks through scratchpiler from scratch (pun acknowledged with a heavy sigh, moving on). By the end of this, you'll have written, compiled, and executed a real program inside the Scratch runtime environment, assuming you don't give up beforehand. Prior Scratch experience helps; prior programming experience helps more; a high tolerance for debugging browser local storage helps most.
 
 ---
 
 ## Step 1 — Open the editor
 
-Navigate to any Scratch project in the editor (`scratch.mit.edu/projects/*/editor`). Press **Alt+M**. The scratchpiler overlay opens over Scratch's interface.
+Navigate to any Scratch project in the editor (`scratch.mit.edu/projects/*/editor`). Press **Alt+M** to summon the compiler overlay. It will drape itself over Scratch's interface like a dark, silent shroud.
 
-If nothing happens, check that Tampermonkey is active and the script is enabled. If it's still nothing, the Scratch project may not have loaded yet — give it a moment.
+If nothing happens, check that Tampermonkey is active, the script is enabled, and your browser hasn't silently blocked our userscript. If it's still nothing, the Scratch project may not have loaded yet — give the browser a moment to process the massive heap of scripts it's carrying.
 
 ---
 
 ## Step 2 — Pick a sprite
 
-Use the dropdown in the toolbar to select which sprite you're writing code for. Every sprite has its own independent editor workspace. Code compiled for "Cat" stays in Cat.
+Use the dropdown in the toolbar to select which sprite you are writing code for. Every sprite has its own independent, isolated editor workspace. Code compiled for "Cat" stays in Cat, forever trapped in its own logical cage. Cross-sprite access is forbidden by design.
 
-Start with the default sprite if you don't have a preference.
+Start with the default sprite (usually the Orange Cat, who has seen too much) if you don't have a preference.
 
 ---
 
@@ -32,17 +32,17 @@ on flag {
 }
 ```
 
-Press **Ctrl+Enter** to compile and inject. Switch back to Scratch, click the green flag, and the sprite will speak.
+Press **Ctrl+Enter** to compile and inject. Switch back to Scratch, click the green flag, and the sprite will speak. It has no mouth, but it will speak.
 
-If you see a red underline, there's a parse error — hover it to read the message, fix it, and try again.
+If you see a red underline, there's a parse error — hover it to read the message, correct your syntax, and try again. The parser is uncompromising. It does not accept partial efforts.
 
 ---
 
 ## Step 4 — Variables
 
-Variables must be created in Scratch before scratchpiler can use them. Create one:
+Variables must be created in Scratch before scratchpiler can use them. Scratchpiler does not create variables on its own; it merely references what already exists. Think of them as entities that must be summoned (created) in the Scratch editor before we can possess them in text.
 
-1. Click **Variables** in the scratchpiler toolbar → **New global variable…**
+1. Click **Variables** in the scratchpiler toolbar → **New global variable…** (or summon it via Scratch's sidebar if you enjoy clicking)
 2. Name it `score`
 3. Click OK
 
@@ -67,9 +67,9 @@ on key "space" {
 Compile. Click the flag, then press space a few times. The score increases.
 
 Notice:
-- Variables are always written in square brackets: `[score]`
-- `join()` concatenates two strings (Scratch doesn't have `+` for strings)
-- `[score] += 1` is shorthand for `change [score] by 1`
+- Variables are always written in square brackets: `[score]`, signifying their containment within the Scratch memory pool.
+- `join()` concatenates two strings. Scratch does not have a `+` operator for strings. It treats strings and numbers as interchangeable and confusing, so `join()` is your only shield against implicit conversion errors.
+- `[score] += 1` is syntactic sugar for `change [score] by 1`, compiled down to Scratch's native changer block.
 
 ---
 
@@ -93,7 +93,7 @@ on flag {
 }
 ```
 
-This script runs a polling loop: every frame, it checks which keys are held and whether the sprite hit the edge. The `forever` block loops until the project stops — code after it in the same script is unreachable (the linter will warn you if you write any).
+This script runs a polling loop: every frame, it checks which keys are held and whether the sprite has collided with the edge of its tiny world. The `forever` block loops until the project stops — code after it in the same script is unreachable. The linter will flag any statements after `forever` as dead code, which is a polite way of telling you that you are wasting your time.
 
 ---
 
@@ -274,12 +274,12 @@ Now that you've seen the basics, use the reference docs to look up specifics:
 
 ## Common mistakes
 
-**"Variable not found"** — You referenced `[score]` but no variable named `score` exists in Scratch. Create it first.
+**"Variable not found"** — You referenced `[score]` but no variable named `score` exists in Scratch. Create it first. Scratchpiler cannot summon memory from the void; it can only point to existing registries.
 
-**"Unknown statement"** — You typed a function name that scratchpiler doesn't recognise (or spelled a known one wrong). Check [quick-reference.md](quick-reference.md) for the exact name.
+**"Unknown statement"** — You typed a function name that scratchpiler doesn't recognise (or spelled a known one wrong). Check [quick-reference.md](quick-reference.md) for the exact name, or accept that computers are literal-minded and lack empathy for your typos.
 
-**Blocks don't appear after compile** — Check the sprite dropdown. You may have compiled into the wrong sprite.
+**Blocks don't appear after compile** — Check the sprite dropdown. You may have compiled into the wrong sprite, injecting your logic into a random obstacle or a decorative cloud where it will float, inert and useless.
 
-**Red squiggles everywhere** — Look at the first error. Parser errors cascade: one missing `{` can make everything after it look broken. Fix from top to bottom.
+**Red squiggles everywhere** — Look at the first error. Parser errors cascade: one missing `{` can make everything after it look like syntactical garbage. Fix from top to bottom, much like sorting out your life.
 
-**Linter says "unreachable code"** — You put statements after `stopAll()`, `forever {}`, `stopThis()`, or `deleteClone()`. Remove or move them.
+**Linter says "unreachable code"** — You put statements after `stopAll()`, `forever {}`, `stopThis()`, or `deleteClone()`. These blocks terminate execution. Placing code after them is a monument to optimism, but the runtime will ignore it. Remove or move them.

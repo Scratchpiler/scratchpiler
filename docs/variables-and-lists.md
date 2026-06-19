@@ -55,29 +55,29 @@ These control whether the variable monitor is visible on stage. Useful for debug
 
 ## Lists
 
-Lists are ordered sequences. Indexes in Scratch are 1-based. If you're coming from Python, pause and breathe.
+Lists are ordered sequences of items. Indexes in Scratch are 1-based. If you're coming from Python, C++, or any civilized language, pause and breathe. If you attempt to access index 0, Scratch will return an empty string instead of throwing an IndexOutOfBoundsException. It prefers silent, confusing failures over loud complaints. A trait we wish humans shared.
 
 ### Creating list items
 
 ```
-listAdd("item", [myList])               // append
-listInsert("item", 1, [myList])         // insert at position
+listAdd("item", [myList])               // append to the end of the list
+listInsert("item", 1, [myList])         // insert at the very beginning (index 1)
 listInsert("item", [index], [myList])   // insert at variable index
 ```
 
 ### Deleting list items
 
 ```
-listDelete(1, [myList])           // delete first item
+listDelete(1, [myList])           // delete the first item, shifting all others down
 listDelete([index], [myList])     // delete by index
-listDeleteAll([myList])           // clear the entire list
+listDeleteAll([myList])           // clear the entire list, purging all data
 ```
 
 ### Replacing items
 
 ```
-listReplace(1, [myList], "new value")
-listReplace([index], [myList], [newValue])
+listReplace(1, [myList], "new value")      // overwrite the first item
+listReplace([index], [myList], [newValue]) // overwrite by index
 ```
 
 ### Showing and hiding
@@ -86,6 +86,8 @@ listReplace([index], [myList], [newValue])
 showList([myList])
 hideList([myList])
 ```
+
+These control the visual rendering of the list monitor on the stage. Hiding lists is a good way to keep your database private from players who might want to tamper with their high score or inventory.
 
 ---
 
