@@ -232,6 +232,44 @@ repeat until ([_scratchpiler_internal_xxxx_i] > end) {
 
 ---
 
+## pyfor
+
+A Python-style list iterator. `pyfor [item] in [list] { }` walks every element of a list from first to last, binding each element to the iterator variable. This is the idiomatic way to loop over all items in a list without manual index math.
+
+```
+pyfor [fruit] in [basket] {
+    say([fruit])
+    wait(0.3)
+}
+```
+
+The iterator variable is readable inside the body. It receives a copy of the item — modifying it does not modify the list. If you need to overwrite items, use `listReplace` (or `replace()`) with an explicit index.
+
+```
+// Process all scores without manual indexing
+pyfor [score] in [scores] {
+    if [score] > [highScore] {
+        set [highScore] to [score]
+    }
+}
+```
+
+The iterator variable name (`[fruit]`, `[score]`) is created as a hidden internal Scratch variable. The list (`[basket]`, `[scores]`) must already exist as a Scratch list — it cannot be a variable. If you pass a variable where a list is expected, the type checker will warn you before you compile.
+
+The compiled output is:
+```
+set [_scratchpiler_internal_xxxx_pyfor_ctr] to 1
+repeat until ([_scratchpiler_internal_xxxx_pyfor_ctr] > [list].length()) {
+    set [_scratchpiler_internal_xxxx_item] to [list].item([ctr])
+    // body
+    change [_scratchpiler_internal_xxxx_pyfor_ctr] by 1
+}
+```
+
+The decompiler recognizes this pattern and reconstructs it cleanly as `pyfor [item] in [list] { }` on re-import.
+
+---
+
 ## wait
 
 Pauses the script for a number of seconds.
@@ -262,9 +300,12 @@ wait until key("space")
 stopAll()            // stop all scripts in the project
 stopThis()           // stop this script only
 stopOtherScripts()   // stop other scripts in this sprite
+
+// Ergonomic aliases
+stopMe()             // alias for stopThis()
 ```
 
-Any code after `stopAll()` or `stopThis()` is unreachable. The linter will warn you. `stopOtherScripts()` is not a terminator — the current script continues running after it, leaving it alone in a silent room after it has silenced its peers.
+Any code after `stopAll()`, `stopThis()`, or `stopMe()` is unreachable. The linter will warn you. `stopOtherScripts()` is not a terminator — the current script continues running after it, leaving it alone in a silent room after it has silenced its peers.
 
 ---
 
@@ -273,6 +314,7 @@ Any code after `stopAll()` or `stopThis()` is unreachable. The linter will warn 
 ```
 createClone()             // clone this sprite
 createClone("Sprite2")    // clone another sprite
+clone()                   // alias for createClone() — same thing, fewer characters
 
 deleteClone()             // delete this clone (from within on clone { })
 ```

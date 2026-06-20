@@ -80,6 +80,21 @@ listReplace(1, [myList], "new value")      // overwrite the first item
 listReplace([index], [myList], [newValue]) // overwrite by index
 ```
 
+### Ergonomic aliases
+
+If you find the `listAdd` / `listDelete` / `listReplace` naming convention to be the worst thing in the universe, we've added friendlier aliases. They compile to the exact same blocks — the choice between them is purely aesthetic and will not affect your program's runtime behavior or your self-esteem (one of these more than the other).
+
+```
+append([myList], "item")              // listAdd alias — add to end
+push([myList], "item")                // same thing, if you prefer Python flavor
+remove([myList], 1)                   // listDelete alias — remove by index
+insert([myList], 1, "item")           // listInsert alias — insert at index
+replace([myList], 1, "new value")     // listReplace alias — replace by index
+clear([myList])                       // listDeleteAll alias — nuke the whole list
+```
+
+The argument order for the aliases is `([list], ...)` — list first, then the arguments. This is the opposite of the canonical `listAdd(item, [list])` convention, which puts the list last. This asymmetry is historical and regrettable. The aliases fix it.
+
 ### Showing and hiding
 
 ```

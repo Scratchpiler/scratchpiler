@@ -171,7 +171,7 @@
 
     const KEYWORDS = [
         // Control flow
-        'on','if','else','forever','repeat','until','while','for','from','wait','define',
+        'on','if','else','forever','repeat','until','while','for','from','wait','define','pyfor','in',
         // Operators
         'and','or','not','mod',
         // Hat events
@@ -204,13 +204,17 @@
         // Sensing (expression context)
         'touching','key',
         // Motion extras (v1.0)
-        'setDirection','pointTowards','goToFront','goToBack','moveForward','moveBackward',
+        'setDirection','turnTo','pointTowards','goToFront','goToBack','moveForward','moveBackward',
         // Looks extras (v1.0)
         'setEffect','changeEffect',
         // Sound extras (v1.0)
         'setVolume','changeVolume',
         // Sensing extras (v1.0)
         'askAndWait','resetTimer',
+        // Ergonomic aliases
+        'print','println','step','forward','left','right',
+        'append','push','pop','remove','insert','replace','clear',
+        'front','back','clone','stopMe','ask','send','sendAndWait',
     ];
 
     function registerLanguage(monaco) {
@@ -295,6 +299,142 @@
                             range: dotRange,
                         })),
                     };
+                }
+
+                // ── Context-aware string completions ──────────────────────────
+                // Detect if cursor is inside an unclosed string literal and
+                // return only the appropriate completions for that argument slot.
+                const fullPrefix = model.getLineContent(position.lineNumber)
+                    .substring(0, position.column - 1);
+                let inStr = false, quoteStart = -1;
+                for (let i = 0; i < fullPrefix.length; i++) {
+                    if (fullPrefix[i] === '"') { inStr = !inStr; if (inStr) quoteStart = i; }
+                }
+                if (inStr && quoteStart !== -1) {
+                    const beforeQuote = fullPrefix.substring(0, quoteStart).trimEnd();
+                    const CIKs = monaco.languages.CompletionItemKind;
+                    const IS   = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+
+                    // Range covers everything inside the string (from after " to closing " or cursor)
+                    const lineContent = model.getLineContent(position.lineNumber);
+                    const afterCursor = lineContent.substring(position.column - 1);
+                    const closingQ    = afterCursor.indexOf('"');
+                    const strRange = {
+                        startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
+                        startColumn: quoteStart + 2,
+                        endColumn:   closingQ >= 0 ? position.column + closingQ : position.column,
+                    };
+
+                    function strItems(vals, kind, detail) {
+                        return vals.map(v => ({
+                            label: v, kind: kind ?? CIKs.Value, detail: detail ?? '',
+                            insertText: v, range: strRange,
+                        }));
+                    }
+
+                    // Helper: get broadcast names from the VM stage
+                    function getBroadcasts() {
+                        if (!currentVM) return [];
+                        const stage = currentVM.runtime.targets.find(t => t.isStage);
+                        if (!stage) return [];
+                        return Object.values(stage.variables)
+                            .filter(v => v.type === 'broadcast_msg')
+                            .map(v => v.name);
+                    }
+
+                    // Helper: get sounds for active sprite/stage
+                    function getActiveSounds() {
+                        if (!currentVM) return [];
+                        const sn = getActiveSpriteNameFromDropdown();
+                        const target = sn === '__stage__'
+                            ? currentVM.runtime.targets.find(t => t.isStage)
+                            : currentVM.runtime.targets.find(t => t.sprite?.name === sn);
+                        return target ? target.sprite.sounds.map(s => s.name) : [];
+                    }
+
+                    // Helper: get costumes for active sprite/stage
+                    function getActiveCostumes() {
+                        if (!currentVM) return [];
+                        const sn = getActiveSpriteNameFromDropdown();
+                        const target = sn === '__stage__'
+                            ? currentVM.runtime.targets.find(t => t.isStage)
+                            : currentVM.runtime.targets.find(t => t.sprite?.name === sn);
+                        return target ? target.sprite.costumes.map(c => c.name) : [];
+                    }
+
+                    const KEY_NAMES = [
+                        'space','enter','up arrow','down arrow','left arrow','right arrow',
+                        'a','b','c','d','e','f','g','h','i','j','k','l','m',
+                        'n','o','p','q','r','s','t','u','v','w','x','y','z',
+                        '0','1','2','3','4','5','6','7','8','9',
+                    ];
+                    const SPRITE_TARGETS = ['_mouse_', '_random_',
+                        ...scratchIndex.sprites.map(s => s.name)];
+                    const TOUCH_TARGETS  = ['_edge_', '_mouse_',
+                        ...scratchIndex.sprites.map(s => s.name)];
+                    const BACKDROPS = scratchIndex.stage.backdrops || [];
+                    const EFFECTS   = ['color','fisheye','whirl','pixelate','mosaic','brightness','ghost'];
+                    const ROT_STYLES = ["all around", "left-right", "don't rotate"];
+                    const TIME_UNITS = ['year','month','date','day','hour','minute','second'];
+
+                    // Match the context before the opening quote
+                    if (/\bon\s+receive\s*$/.test(beforeQuote)) {
+                        return { suggestions: strItems(getBroadcasts(), CIKs.Event, 'Broadcast message') };
+                    }
+                    if (/\bon\s+backdrop\s*$/.test(beforeQuote)) {
+                        return { suggestions: strItems(BACKDROPS, CIKs.File, 'Backdrop') };
+                    }
+                    if (/\bon\s+key\s*$/.test(beforeQuote)) {
+                        return { suggestions: strItems(KEY_NAMES, CIKs.Enum, 'Key name') };
+                    }
+                    if (/\bswitchCostume\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(getActiveCostumes(), CIKs.Color, 'Costume') };
+                    }
+                    if (/\b(?:switchBackdrop|switchBackdropAndWait)\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(BACKDROPS, CIKs.File, 'Backdrop') };
+                    }
+                    if (/\b(?:play|playUntilDone)\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(getActiveSounds(), CIKs.Event, 'Sound') };
+                    }
+                    if (/\b(?:broadcast|broadcastAndWait|send|sendAndWait)\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(getBroadcasts(), CIKs.Event, 'Broadcast message') };
+                    }
+                    if (/\b(?:goTo|pointTowards|glide\s*\([^)]*,\s*)\s*$/.test(beforeQuote) ||
+                        /\bglide\s*\([^,]+,\s*$/.test(beforeQuote)) {
+                        return { suggestions: strItems(SPRITE_TARGETS, CIKs.Class, 'Sprite / target') };
+                    }
+                    if (/\btouching\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(TOUCH_TARGETS, CIKs.Class, 'Sprite / edge / mouse') };
+                    }
+                    if (/\b(?:distanceTo|xOf|yOf|directionOf|sizeOf|costumeNumOf|costumeNameOf|volumeOf|pointTowards)\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(SPRITE_TARGETS, CIKs.Class, 'Sprite / target') };
+                    }
+                    if (/\bkey\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(KEY_NAMES, CIKs.Enum, 'Key name') };
+                    }
+                    if (/\b(?:setEffect|changeEffect)\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(EFFECTS, CIKs.Enum, 'Visual effect') };
+                    }
+                    if (/\b(?:setSoundEffect|changeSoundEffect)\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(['PITCH', 'PAN LEFT/RIGHT'], CIKs.Enum, 'Sound effect') };
+                    }
+                    if (/\bsetRotationStyle\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(ROT_STYLES, CIKs.Enum, 'Rotation style') };
+                    }
+                    if (/\bsetDragMode\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(['draggable', 'not draggable'], CIKs.Enum, 'Drag mode') };
+                    }
+                    if (/\bcurrentTime\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(TIME_UNITS, CIKs.Enum, 'Time unit') };
+                    }
+                    if (/\b(?:createClone)\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(['_myself_', ...scratchIndex.sprites.map(s => s.name)], CIKs.Class, 'Sprite / self') };
+                    }
+                    if (/\b(?:sort)\s*\($/.test(beforeQuote)) {
+                        return { suggestions: strItems(['desc'], CIKs.Enum, 'Sort direction') };
+                    }
+                    // Inside a string but no specific context — suppress generic completions
+                    return { suggestions: [] };
                 }
 
                 // Hat-block range fix: extend backwards to cover "on " prefix
@@ -410,6 +550,8 @@
             'sizeOf':        { label: 'sizeOf("sprite")',      params: [{ label: '"sprite"' }] },
             'volumeOf':      { label: 'volumeOf("sprite")',    params: [{ label: '"sprite"' }] },
             // New v1.0
+            'turnTo':              { label: 'turnTo(degrees)  — point in absolute direction (0=up, 90=right, 180/-180=down, -90=left)', params: [{ label: 'degrees', documentation: '0=up, 90=right, 180=down, -90=left' }] },
+            'pyfor':               { label: 'pyfor [iterator] in [list] { … }', params: [{ label: '[iterator]', documentation: 'Variable to receive each item' }, { label: '[list]', documentation: 'List to iterate over' }] },
             'not':                 { label: 'not <condition>  — boolean NOT', params: [{ label: '<condition>' }] },
             'listDeleteAll':       { label: 'listDeleteAll([list])', params: [{ label: '[list]' }] },
             'setRotationStyle':    { label: 'setRotationStyle("style")', params: [{ label: '"style"', documentation: '"all around" | "left-right" | "don\'t rotate"' }] },
@@ -418,6 +560,27 @@
             'changeSoundEffect':   { label: 'changeSoundEffect("effect", amount)', params: [{ label: '"effect"', documentation: '"PITCH" or "PAN LEFT/RIGHT"' }, { label: 'amount' }] },
             'clearSoundEffects':   { label: 'clearSoundEffects()', params: [] },
             'setDragMode':         { label: 'setDragMode("mode")', params: [{ label: '"mode"', documentation: '"draggable" or "not draggable"' }] },
+            // Ergonomic aliases
+            'print':      { label: 'print(message)  — alias for say()', params: [{ label: 'message' }] },
+            'println':    { label: 'println(message)  — alias for say()', params: [{ label: 'message' }] },
+            'step':       { label: 'step(steps)  — alias for move()', params: [{ label: 'steps' }] },
+            'forward':    { label: 'forward(steps)  — alias for move()', params: [{ label: 'steps' }] },
+            'left':       { label: 'left(degrees)  — alias for turnLeft()', params: [{ label: 'degrees' }] },
+            'right':      { label: 'right(degrees)  — alias for turnRight()', params: [{ label: 'degrees' }] },
+            'front':      { label: 'front()  — bring to front layer (alias for goToFront)', params: [] },
+            'back':       { label: 'back()  — send to back layer (alias for goToBack)', params: [] },
+            'clone':      { label: 'clone()  — create clone of self (alias for createClone("_myself_"))', params: [] },
+            'stopMe':     { label: 'stopMe()  — stop this script (alias for stopThis)', params: [] },
+            'ask':        { label: 'ask("question")  — alias for askAndWait()', params: [{ label: '"question"' }] },
+            'send':       { label: 'send("message")  — alias for broadcast()', params: [{ label: '"message"' }] },
+            'sendAndWait':{ label: 'sendAndWait("message")  — alias for broadcastAndWait()', params: [{ label: '"message"' }] },
+            'append':     { label: 'append([list], value)  — add item to end (alias for listAdd)', params: [{ label: '[list]', documentation: 'The list to append to' }, { label: 'value', documentation: 'Item to add' }] },
+            'push':       { label: 'push([list], value)  — alias for append()', params: [{ label: '[list]' }, { label: 'value' }] },
+            'remove':     { label: 'remove([list], index)  — delete item at index (alias for listDelete)', params: [{ label: '[list]' }, { label: 'index', documentation: 'Position to delete, or "last"/"random"' }] },
+            'insert':     { label: 'insert([list], index, value)  — insert at position (alias for listInsert)', params: [{ label: '[list]' }, { label: 'index' }, { label: 'value' }] },
+            'replace':    { label: 'replace([list], index, value)  — replace item (alias for listReplace)', params: [{ label: '[list]' }, { label: 'index' }, { label: 'value' }] },
+            'clear':      { label: 'clear([list])  — delete all items (alias for listDeleteAll)', params: [{ label: '[list]' }] },
+            'pop':        { label: 'pop([list])  — delete all items (alias for clear/listDeleteAll)', params: [{ label: '[list]' }] },
         };
 
         const KEYWORD_RE = /\b(wait until|repeat until|if|while|repeat|for)\s*$/;
@@ -551,44 +714,52 @@
         const HR  = hatRange || range;
         const items = [];
 
-        const push = (label, kind, detail, insertText) =>
-            items.push({ label, kind, detail, insertText: insertText ?? label, insertTextRules: IS, range });
+        const push = (label, kind, detail, insertText, documentation) => {
+            const item = { label, kind, detail, insertText: insertText ?? label, insertTextRules: IS, range };
+            if (documentation) item.documentation = { value: documentation };
+            items.push(item);
+        };
 
-        const pushHat = (label, insertText) =>
-            items.push({ label, kind: CIK.Snippet, detail: 'Hat block', insertText, insertTextRules: IS, range: HR });
+        const pushHat = (label, insertText, documentation) => {
+            const item = { label, kind: CIK.Snippet, detail: 'Hat block · event trigger', insertText, insertTextRules: IS, range: HR };
+            if (documentation) item.documentation = { value: documentation };
+            items.push(item);
+        };
 
         // Hat blocks
-        pushHat('on flag {}',        'on flag {\n\t$0\n}');
-        pushHat('on click {}',       'on click {\n\t$0\n}');
-        pushHat('on clone {}',       'on clone {\n\t$0\n}');
-        pushHat('on key "" {}',      'on key "$1" {\n\t$0\n}');
-        pushHat('on receive "" {}',  'on receive "$1" {\n\t$0\n}');
-        pushHat('on backdrop "" {}', 'on backdrop "$1" {\n\t$0\n}');
+        pushHat('on flag {}',        'on flag {\n\t$0\n}',        'Runs when the green flag is clicked');
+        pushHat('on click {}',       'on click {\n\t$0\n}',       'Runs when this sprite is clicked');
+        pushHat('on clone {}',       'on clone {\n\t$0\n}',       'Runs when this clone starts');
+        pushHat('on key "" {}',      'on key "$1" {\n\t$0\n}',   'Runs when a key is pressed  e.g. `on key "space" {}`');
+        pushHat('on receive "" {}',  'on receive "$1" {\n\t$0\n}','Runs when a broadcast message is received');
+        pushHat('on backdrop "" {}', 'on backdrop "$1" {\n\t$0\n}','Runs when the backdrop switches to the named backdrop');
         // Control flow
-        push('if {}',                  CIK.Snippet, 'Control',   'if ${1:condition} {\n\t$0\n}');
-        push('if {} else {}',          CIK.Snippet, 'Control',   'if ${1:condition} {\n\t$2\n} else {\n\t$0\n}');
-        push('repeat {}',              CIK.Snippet, 'Control',   'repeat ${1:count} {\n\t$0\n}');
-        push('forever {}',             CIK.Snippet, 'Control',   'forever {\n\t$0\n}');
-        push('repeat until () {}',     CIK.Snippet, 'Control',   'repeat until (${1:condition}) {\n\t$0\n}');
-        push('while () {}',            CIK.Snippet, 'Control',   'while (${1:condition}) {\n\t$0\n}');
-        push('for [i] from 1 to 10 {}',CIK.Snippet, 'Control',   'for [${1:i}] from ${2:1} to ${3:10} {\n\t$0\n}');
-        push('wait until',             CIK.Snippet, 'Control',   'wait until ${0:condition}');
-        push('define name(params) {}', CIK.Snippet, 'Custom block', 'define ${1:name}(${2:params}) {\n\t$0\n}');
+        push('if {}',                  CIK.Snippet, 'Control · if <cond> {}',            'if ${1:condition} {\n\t$0\n}',                                   'Executes the block if the condition is true');
+        push('if {} else {}',          CIK.Snippet, 'Control · if/else',                  'if ${1:condition} {\n\t$2\n} else {\n\t$0\n}',                   'Executes the `if` branch when true, the `else` branch when false');
+        push('repeat {}',              CIK.Snippet, 'Control · repeat <n> {}',            'repeat ${1:count} {\n\t$0\n}',                                   'Repeats the block a fixed number of times');
+        push('forever {}',             CIK.Snippet, 'Control · forever {}',               'forever {\n\t$0\n}',                                             'Loops the block forever');
+        push('repeat until () {}',     CIK.Snippet, 'Control · repeat until (cond) {}',   'repeat until (${1:condition}) {\n\t$0\n}',                       'Loops until the condition becomes true');
+        push('while () {}',            CIK.Snippet, 'Control · while (cond) {}',          'while (${1:condition}) {\n\t$0\n}',                              'Loops while the condition is true');
+        push('for [i] from 1 to 10 {}',CIK.Snippet, 'Control · for [i] from n to n {}',  'for [${1:i}] from ${2:1} to ${3:10} {\n\t$0\n}',                'Numeric for-loop — [i] counts from start to end');
+        push('pyfor [item] in [list] {}', CIK.Snippet, 'Control · pyfor [item] in [list] {}', 'pyfor [${1:item}] in [${2:myList}] {\n\t$0\n}',            'Python-style list iteration — [item] receives each list element in order');
+        push('wait until',             CIK.Snippet, 'Control · wait until <cond>',        'wait until ${0:condition}',                                      'Pauses until the condition becomes true');
+        push('define name(params) {}', CIK.Snippet, 'Custom block · define name(params) {}', 'define ${1:name}(${2:params}) {\n\t$0\n}',                   'Define a custom block (procedure)');
         // Variables (space-form preserved)
-        push('set [] to',              CIK.Keyword, 'Variables', 'set [$1] to $0');
-        push('change [] by',           CIK.Keyword, 'Variables', 'change [$1] by $0');
+        push('set [] to',              CIK.Keyword,  'Variables · set [var] to value',   'set [$1] to $0',      'Set a variable to a value');
+        push('change [] by',           CIK.Keyword,  'Variables · change [var] by n',    'change [$1] by $0',   'Add a number to a variable');
         // Motion
-        push('move()',                 CIK.Function, 'Motion',   'move($0)');
-        push('turnRight()',            CIK.Function, 'Motion',   'turnRight($0)');
-        push('turnLeft()',             CIK.Function, 'Motion',   'turnLeft($0)');
-        push('goTo(x, y)',             CIK.Function, 'Motion',   'goTo($1, $0)');
-        push('goTo("sprite")',         CIK.Function, 'Motion',   'goTo("$0")');
-        push('glide(secs, x, y)',      CIK.Function, 'Motion',   'glide($1, $2, $0)');
-        push('setX()',                 CIK.Function, 'Motion',   'setX($0)');
-        push('setY()',                 CIK.Function, 'Motion',   'setY($0)');
-        push('changeX()',              CIK.Function, 'Motion',   'changeX($0)');
-        push('changeY()',              CIK.Function, 'Motion',   'changeY($0)');
-        push('bounce()',               CIK.Function, 'Motion',   'bounce()');
+        push('move()',                 CIK.Function, 'Motion · move(steps)',              'move($0)',            'Move forward by the given number of steps');
+        push('turnRight()',            CIK.Function, 'Motion · turnRight(degrees)',       'turnRight($0)',       'Rotate clockwise by the given degrees');
+        push('turnLeft()',             CIK.Function, 'Motion · turnLeft(degrees)',        'turnLeft($0)',        'Rotate counter-clockwise by the given degrees');
+        push('turnTo()',               CIK.Function, 'Motion · turnTo(degrees)',          'turnTo($0)',          'Point in an absolute direction (0=up, 90=right, 180=down, -90=left)');
+        push('goTo(x, y)',             CIK.Function, 'Motion · goTo(x, y)',              'goTo($1, $0)',        'Go to absolute x, y coordinates');
+        push('goTo("sprite")',         CIK.Function, 'Motion · goTo("sprite")',          'goTo("$0")',          'Go to another sprite or `"_mouse_"` / `"_random_"`');
+        push('glide(secs, x, y)',      CIK.Function, 'Motion · glide(secs, x, y)',       'glide($1, $2, $0)',   'Glide smoothly to x, y over the given seconds');
+        push('setX()',                 CIK.Function, 'Motion · setX(x)',                 'setX($0)',            'Set the sprite\'s x position');
+        push('setY()',                 CIK.Function, 'Motion · setY(y)',                 'setY($0)',            'Set the sprite\'s y position');
+        push('changeX()',              CIK.Function, 'Motion · changeX(dx)',             'changeX($0)',         'Move the sprite by dx on the x axis');
+        push('changeY()',              CIK.Function, 'Motion · changeY(dy)',             'changeY($0)',         'Move the sprite by dy on the y axis');
+        push('bounce()',               CIK.Function, 'Motion · bounce()',                'bounce()',            'Bounce if on the edge of the stage');
         // Looks
         push('say()',                  CIK.Function, 'Looks',    'say("$0")');
         push('sayFor()',               CIK.Function, 'Looks',    'sayFor("$1", $0)');
@@ -719,6 +890,44 @@
         push('[var] -= n',             CIK.Snippet,  'Variables', '[$1] -= $0');
         push('[var] *= n',             CIK.Snippet,  'Variables', '[$1] *= $0');
         push('[var] /= n',             CIK.Snippet,  'Variables', '[$1] /= $0');
+
+        // Ergonomic aliases — friendlier names for common operations
+        push('print()',    CIK.Function, 'Aliases · say()',          'print($0)',
+             'Alias for `say()` — print a value to the speech bubble');
+        push('step()',     CIK.Function, 'Aliases · move()',         'step($0)',
+             'Alias for `move()` — move forward N steps');
+        push('forward()',  CIK.Function, 'Aliases · move()',         'forward($0)',
+             'Alias for `move()` — move forward N steps');
+        push('left()',     CIK.Function, 'Aliases · turnLeft()',     'left($0)',
+             'Alias for `turnLeft(degrees)`');
+        push('right()',    CIK.Function, 'Aliases · turnRight()',    'right($0)',
+             'Alias for `turnRight(degrees)`');
+        push('front()',    CIK.Function, 'Aliases · goToFront()',    'front()',
+             'Bring sprite to the front layer — alias for `goToFront()`');
+        push('back()',     CIK.Function, 'Aliases · goToBack()',     'back()',
+             'Send sprite to the back layer — alias for `goToBack()`');
+        push('clone()',    CIK.Function, 'Aliases · createClone()',  'clone()',
+             'Create a clone of this sprite — alias for `createClone("_myself_")`');
+        push('stopMe()',   CIK.Function, 'Aliases · stopThis()',     'stopMe()',
+             'Stop this script — alias for `stopThis()`');
+        push('ask()',      CIK.Function, 'Aliases · askAndWait()',   'ask("$0")',
+             'Ask a question and wait — alias for `askAndWait()`');
+        push('send()',     CIK.Function, 'Aliases · broadcast()',    'send("$0")',
+             'Broadcast a message — alias for `broadcast()`');
+        push('sendAndWait()',CIK.Function,'Aliases · broadcastAndWait()','sendAndWait("$0")',
+             'Broadcast and wait — alias for `broadcastAndWait()`');
+        push('append()',   CIK.Function, 'Aliases · listAdd()',      'append([$1], $0)',
+             'Add item to end of list — alias for `listAdd(item, [list])`');
+        push('push()',     CIK.Function, 'Aliases · listAdd()',      'push([$1], $0)',
+             'Add item to end of list — alias for `listAdd(item, [list])`');
+        push('remove()',   CIK.Function, 'Aliases · listDelete()',   'remove([$1], $0)',
+             'Delete item at index — alias for `listDelete(index, [list])`');
+        push('insert()',   CIK.Function, 'Aliases · listInsert()',   'insert([$1], $2, $0)',
+             'Insert item at index — alias for `listInsert(item, index, [list])`');
+        push('replace()',  CIK.Function, 'Aliases · listReplace()',  'replace([$1], $2, $0)',
+             'Replace item at index — alias for `listReplace(index, [list], item)`');
+        push('clear()',    CIK.Function, 'Aliases · listDeleteAll()','clear([$0])',
+             'Delete all items from list — alias for `listDeleteAll([list])`');
 
         // Sprite names
         for (const s of scratchIndex.sprites)
@@ -1403,6 +1612,36 @@
                             <div class="sp-settings-group checkbox">
                                 <input type="checkbox" id="sp-setting-minimap" />
                                 <label for="sp-setting-minimap">Show Minimap</label>
+                            </div>
+                            <div class="sp-settings-group">
+                                <label for="sp-setting-tabsize">Tab Size</label>
+                                <select id="sp-setting-tabsize">
+                                    <option value="2">2 spaces</option>
+                                    <option value="4">4 spaces</option>
+                                    <option value="8">8 spaces</option>
+                                </select>
+                            </div>
+                            <div class="sp-settings-group">
+                                <label for="sp-setting-autosave">Auto-save Delay</label>
+                                <select id="sp-setting-autosave">
+                                    <option value="0">Instant</option>
+                                    <option value="500">500 ms</option>
+                                    <option value="1000">1 second</option>
+                                    <option value="2000">2 seconds</option>
+                                </select>
+                            </div>
+                            <div style="font-size:11px; color:#6b8db5; margin-top:4px; margin-bottom:2px;">Lint Rules</div>
+                            <div class="sp-settings-group checkbox">
+                                <input type="checkbox" id="sp-setting-lint-typecheck" />
+                                <label for="sp-setting-lint-typecheck">Type checking (list vs variable)</label>
+                            </div>
+                            <div class="sp-settings-group checkbox">
+                                <input type="checkbox" id="sp-setting-lint-unreachable" />
+                                <label for="sp-setting-lint-unreachable">Unreachable code</label>
+                            </div>
+                            <div class="sp-settings-group checkbox">
+                                <input type="checkbox" id="sp-setting-lint-orphaned" />
+                                <label for="sp-setting-lint-orphaned">Orphaned blocks</label>
                             </div>
                         </div>
 
@@ -2515,39 +2754,76 @@
     }
 
     function setupSettings() {
-        const themeSelect = document.getElementById('sp-setting-theme');
-        const fontSizeSelect = document.getElementById('sp-setting-fontsize');
-        const wrapCheckbox = document.getElementById('sp-setting-wrap');
-        const minimapCheckbox = document.getElementById('sp-setting-minimap');
+        const themeSelect       = document.getElementById('sp-setting-theme');
+        const fontSizeSelect    = document.getElementById('sp-setting-fontsize');
+        const wrapCheckbox      = document.getElementById('sp-setting-wrap');
+        const minimapCheckbox   = document.getElementById('sp-setting-minimap');
+        const tabSizeSelect     = document.getElementById('sp-setting-tabsize');
+        const autosaveSelect    = document.getElementById('sp-setting-autosave');
+        const lintTypecheckChk  = document.getElementById('sp-setting-lint-typecheck');
+        const lintUnreachChk    = document.getElementById('sp-setting-lint-unreachable');
+        const lintOrphanedChk   = document.getElementById('sp-setting-lint-orphaned');
 
         let settings = {};
         try {
             settings = JSON.parse(localStorage.getItem('scratchpiler-settings')) || {};
         } catch (_) {}
 
-        if (!settings.theme) settings.theme = 'scratchpiler-dark';
-        if (!settings.fontSize) settings.fontSize = '14';
-        if (settings.wrap === undefined) settings.wrap = true;
-        if (settings.minimap === undefined) settings.minimap = false;
+        if (!settings.theme)                    settings.theme = 'scratchpiler-dark';
+        if (!settings.fontSize)                 settings.fontSize = '14';
+        if (settings.wrap === undefined)         settings.wrap = true;
+        if (settings.minimap === undefined)      settings.minimap = false;
+        if (!settings.tabSize)                   settings.tabSize = '4';
+        if (settings.autosave === undefined)     settings.autosave = '1000';
+        if (settings.lintTypecheck === undefined) settings.lintTypecheck = true;
+        if (settings.lintUnreachable === undefined) settings.lintUnreachable = true;
+        if (settings.lintOrphaned === undefined)  settings.lintOrphaned = true;
 
-        themeSelect.value = settings.theme;
-        fontSizeSelect.value = settings.fontSize;
-        wrapCheckbox.checked = settings.wrap;
+        themeSelect.value      = settings.theme;
+        fontSizeSelect.value   = settings.fontSize;
+        wrapCheckbox.checked   = settings.wrap;
         minimapCheckbox.checked = settings.minimap;
+        tabSizeSelect.value    = settings.tabSize;
+        autosaveSelect.value   = settings.autosave;
+        lintTypecheckChk.checked  = settings.lintTypecheck;
+        lintUnreachChk.checked    = settings.lintUnreachable;
+        lintOrphanedChk.checked   = settings.lintOrphaned;
+
+        // Sync into module-level spSettings
+        spSettings.tabSize         = parseInt(settings.tabSize, 10) || 4;
+        spSettings.autosave        = parseInt(settings.autosave, 10);
+        spSettings.lintTypecheck   = settings.lintTypecheck;
+        spSettings.lintUnreachable = settings.lintUnreachable;
+        spSettings.lintOrphaned    = settings.lintOrphaned;
 
         function applySettings() {
             if (!monacoEditor) return;
+            const newTabSize  = parseInt(tabSizeSelect.value, 10) || 4;
+            const newAutosave = parseInt(autosaveSelect.value, 10);
+            spSettings.tabSize         = newTabSize;
+            spSettings.autosave        = newAutosave;
+            spSettings.lintTypecheck   = lintTypecheckChk.checked;
+            spSettings.lintUnreachable = lintUnreachChk.checked;
+            spSettings.lintOrphaned    = lintOrphanedChk.checked;
+
             monaco.editor.setTheme(themeSelect.value);
             monacoEditor.updateOptions({
                 fontSize: parseInt(fontSizeSelect.value, 10),
                 wordWrap: wrapCheckbox.checked ? 'on' : 'off',
-                minimap: { enabled: minimapCheckbox.checked }
+                minimap: { enabled: minimapCheckbox.checked },
+                tabSize: newTabSize,
+                insertSpaces: true,
             });
             localStorage.setItem('scratchpiler-settings', JSON.stringify({
-                theme: themeSelect.value,
-                fontSize: fontSizeSelect.value,
-                wrap: wrapCheckbox.checked,
-                minimap: minimapCheckbox.checked
+                theme:            themeSelect.value,
+                fontSize:         fontSizeSelect.value,
+                wrap:             wrapCheckbox.checked,
+                minimap:          minimapCheckbox.checked,
+                tabSize:          tabSizeSelect.value,
+                autosave:         autosaveSelect.value,
+                lintTypecheck:    lintTypecheckChk.checked,
+                lintUnreachable:  lintUnreachChk.checked,
+                lintOrphaned:     lintOrphanedChk.checked,
             }));
         }
 
@@ -2555,6 +2831,11 @@
         fontSizeSelect.addEventListener('change', applySettings);
         wrapCheckbox.addEventListener('change', applySettings);
         minimapCheckbox.addEventListener('change', applySettings);
+        tabSizeSelect.addEventListener('change', applySettings);
+        autosaveSelect.addEventListener('change', applySettings);
+        lintTypecheckChk.addEventListener('change', applySettings);
+        lintUnreachChk.addEventListener('change', applySettings);
+        lintOrphanedChk.addEventListener('change', applySettings);
 
         return applySettings;
     }
@@ -2675,6 +2956,14 @@
     }
 
     // ─── [K] Persistence ──────────────────────────────────────────────────────
+
+    const spSettings = {
+        tabSize:         4,
+        autosave:        1000,
+        lintTypecheck:   true,
+        lintUnreachable: true,
+        lintOrphaned:    true,
+    };
 
     let saveTimer = null;
     let lintTimer = null;
@@ -2995,6 +3284,7 @@
         clamp:    'clamp(value, min, max)',
         // Motion extras
         setDirection:  'setDirection(degrees)',
+        turnTo:        'turnTo(degrees)  — point in absolute direction',
         pointTowards:  'pointTowards("sprite" | "_mouse_")',
         distanceTo:    'distanceTo("sprite" | "_mouse_")',
         // Looks effects
@@ -3028,6 +3318,29 @@
         changeSoundEffect:    'changeSoundEffect("PITCH" | "PAN LEFT/RIGHT", amount)',
         clearSoundEffects:    'clearSoundEffects()',
         setDragMode:          'setDragMode("draggable" | "not draggable")',
+        // pyfor
+        pyfor:    'pyfor [iterator] in [list] { … }',
+        // Ergonomic aliases
+        print:      'print(message)  — alias for say()',
+        println:    'println(message)  — alias for say()',
+        step:       'step(steps)  — alias for move()',
+        forward:    'forward(steps)  — alias for move()',
+        left:       'left(degrees)  — alias for turnLeft()',
+        right:      'right(degrees)  — alias for turnRight()',
+        front:      'front()  — alias for goToFront()',
+        back:       'back()  — alias for goToBack()',
+        clone:      'clone()  — alias for createClone("_myself_")',
+        stopMe:     'stopMe()  — alias for stopThis()',
+        ask:        'ask("question")  — alias for askAndWait()',
+        send:       'send("message")  — alias for broadcast()',
+        sendAndWait:'sendAndWait("message")  — alias for broadcastAndWait()',
+        append:     'append([list], value)  — alias for listAdd',
+        push:       'push([list], value)  — alias for listAdd',
+        remove:     'remove([list], index)  — alias for listDelete',
+        insert:     'insert([list], index, value)  — alias for listInsert',
+        replace:    'replace([list], index, value)  — alias for listReplace',
+        clear:      'clear([list])  — alias for listDeleteAll',
+        pop:        'pop([list])  — alias for listDeleteAll',
         // Math / trig
         abs:      'abs(n)',         round:    'round(n)',
         sqrt:     'sqrt(n)',        floor:    'floor(n)',
@@ -3147,6 +3460,7 @@
             if (v === 'wait' && tokens[pos+1] && tokens[pos+1].value === 'until') return parseWaitUntil();
             if (v === 'while')         return parseWhile();
             if (v === 'for')           return parseFor();
+            if (v === 'pyfor')         return parsePyFor();
 
             return parseSimpleStatement();
         }
@@ -3216,6 +3530,26 @@
             const toExpr = parseExpr();
             const body = parseBody();
             return { type: 'ForStmt', varName, from: fromExpr, to: toExpr, body, line: t.line, col: t.col };
+        }
+
+        function parsePyFor() {
+            const t = peek(); pos++; // consume 'pyfor'
+            if (!check(TT.VAR)) {
+                errors.push({ line: t.line, col: t.col, len: 5,
+                    message: '`pyfor [var] in [list] {}`: expected `[iterator variable]` after `pyfor`' });
+            }
+            const varTok = check(TT.VAR) ? eat(TT.VAR) : { value: '_err_', line: t.line, col: t.col };
+            if (!checkV('in')) {
+                errors.push({ line: peek().line, col: peek().col, len: Math.max(peek().value.length, 1),
+                    message: '`pyfor [var] in [list] {}`: expected keyword `in` after the iterator variable' });
+            } else { pos++; }
+            if (!check(TT.VAR)) {
+                errors.push({ line: peek().line, col: peek().col, len: Math.max(peek().value.length, 1),
+                    message: '`pyfor [var] in [list] {}`: expected `[list variable]` after `in`' });
+            }
+            const listTok = check(TT.VAR) ? eat(TT.VAR) : { value: '_err_', line: t.line, col: t.col };
+            const body = parseBody();
+            return { type: 'PyForStmt', varName: varTok.value, listName: listTok.value, body, line: t.line, col: t.col };
         }
 
         function parseSimpleStatement() {
@@ -3366,6 +3700,7 @@
 
             // ── Motion extras ──
             if (v === 'setDirection')   { const [n] = args1(ln,cl); return { type: 'SetDirectionStmt', degrees: n, line: ln, col: cl }; }
+            if (v === 'turnTo')         { const [n] = args1(ln,cl); return { type: 'SetDirectionStmt', degrees: n, line: ln, col: cl }; }
             if (v === 'pointTowards')   { const [s] = args1(ln,cl); return { type: 'PointTowardsStmt', target: s, line: ln, col: cl }; }
             if (v === 'moveForward')    { const [n] = args1(ln,cl); return { type: 'MoveForwardLayersStmt', layers: n, line: ln, col: cl }; }
             if (v === 'moveBackward')   { const [n] = args1(ln,cl); return { type: 'MoveBackwardLayersStmt', layers: n, line: ln, col: cl }; }
@@ -3439,6 +3774,48 @@
             if (v === 'listReplace') {
                 eat(TT.LPAREN); const idx = parseExpr(); eat(TT.COMMA); const listName = eat(TT.VAR).value; eat(TT.COMMA); const item = parseExpr(); eat(TT.RPAREN);
                 return { type: 'ListReplaceStmt', listName, index: idx, item, line: ln, col: cl };
+            }
+
+            // ── Ergonomic aliases ─────────────────────────────────────────────
+            // print / println → say (programming-style output alias)
+            if (v === 'print' || v === 'println') { const [m] = args1(ln,cl); return { type: 'SayStmt', msg: m, line: ln, col: cl }; }
+            // step / forward → move (more natural direction vocabulary)
+            if (v === 'step' || v === 'forward')  { const [n] = args1(ln,cl); return { type: 'MoveStmt', steps: n, line: ln, col: cl }; }
+            // left / right → turnLeft / turnRight (concise directional turns)
+            if (v === 'left')  { const [n] = args1(ln,cl); return { type: 'TurnStmt', dir: 'left',  degrees: n, line: ln, col: cl }; }
+            if (v === 'right') { const [n] = args1(ln,cl); return { type: 'TurnStmt', dir: 'right', degrees: n, line: ln, col: cl }; }
+            // front / back → goToFront / goToBack (layer shortcuts)
+            if (v === 'front') { args0(ln,cl); return { type: 'GoToFrontStmt', line: ln, col: cl }; }
+            if (v === 'back')  { args0(ln,cl); return { type: 'GoToBackStmt',  line: ln, col: cl }; }
+            // clone() → createClone("_myself_") (common case shorthand)
+            if (v === 'clone') { args0(ln,cl); return { type: 'CreateCloneStmt', target: { type: 'Str', value: '_myself_', line: ln, col: cl }, line: ln, col: cl }; }
+            // stopMe() → stopThis (friendlier stop)
+            if (v === 'stopMe') { args0(ln,cl); return { type: 'StopStmt', option: 'this script', line: ln, col: cl }; }
+            // ask() → askAndWait()
+            if (v === 'ask') { const [q] = args1(ln,cl); return { type: 'AskAndWaitStmt', question: q, line: ln, col: cl }; }
+            // send() → broadcast(), sendAndWait() → broadcastAndWait()
+            if (v === 'send')        { const [m] = args1(ln,cl); return { type: 'BroadcastStmt', msg: m, line: ln, col: cl }; }
+            if (v === 'sendAndWait') { const [m] = args1(ln,cl); return { type: 'BroadcastWaitStmt', msg: m, line: ln, col: cl }; }
+            // List aliases: append/push → listAdd, remove → listDelete, insert → listInsert, replace → listReplace, clear/pop → listDeleteAll
+            if (v === 'append' || v === 'push') {
+                eat(TT.LPAREN); const listName = eat(TT.VAR).value; eat(TT.COMMA); const item = parseExpr(); eat(TT.RPAREN);
+                return { type: 'ListAddStmt', listName, item, line: ln, col: cl };
+            }
+            if (v === 'remove') {
+                eat(TT.LPAREN); const listName = eat(TT.VAR).value; eat(TT.COMMA); const idx = parseExpr(); eat(TT.RPAREN);
+                return { type: 'ListDeleteStmt', listName, index: idx, line: ln, col: cl };
+            }
+            if (v === 'insert') {
+                eat(TT.LPAREN); const listName = eat(TT.VAR).value; eat(TT.COMMA); const idx = parseExpr(); eat(TT.COMMA); const item = parseExpr(); eat(TT.RPAREN);
+                return { type: 'ListInsertStmt', listName, item, index: idx, line: ln, col: cl };
+            }
+            if (v === 'replace') {
+                eat(TT.LPAREN); const listName = eat(TT.VAR).value; eat(TT.COMMA); const idx = parseExpr(); eat(TT.COMMA); const item = parseExpr(); eat(TT.RPAREN);
+                return { type: 'ListReplaceStmt', listName, index: idx, item, line: ln, col: cl };
+            }
+            if (v === 'clear' || v === 'pop') {
+                eat(TT.LPAREN); const listName = eat(TT.VAR).value; eat(TT.RPAREN);
+                return { type: 'ListDeleteAllStmt', listName, line: ln, col: cl };
             }
 
             {
@@ -3629,6 +4006,7 @@
                 case 'RepeatUntilStmt':
                 case 'WhileStmt':
                 case 'ForStmt':
+                case 'PyForStmt':
                     lintBody(stmt.body); break;
             }
         }
@@ -3645,6 +4023,130 @@
             }
         }
 
+        return items;
+    }
+
+    function typeCheckDiagnostics(ast, spriteName) {
+        if (!ast || !ast.blocks) return [];
+        const items = [];
+
+        // Build lookup sets from scratchIndex for the active sprite
+        const listNames = new Set();
+        const varNames  = new Set();
+        const allVars   = [
+            ...(scratchIndex.globalVariables || []),
+            ...(scratchIndex.spriteVariables[spriteName] || []),
+        ];
+        for (const v of allVars) {
+            if (v.type === 'list') listNames.add(v.name);
+            else varNames.add(v.name);
+        }
+
+        function err(node, msg) {
+            items.push({ line: node.line || 1, col: node.col || 1, len: 1, message: msg });
+        }
+
+        function checkExpr(node) {
+            if (!node) return;
+            switch (node.type) {
+                case 'MemberCall': {
+                    const obj = node.object;
+                    if (obj && obj.type === 'Var') {
+                        if (varNames.has(obj.name)) {
+                            err(obj, `\`[${obj.name}]\` is a variable, not a list — \`.${node.method}()\` requires a list`);
+                        } else if (!listNames.has(obj.name)) {
+                            err(obj, `\`[${obj.name}]\` is not defined — create a list in Scratch first`);
+                        }
+                    }
+                    for (const a of (node.args || [])) checkExpr(a);
+                    break;
+                }
+                case 'BinOp':
+                    checkExpr(node.left);
+                    checkExpr(node.right);
+                    break;
+                case 'UnOp':
+                    checkExpr(node.operand);
+                    break;
+                case 'Call':
+                    for (const a of (node.args || [])) checkExpr(a);
+                    break;
+            }
+        }
+
+        // List-expecting built-ins
+        const LIST_BUILTINS = new Set([
+            'listAdd', 'listDelete', 'listInsert', 'listReplace',
+            'listDeleteAll', 'showList', 'hideList',
+        ]);
+        // Variable-expecting built-ins
+        const VAR_BUILTINS = new Set(['showVariable', 'hideVariable']);
+
+        function checkStmt(stmt) {
+            if (!stmt) return;
+            switch (stmt.type) {
+                case 'CallStmt': {
+                    const fn = stmt.name;
+                    const firstArg = stmt.args && stmt.args[0];
+                    if (LIST_BUILTINS.has(fn) && firstArg && firstArg.type === 'Var') {
+                        if (varNames.has(firstArg.name)) {
+                            err(firstArg, `\`${fn}\` expects a list — [${firstArg.name}] is a variable`);
+                        } else if (!listNames.has(firstArg.name)) {
+                            err(firstArg, `\`${fn}\`: [${firstArg.name}] is not defined as a list`);
+                        }
+                    }
+                    if (VAR_BUILTINS.has(fn) && firstArg && firstArg.type === 'Var') {
+                        if (listNames.has(firstArg.name)) {
+                            err(firstArg, `\`${fn}\` expects a variable — [${firstArg.name}] is a list (use showList / hideList instead)`);
+                        }
+                    }
+                    for (const a of (stmt.args || [])) checkExpr(a);
+                    break;
+                }
+                case 'SetVarStmt':
+                case 'ChangeVarStmt': {
+                    if (listNames.has(stmt.varName)) {
+                        err(stmt, `\`[${stmt.varName}]\` is a list — use list functions (listAdd, listReplace…) instead of set/change`);
+                    }
+                    checkExpr(stmt.value);
+                    break;
+                }
+                case 'PyForStmt': {
+                    if (stmt.listName && varNames.has(stmt.listName)) {
+                        err(stmt, `\`pyfor … in [${stmt.listName}]\`: [${stmt.listName}] is a variable, not a list`);
+                    } else if (stmt.listName && !listNames.has(stmt.listName)) {
+                        err(stmt, `\`pyfor … in [${stmt.listName}]\`: [${stmt.listName}] is not defined — create a list in Scratch first`);
+                    }
+                    for (const s of (stmt.body || [])) checkStmt(s);
+                    break;
+                }
+                case 'IfStmt':
+                    checkExpr(stmt.cond);
+                    for (const s of (stmt.then || [])) checkStmt(s);
+                    for (const s of (stmt.alt  || [])) checkStmt(s);
+                    break;
+                case 'ForeverStmt':
+                case 'RepeatStmt':
+                case 'RepeatUntilStmt':
+                case 'WhileStmt':
+                case 'ForStmt':
+                    checkExpr(stmt.cond);
+                    checkExpr(stmt.from);
+                    checkExpr(stmt.to);
+                    for (const s of (stmt.body || [])) checkStmt(s);
+                    break;
+                default:
+                    // cover expression-bearing fields generically
+                    for (const k of ['value','msg','secs','x','y','degrees','duration','steps','volume','effect','value2']) {
+                        if (stmt[k]) checkExpr(stmt[k]);
+                    }
+                    for (const s of (stmt.body || [])) checkStmt(s);
+            }
+        }
+
+        for (const block of ast.blocks) {
+            for (const s of (block.body || [])) checkStmt(s);
+        }
         return items;
     }
 
@@ -4103,6 +4605,10 @@
                     const [setId, loopId] = genForStmt(stmt);
                     if (setId)  ids.push(setId);
                     if (loopId) ids.push(loopId);
+                } else if (stmt.type === 'PyForStmt') {
+                    const [setCtrId, loopId] = genPyForStmt(stmt);
+                    if (setCtrId) ids.push(setCtrId);
+                    if (loopId)   ids.push(loopId);
                 } else if (stmt.type === 'MemberCallStmt') {
                     const sortIds = genMemberCallStmt(stmt);
                     sortIds.forEach(id => { if (id) ids.push(id); });
@@ -4299,6 +4805,79 @@
             delete forScope[node.varName];
 
             return [setId, loopId];
+        }
+
+        function genPyForStmt(node) {
+            const rand4 = Math.random().toString(36).slice(2, 6);
+            const ctrInternalName  = `_scratchpiler_internal_${rand4}_pyfor_ctr`;
+            const itemInternalName = `_scratchpiler_internal_${rand4}_${node.varName}`;
+
+            const activeTarget = spriteName === '__stage__'
+                ? vm.runtime.targets.find(t => t.isStage)
+                : vm.runtime.targets.find(t => t.sprite.name === spriteName);
+            if (!activeTarget) {
+                errors.push({ line: node.line, col: node.col, len: 5,
+                    message: `pyfor: could not resolve target "${spriteName}"` });
+                return [null, null];
+            }
+
+            // Validate the list exists
+            const listV = resolveVar(node.listName);
+            if (!listV || listV.type !== 'list') {
+                errors.push({ line: node.line, col: node.col, len: node.listName.length,
+                    message: `\`pyfor\` requires a list — [${node.listName}] is ${!listV ? 'not found' : 'not a list (it\'s a variable)'}. Create a list in Scratch first.` });
+                return [null, null];
+            }
+
+            // Create / reuse the hidden counter variable
+            let ctrVarId;
+            const existingCtr = Object.values(activeTarget.variables).find(v => v.name === ctrInternalName);
+            if (existingCtr) { ctrVarId = existingCtr.id; }
+            else { ctrVarId = uid(); activeTarget.createVariable(ctrVarId, ctrInternalName, ''); }
+
+            // Create / reuse the item variable (visible to body via [node.varName])
+            let itemVarId;
+            const existingItem = Object.values(activeTarget.variables).find(v => v.name === itemInternalName);
+            if (existingItem) { itemVarId = existingItem.id; }
+            else { itemVarId = uid(); activeTarget.createVariable(itemVarId, itemInternalName, ''); }
+
+            // Register both in forScope so body expressions can resolve them
+            const CTR_KEY = ctrInternalName;
+            forScope[CTR_KEY]        = { id: ctrVarId,  name: ctrInternalName,  type: '' };
+            forScope[node.varName]   = { id: itemVarId, name: itemInternalName, type: '' };
+
+            const ln = node.line, cl = node.col;
+            const LN     = { type: 'Var', name: node.listName, line: ln, col: cl };
+            const CTR_V  = { type: 'Var', name: CTR_KEY,       line: ln, col: cl };
+            const N      = v   => ({ type: 'Num',  value: v, line: ln, col: cl });
+            const bop    = (op, l, r) => ({ type: 'BinOp', op, left: l, right: r });
+            const itemOf = idx => ({ type: 'MemberCall', object: LN, method: 'item',   args: [idx] });
+            const lenOf  = ()  => ({ type: 'MemberCall', object: LN, method: 'length', args: []    });
+
+            // First body block: set [item] to [list].item([ctr])
+            const setItemStmt = { type: 'SetVarStmt', varName: node.varName, value: itemOf(CTR_V), line: ln, col: cl };
+            // Last body block: change [ctr] by 1
+            const incrCtrStmt = { type: 'ChangeVarStmt', varName: CTR_KEY, value: N(1), line: ln, col: cl };
+
+            // Build the full loop body
+            const fullBody = [setItemStmt, ...node.body, incrCtrStmt];
+
+            // repeat until ([ctr] > [list].length())
+            const loopStmt = { type: 'RepeatUntilStmt', cond: bop('>', CTR_V, lenOf()), body: fullBody, line: ln, col: cl };
+
+            // Compile: set [ctr] to 1, then the loop
+            const setCtrId = genStmt({ type: 'SetVarStmt', varName: CTR_KEY, value: N(1), line: ln, col: cl }, null);
+            const loopId   = genStmt(loopStmt, null);
+
+            // Pop forScope
+            delete forScope[CTR_KEY];
+            delete forScope[node.varName];
+
+            if (setCtrId && loopId) {
+                blocks[setCtrId].next   = loopId;
+                blocks[loopId].parent   = setCtrId;
+            }
+            return [setCtrId, loopId];
         }
 
         function genBody(stmts, parentId) {
@@ -5109,7 +5688,11 @@
     function decompExpr(block, B) {
         if (!block) return 'false';
         switch (block.opcode) {
-            case 'math_number':  return String(fieldVal(block, 'NUM') ?? '0');
+            case 'math_number':
+            case 'math_integer':
+            case 'math_angle':
+            case 'math_whole_number':
+            case 'math_positive_number': return String(fieldVal(block, 'NUM') ?? '0');
             case 'text':         return JSON.stringify(String(fieldVal(block, 'TEXT') ?? ''));
             case 'data_variable':return `[${fieldVal(block, 'VARIABLE') ?? ''}]`;
             case 'data_listcontents': return `[${fieldVal(block, 'LIST') ?? ''}]`;
@@ -5464,6 +6047,58 @@
                         lines.push(`${indent}[${listName}].sort${isDesc ? '("desc")' : '()'}\n`);
                         id = phase2.next || null;
                         continue;
+                    }
+                }
+            }
+
+            // Detect compiled pyfor: set(internal_pyfor_ctr, 1) → repeat_until(ctr > list.length(), [set item, ...body, change ctr])
+            if (block.opcode === 'data_setvariableto') {
+                const ctrName = fieldVal(block, 'VARIABLE') ?? '';
+                const mCtr = ctrName.match(/^_scratchpiler_internal_([a-z0-9]{4})_pyfor_ctr$/);
+                if (mCtr && decompInput(block, 'VALUE', B, true) === '1') {
+                    const nextBlock = block.next && B[block.next];
+                    if (nextBlock && nextBlock.opcode === 'control_repeat_until') {
+                        // Gather substack blocks
+                        const substackIds = [];
+                        let bid = inpBlockId(nextBlock, 'SUBSTACK');
+                        while (bid && B[bid]) { substackIds.push(bid); bid = B[bid].next; }
+
+                        // First substack block should be: set [item_var] to list.item(ctr)
+                        const firstBid  = substackIds[0];
+                        const firstBlk  = firstBid && B[firstBid];
+                        const lastBid   = substackIds[substackIds.length - 1];
+                        const lastBlk   = lastBid && B[lastBid];
+                        const rand4     = mCtr[1];
+                        if (firstBlk && firstBlk.opcode === 'data_setvariableto') {
+                            const itemVarName = fieldVal(firstBlk, 'VARIABLE') ?? '';
+                            const mItem = itemVarName.match(
+                                new RegExp(`^_scratchpiler_internal_${rand4}_(.+)$`)
+                            );
+                            // Last block: change ctr by 1
+                            const hasFinalIncr = lastBlk && lastBlk.opcode === 'data_changevariableby'
+                                                 && fieldVal(lastBlk, 'VARIABLE') === ctrName;
+                            if (mItem) {
+                                // Extract list name from condition: ctr > list.length()
+                                const condBlock = B[inpBlockId(nextBlock, 'CONDITION')];
+                                let listName = null;
+                                if (condBlock && condBlock.opcode === 'operator_gt') {
+                                    const op2Block = B[inpBlockId(condBlock, 'OPERAND2')];
+                                    if (op2Block && op2Block.opcode === 'data_lengthoflist') {
+                                        listName = fieldVal(op2Block, 'LIST');
+                                    }
+                                }
+                                if (listName) {
+                                    const shortName = mItem[1];
+                                    // body = substackIds minus first (set item) and last (change ctr)
+                                    const bodyIds = substackIds.slice(1, hasFinalIncr ? -1 : undefined);
+                                    let body = '';
+                                    for (const bid2 of bodyIds) body += decompStmt(B[bid2], B, indent + '    ');
+                                    lines.push(`${indent}pyfor [${shortName}] in [${listName}] {\n${body}${indent}}\n`);
+                                    id = nextBlock.next || null;
+                                    continue;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -5833,14 +6468,32 @@
             monacoEditor.onDidChangeModelContent(() => {
                 clearTimeout(saveTimer);
                 clearTimeout(lintTimer);
-                saveTimer = setTimeout(() => saveToLocalStorage(currentSpriteContext), 1000);
+                const saveDelay = isFinite(spSettings.autosave) ? spSettings.autosave : 1000;
+                if (saveDelay === 0) {
+                    saveToLocalStorage(currentSpriteContext);
+                } else {
+                    saveTimer = setTimeout(() => saveToLocalStorage(currentSpriteContext), saveDelay);
+                }
                 lintTimer = setTimeout(() => {
                     const src = monacoEditor.getValue();
                     try {
                         const toks = tokenize(src);
                         const { ast, errors } = parse(toks);
                         const model = monacoEditor.getModel();
-                        const lintWarnings = lint(ast);
+                        const sn = getActiveSpriteNameFromDropdown();
+                        const rawLint = lint(ast);
+
+                        const lintWarnings = rawLint.filter(w => {
+                            const msg = w.message || '';
+                            if (!spSettings.lintUnreachable && msg.startsWith('Unreachable')) return false;
+                            if (!spSettings.lintOrphaned && msg.startsWith('Orphaned')) return false;
+                            return true;
+                        });
+
+                        const typeWarnings = spSettings.lintTypecheck
+                            ? typeCheckDiagnostics(ast, sn)
+                            : [];
+
                         monaco.editor.setModelMarkers(model, LANG_ID, [
                             ...errors.map(er => ({
                                 startLineNumber: er.line, startColumn: er.col,
@@ -5852,6 +6505,12 @@
                                 startLineNumber: w.line, startColumn: w.col,
                                 endLineNumber:   w.line,
                                 endColumn: model.getLineMaxColumn(w.line),
+                                message:  w.message,
+                                severity: monaco.MarkerSeverity.Warning,
+                            })),
+                            ...typeWarnings.map(w => ({
+                                startLineNumber: w.line, startColumn: w.col,
+                                endLineNumber:   w.line, endColumn: w.col + (w.len || 1),
                                 message:  w.message,
                                 severity: monaco.MarkerSeverity.Warning,
                             })),

@@ -75,18 +75,22 @@ Blocks are injected into the selected sprite. Variables must already exist in Sc
 ## Features
 
 - **Full Scratch block coverage** — motion, looks, sound, events, control, sensing, variables, lists
-- **Control flow** — `if/else`, `repeat`, `forever`, `while`, `repeat until`, `for` loops
+- **Control flow** — `if/else`, `repeat`, `forever`, `while`, `repeat until`, `for` loops, and `pyfor [item] in [list]` (Python-style list iteration)
 - **Math & trig** — `abs`, `sqrt`, `floor`, `sin`, `cos`, `clamp`, `random`, and more (Scratch uses degrees, not radians, and so does scratchpiler)
 - **String operators** — `join`, `letterOf`, `contains`, `.length()`
-- **List dot-methods** — `[list].item(i)`, `[list].contains(val)`, `[list].indexOf(val)`
+- **List dot-methods** — `[list].item(i)`, `[list].contains(val)`, `[list].indexOf(val)`, `[list].sort()`
 - **Compound assignment** — `[x] += 1`, `[x] *= 2`
 - **Custom blocks** — `define myBlock(param1, param2) { ... }`
 - **Hex color literals** — `#ff6600`
+- **Ergonomic aliases** — friendlier names for common operations: `print()`, `step()`, `left()`, `right()`, `front()`, `back()`, `clone()`, `ask()`, `send()`, `append()`, `push()`, `remove()`, `clear()`, and more
+- **Type checking** — linter warns when you pass a variable where a list is expected (or vice versa), before the compiler has to deal with you
+- **Configurable linter** — toggle type checking, dead code detection, and orphaned block warnings independently in Settings
+- **Configurable editor** — tab size, auto-save delay, theme, font size, word wrap, minimap
 - **Linter** — warns about dead code and orphaned blocks before you compile
-- **Decompiler** — import existing Scratch scripts back as text
+- **Decompiler** — import existing Scratch scripts back as text; recognizes compiled `pyfor`, `for`, `.sort()`, and `while` patterns
 - **Per-sprite persistence** — each sprite's code is saved independently to `localStorage`
-- **Hover docs** — hover a function name to see its signature
-- **Autocomplete** — full Monaco IntelliSense for all functions, variables, and costumes
+- **Hover docs** — hover a function name to see its signature and documentation
+- **Autocomplete** — full Monaco IntelliSense for all functions, variables, costumes, and aliases
 
 ---
 
@@ -113,7 +117,7 @@ Blocks are injected into the selected sprite. Variables must already exist in Sc
 | [docs/variables-and-lists.md](docs/variables-and-lists.md) | Variables, lists, dot methods |
 | [docs/math.md](docs/math.md) | Math functions and operators |
 | [docs/custom-blocks.md](docs/custom-blocks.md) | Custom block definitions |
-| [docs/linter.md](docs/linter.md) | Warnings and dead code detection |
+| [docs/linter.md](docs/linter.md) | Warnings, type checking, dead code detection, and configuring lint rules |
 | [docs/examples.md](docs/examples.md) | Full example programs |
 
 ---

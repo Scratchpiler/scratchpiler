@@ -32,6 +32,7 @@ forever { }
 repeat until (condition) { }
 while (condition) { }
 for [i] from 1 to 10 { }
+pyfor [item] in [list] { }   // iterate over every element of a list
 
 wait(seconds)
 wait until condition
@@ -43,6 +44,10 @@ createClone()
 createClone("SpriteName")
 deleteClone()
 yield()                  // pause one tick (= wait 0)
+
+// Aliases
+clone()                  // createClone("_myself_")
+stopMe()                 // stopThis()
 ```
 
 ---
@@ -78,6 +83,14 @@ hideList([list])
 [list].indexOf(value)    // 1-based index, or 0 if absent
 [list].sort()            // sort in place, ascending (Shell sort — O(n^1.5), no recursion required)
 [list].sort("desc")      // sort in place, descending
+
+// Ergonomic aliases (list first, then args — more natural argument order)
+append([list], item)     // listAdd
+push([list], item)       // listAdd
+remove([list], index)    // listDelete
+insert([list], index, item)    // listInsert
+replace([list], index, item)   // listReplace
+clear([list])            // listDeleteAll
 ```
 
 ---
@@ -89,6 +102,7 @@ move(steps)
 turnRight(degrees)
 turnLeft(degrees)
 setDirection(degrees)    // 0=up 90=right 180=down -90=left
+turnTo(degrees)          // alias for setDirection()
 pointTowards("target")   // "_mouse_" or sprite name
 goTo(x, y)
 goTo("target")
@@ -202,6 +216,46 @@ letterOf(index, string)       // 1-based
 contains(string, substring)   // boolean
 "string".length()
 [var].length()
+```
+
+---
+
+## Ergonomic aliases
+
+Short, friendlier names for commonly-used functions. These compile to exactly the same blocks as their canonical counterparts.
+
+```
+// Motion
+step(n)          → move(n)
+forward(n)       → move(n)
+left(degrees)    → turnLeft(degrees)
+right(degrees)   → turnRight(degrees)
+front()          → goToFront()
+back()           → goToBack()
+turnTo(degrees)  → setDirection(degrees)
+
+// Looks / output
+print(msg)       → say(msg)
+println(msg)     → say(msg)
+
+// Control
+clone()          → createClone("_myself_")
+stopMe()         → stopThis()
+
+// Events
+send("msg")         → broadcast("msg")
+sendAndWait("msg")  → broadcastAndWait("msg")
+
+// Sensing
+ask("question")     → askAndWait("question")
+
+// Lists (list-first argument order)
+append([list], val)            → listAdd(val, [list])
+push([list], val)              → listAdd(val, [list])
+remove([list], idx)            → listDelete(idx, [list])
+insert([list], idx, val)       → listInsert(val, idx, [list])
+replace([list], idx, val)      → listReplace(idx, [list], val)
+clear([list])                  → listDeleteAll([list])
 ```
 
 ---
