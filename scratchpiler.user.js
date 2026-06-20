@@ -138,7 +138,7 @@
         updateStatus(`Index: ${idx.sprites.length} sprites, ${idx.globalVariables.length} globals`);
     }
 
-    // ─── [F] Monaco Loader ────────────────────────────────────────────────────
+    // [F] Monaco Loader
 
     function loadMonaco(callback) {
         unsafeWindow.MonacoEnvironment = {
@@ -1049,7 +1049,7 @@
                 white-space: nowrap;
             }
             .sp-menu-btn:hover, .sp-menu-btn.sp-menu-active { color: #e8f4ff; background: #002e5a; }
-            
+
             #scratchpiler-header-center {
                 flex: 1; display: flex; justify-content: center;
                 overflow: hidden; text-overflow: ellipsis; padding: 0 12px;
@@ -1059,7 +1059,7 @@
                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
                 font-family: ui-monospace, 'SF Mono', Consolas, monospace;
             }
-            
+
             #scratchpiler-header-actions {
                 display: flex; align-items: center; gap: 8px; flex-shrink: 0;
             }
@@ -1082,11 +1082,11 @@
                 transition: color 0.15s, background 0.15s; flex-shrink: 0; padding: 0;
             }
             #scratchpiler-close-btn:hover { color: #e8f4ff; background: #002e5a; }
-            
+
             #scratchpiler-workspace {
                 display: flex; flex: 1; min-height: 0; width: 100%;
             }
-            
+
             #scratchpiler-activitybar {
                 width: 48px; background: #001326;
                 display: flex; flex-direction: column; align-items: center;
@@ -1106,7 +1106,7 @@
                 content: ''; position: absolute; left: 0; top: 8px; bottom: 8px;
                 width: 2px; background: #ff8c00; border-radius: 0 2px 2px 0;
             }
-            
+
             #scratchpiler-sidebar {
                 width: 250px; background: #001a35;
                 border-right: 1px solid #002e5a; display: flex; flex-direction: column;
@@ -1121,10 +1121,10 @@
             #scratchpiler-sidebar-content {
                 flex: 1; overflow-y: auto; display: flex; flex-direction: column;
             }
-            
+
             .sp-sidebar-panel { display: none !important; flex-direction: column; height: 100%; }
             .sp-sidebar-panel.active { display: flex !important; }
-            
+
             /* Accordion */
             .sp-accordion {
                 border-bottom: 1px solid #002e5a; display: flex; flex-direction: column;
@@ -1139,7 +1139,7 @@
             .sp-accordion-content { display: none; padding: 4px 0; }
             .sp-accordion-content.active { display: block; }
             .sp-chevron { font-size: 8px; color: #567399; transition: transform 0.15s; }
-            
+
             /* Sub-accordion inside Explorer */
             .sp-sub-accordion {
                 margin: 2px 0;
@@ -1151,7 +1151,7 @@
             .sp-sub-accordion-header:hover { color: #bbdaff; }
             .sp-sub-accordion-content { display: none; padding: 2px 0; }
             .sp-sub-accordion-content.active { display: block; }
-            
+
             /* Explorer lists */
             .sp-sidebar-list { display: flex; flex-direction: column; }
             .sp-list-item {
@@ -1163,7 +1163,7 @@
             .sp-list-item.active { background: #00366f; color: #ffffff; font-weight: 600; }
             .sp-item-icon { color: #567399; }
             .sp-list-item.active .sp-item-icon { color: #ff8c00; }
-            
+
             /* Details list */
             .sp-detail-item {
                 padding: 4px 26px; font-size: 11px; color: #bbdaff;
@@ -1172,7 +1172,7 @@
             .sp-detail-empty {
                 padding: 4px 26px; font-size: 11px; color: #567399; font-style: italic;
             }
-            
+
             /* Search Panel */
             .sp-search-container {
                 padding: 12px; display: flex; flex-direction: column; gap: 8px;
@@ -1192,7 +1192,7 @@
             }
             .sp-search-actions button:hover { background: #003e7a; color: #ffffff; }
             #scratchpiler-search-results { flex: 1; overflow-y: auto; padding: 8px 0; }
-            
+
             .sp-search-no-results {
                 padding: 12px; text-align: center; color: #567399; font-size: 12px;
             }
@@ -1208,7 +1208,7 @@
             }
             .sp-search-result-item:hover { background: #002852; color: #ffffff; }
             .sp-search-line-num { color: #ff8c00; font-weight: 700; margin-right: 4px; }
-            
+
             /* Settings Panel */
             #sp-panel-settings { padding: 12px; display: flex; flex-direction: column; gap: 14px; }
             .sp-settings-group { display: flex; flex-direction: column; gap: 6px; }
@@ -1242,12 +1242,12 @@
             .sp-fix-action-desc { font-size: 10px; color: #6b8db5; line-height: 1.4; }
             .sp-fix-action.destructive .sp-fix-action-icon { background: rgba(255,60,60,0.1); color: #ff5555; }
             .sp-fix-action.destructive:hover { border-color: #ff5555; }
-            
+
             #scratchpiler-editor-pane {
                 flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0;
             }
             #scratchpiler-editor-container { flex: 1; min-height: 0; }
-            
+
             .sp-dropdown {
                 position: absolute; top: 100%; left: 0;
                 background: #001d36; border: 1px solid #002e5a; border-radius: 4px;
@@ -1262,7 +1262,7 @@
             }
             .sp-dropdown-item:hover { background: #002e5a; }
             .sp-dropdown-sep { height: 1px; background: #002e5a; margin: 3px 0; }
-            
+
             #scratchpiler-dialog {
                 position: absolute; inset: 0; z-index: 100002;
                 display: flex; align-items: center; justify-content: center;
@@ -1297,7 +1297,7 @@
                 background: #ff8c00; color: #001a38; border-color: #ff8c00; font-weight: 700;
             }
             .sp-dialog-btn.sp-primary:hover { background: #ffaa33; border-color: #ffaa33; }
-            
+
             #scratchpiler-trigger {
                 position: fixed; bottom: 20px; left: 16px; z-index: 9998;
                 display: flex; align-items: center; gap: 8px;
@@ -1411,14 +1411,14 @@
             #scratchpiler-compile-btn.sp-flash-ok  { animation: sp-flash-success 0.65s ease forwards; }
             #scratchpiler-compile-btn.sp-flash-err { animation: sp-flash-error  0.65s ease forwards; }
 
-            /* ── Sidebar resize handle ──────────────────────────────────────── */
+            /* Sidebar resize handle */
             #sp-sidebar-resize {
                 width: 4px; cursor: col-resize; background: transparent;
                 flex-shrink: 0; transition: background 0.15s; z-index: 1;
             }
             #sp-sidebar-resize:hover, #sp-sidebar-resize.sp-resizing { background: #ff8c0066; }
 
-            /* ── Output panel ───────────────────────────────────────────────── */
+            /* Output panel */
             #sp-output-panel {
                 border-top: 1px solid #002e5a; background: #001021;
                 display: flex; flex-direction: column; flex-shrink: 0;
@@ -1458,7 +1458,7 @@
             .sp-out-entry.warn  .sp-out-text { color: #fbbf24; }
             .sp-out-time { color: #2d3f58; flex-shrink: 0; }
 
-            /* ── Sprite Picker (Ctrl+P) ─────────────────────────────────────── */
+            /* Sprite Picker (Ctrl+P) */
             #sp-picker-backdrop {
                 position: absolute; inset: 0; z-index: 100003;
                 display: flex; align-items: flex-start; justify-content: center;
@@ -1495,7 +1495,7 @@
                 font-family: ui-monospace, monospace;
             }
 
-            /* ── Sprite context menu ────────────────────────────────────────── */
+            /* Sprite context menu */
             .sp-ctx-menu {
                 position: fixed; z-index: 999998;
                 background: #001d36; border: 1px solid #002e5a; border-radius: 4px;
@@ -1513,7 +1513,7 @@
             .sp-ctx-shortcut { color: #567399; font-size: 10px; font-family: ui-monospace, monospace; }
             .sp-ctx-sep { height: 1px; background: #002e5a; margin: 3px 0; }
 
-            /* ── Clickable detail items ─────────────────────────────────────── */
+            /* Clickable detail items */
             .sp-detail-item { cursor: pointer; }
             .sp-detail-item:hover { background: #002447; color: #e8f4ff; }
         `;
@@ -1543,7 +1543,7 @@
                 <div id="scratchpiler-header-actions">
                     <button id="scratchpiler-compile-btn">Compile &amp; Inject</button>
                     <button id="scratchpiler-close-btn" title="Close (Escape)">✕</button>
-                    
+
                     <!-- Hidden compat buttons -->
                     <button id="scratchpiler-import-btn" style="display:none"></button>
                     <button id="scratchpiler-format-btn" style="display:none"></button>
@@ -1764,7 +1764,7 @@
         document.body.appendChild(btn);
     }
 
-    // ─── [SN] Search Nowhere ─────────────────────────────────────────────────
+    // [SN] Search Nowhere
 
     let searchNowhereOpen = false;
     let snActiveTab = 'all';
@@ -2052,7 +2052,7 @@
             return;
         }
 
-        // ── All tab ──
+        // All tab
         const sprites     = snGetSpriteResults(query);
         const blocks      = snGetBlockResults(query);
         const realActions = snGetRealActions().filter(a => !query || a.label.toLowerCase().includes(query.toLowerCase()));
@@ -2074,7 +2074,7 @@
             : `${totalReal} result${totalReal !== 1 ? 's' : ''}  ·  ${totalFake} fabricated`;
     }
 
-    // ─── [I0] Utility: Output Panel, Sprite Picker, Context Menu, Resize ─────
+    // [I0] Utility: Output Panel, Sprite Picker, Context Menu, Resize
 
     // Output panel
     function logToOutput(message, level = 'info') {
@@ -2310,7 +2310,7 @@
         if (header)    header.addEventListener('click', toggle);
     }
 
-    // ─── [I] Editor Lifecycle ─────────────────────────────────────────────────
+    // [I] Editor Lifecycle
 
     let monacoEditor  = null;
     let overlayVisible = false;
@@ -2361,7 +2361,7 @@
             saveToLocalStorage(oldSprite);
         }
         currentSpriteContext = spriteName;
-        
+
         // Switch editing target in VM if available
         if (currentVM) {
             const stage = currentVM.runtime.targets.find(t => t.isStage);
@@ -2374,7 +2374,7 @@
                 } catch (_) {}
             }
         }
-        
+
         // Highlight active item
         const listEl = document.getElementById('scratchpiler-sprites-list');
         if (listEl) {
@@ -2514,7 +2514,7 @@
                 // Show/switch sidebar tab
                 sidebar.style.display = 'flex';
                 sidebarExpanded = true;
-                
+
                 // Toggle active button class
                 Object.keys(buttons).forEach(k => {
                     if (k === tabId) buttons[k].classList.add('sp-active');
@@ -2541,7 +2541,7 @@
         actSettings.addEventListener('click', () => switchTab('settings'));
         actFixes.addEventListener('click', () => switchTab('fixes'));
 
-        // ── Fixes panel actions ──
+        // Fixes panel actions
         document.getElementById('sp-fix-clear-cache').addEventListener('click', () => {
             let cleared = 0;
             const keysToRemove = [];
@@ -2612,7 +2612,7 @@
 
             updateStatus(`✓ Reset complete — removed ${removedCount} injected blocks, cleared ${keysToRemove.length} cache entries`);
         });
-        
+
         // Setup accordions inside Sidebar Explorer
         document.querySelectorAll('.sp-accordion-header').forEach(hdr => {
             hdr.addEventListener('click', () => {
@@ -2691,7 +2691,7 @@
                 item.className = 'sp-search-result-item';
                 item.innerHTML = `<span class="sp-search-line-num">${m.line}:</span> <span class="sp-search-line-text"></span>`;
                 item.querySelector('.sp-search-line-text').textContent = m.text;
-                
+
                 item.addEventListener('click', () => {
                     selectSidebarSprite(m.spriteName);
                     if (monacoEditor) {
@@ -2778,7 +2778,7 @@
         const key = `scratchpiler-content-${spriteName}`;
         const code = localStorage.getItem(key) || '';
         if (!code) return 0;
-        
+
         const escaped = searchVal.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
         const regex = new RegExp(escaped, 'gi');
         let count = 0;
@@ -2959,7 +2959,7 @@
         if (overlayVisible) closeOverlay(); else openOverlay();
     }
 
-    // ─── [J] Hotkeys ──────────────────────────────────────────────────────────
+    // [J] Hotkeys
 
     function registerHotkeys() {
         document.addEventListener('keydown', e => {
@@ -2995,7 +2995,7 @@
         }, true);
     }
 
-    // ─── [K] Persistence ──────────────────────────────────────────────────────
+    // [K] Persistence
 
     const spSettings = {
         tabSize:         4,
@@ -3086,7 +3086,7 @@
         el.textContent = prefix + text;
     }
 
-    // ─── [K2] Menu + Variable Creation ───────────────────────────────────────
+    // [K2] Menu + Variable Creation
 
     let activeMenu = null;
     let dialogCallback = null;
@@ -3169,7 +3169,7 @@
         updateStatus(`Created ${scope} ${isList ? 'list' : 'variable'} "${name}"`);
     }
 
-    // ─── [L] DSL Compiler ─────────────────────────────────────────────────────
+    // [L] DSL Compiler
 
     // --- Lexer ---
 
@@ -3757,7 +3757,7 @@
             // Set the context string that eat() will use for all errors in this call
             callCtx = CALL_SIGS[v] ? `\`${CALL_SIGS[v]}\`` : (v ? `\`${v}(...)\`` : '');
 
-            // ── Motion ──
+            // Motion
             if (v === 'move')       { const [n] = args1(ln,cl); return { type: 'MoveStmt', steps: n, line: ln, col: cl }; }
             if (v === 'turnRight')  { const [n] = args1(ln,cl); return { type: 'TurnStmt', dir: 'right', degrees: n, line: ln, col: cl }; }
             if (v === 'turnLeft')   { const [n] = args1(ln,cl); return { type: 'TurnStmt', dir: 'left',  degrees: n, line: ln, col: cl }; }
@@ -3789,7 +3789,7 @@
             if (v === 'changeX')    { const [n] = args1(ln,cl); return { type: 'ChangeXStmt', value: n, line: ln, col: cl }; }
             if (v === 'changeY')    { const [n] = args1(ln,cl); return { type: 'ChangeYStmt', value: n, line: ln, col: cl }; }
 
-            // ── Looks ──
+            // Looks
             if (v === 'say')            { const [m] = args1(ln,cl); return { type: 'SayStmt', msg: m, line: ln, col: cl }; }
             if (v === 'sayFor')         { const [m,s] = args2(ln,cl); return { type: 'SayForStmt', msg: m, secs: s, line: ln, col: cl }; }
             if (v === 'think')          { const [m] = args1(ln,cl); return { type: 'ThinkStmt', msg: m, line: ln, col: cl }; }
@@ -3804,16 +3804,16 @@
             if (v === 'hide')           { args0(ln,cl); return { type: 'HideStmt', line: ln, col: cl }; }
             if (v === 'clearEffects')   { args0(ln,cl); return { type: 'ClearEffectsStmt', line: ln, col: cl }; }
 
-            // ── Sound ──
+            // Sound
             if (v === 'play')           { const [s] = args1(ln,cl); return { type: 'PlayStmt', sound: s, line: ln, col: cl }; }
             if (v === 'playUntilDone')  { const [s] = args1(ln,cl); return { type: 'PlayUntilDoneStmt', sound: s, line: ln, col: cl }; }
             if (v === 'stopSounds')     { args0(ln,cl); return { type: 'StopSoundsStmt', line: ln, col: cl }; }
 
-            // ── Events ──
+            // Events
             if (v === 'broadcast')        { const [m] = args1(ln,cl); return { type: 'BroadcastStmt', msg: m, line: ln, col: cl }; }
             if (v === 'broadcastAndWait') { const [m] = args1(ln,cl); return { type: 'BroadcastWaitStmt', msg: m, line: ln, col: cl }; }
 
-            // ── Control ──
+            // Control
             if (v === 'wait')              { const [n] = args1(ln,cl); return { type: 'WaitStmt', duration: n, line: ln, col: cl }; }
             if (v === 'stopAll')           { args0(ln,cl); return { type: 'StopStmt', option: 'all', line: ln, col: cl }; }
             if (v === 'stopThis')          { args0(ln,cl); return { type: 'StopStmt', option: 'this script', line: ln, col: cl }; }
@@ -3826,7 +3826,7 @@
             }
             if (v === 'deleteClone')    { args0(ln,cl); return { type: 'DeleteCloneStmt', line: ln, col: cl }; }
 
-            // ── Motion extras ──
+            // Motion extras
             if (v === 'setDirection')   { const [n] = args1(ln,cl); return { type: 'SetDirectionStmt', degrees: n, line: ln, col: cl }; }
             if (v === 'turnTo')         { const [n] = args1(ln,cl); return { type: 'SetDirectionStmt', degrees: n, line: ln, col: cl }; }
             if (v === 'pointTowards')   { const [s] = args1(ln,cl); return { type: 'PointTowardsStmt', target: s, line: ln, col: cl }; }
@@ -3835,34 +3835,34 @@
             if (v === 'goToFront')      { args0(ln,cl); return { type: 'GoToFrontStmt', line: ln, col: cl }; }
             if (v === 'goToBack')       { args0(ln,cl); return { type: 'GoToBackStmt', line: ln, col: cl }; }
 
-            // ── Looks effects ──
+            // Looks effects
             if (v === 'setEffect')      { const [e,n] = args2(ln,cl); return { type: 'SetEffectStmt', effect: e, value: n, line: ln, col: cl }; }
             if (v === 'changeEffect')   { const [e,n] = args2(ln,cl); return { type: 'ChangeEffectStmt', effect: e, amount: n, line: ln, col: cl }; }
 
-            // ── Sound extras ──
+            // Sound extras
             if (v === 'setVolume')      { const [n] = args1(ln,cl); return { type: 'SetVolumeStmt', value: n, line: ln, col: cl }; }
             if (v === 'changeVolume')   { const [n] = args1(ln,cl); return { type: 'ChangeVolumeStmt', value: n, line: ln, col: cl }; }
 
-            // ── Sensing extras ──
+            // Sensing extras
             if (v === 'askAndWait')     { const [q] = args1(ln,cl); return { type: 'AskAndWaitStmt', question: q, line: ln, col: cl }; }
             if (v === 'resetTimer')     { args0(ln,cl); return { type: 'ResetTimerStmt', line: ln, col: cl }; }
             if (v === 'setDragMode')    { const [m] = args1(ln,cl); return { type: 'SetDragModeStmt', mode: m, line: ln, col: cl }; }
 
-            // ── New list ops ──
+            // New list ops
             if (v === 'listDeleteAll') { eat(TT.LPAREN); const listName = eat(TT.VAR).value; eat(TT.RPAREN); return { type: 'ListDeleteAllStmt', listName, line: ln, col: cl }; }
 
-            // ── Motion rotation style ──
+            // Motion rotation style
             if (v === 'setRotationStyle') { const [s] = args1(ln,cl); return { type: 'SetRotationStyleStmt', style: s, line: ln, col: cl }; }
 
-            // ── Looks ──
+            // Looks
             if (v === 'switchBackdropAndWait') { const [n] = args1(ln,cl); return { type: 'SwitchBackdropWaitStmt', name: n, line: ln, col: cl }; }
 
-            // ── Sound effects ──
+            // Sound effects
             if (v === 'setSoundEffect')    { const [e,val] = args2(ln,cl); return { type: 'SetSoundEffectStmt', effect: e, value: val, line: ln, col: cl }; }
             if (v === 'changeSoundEffect') { const [e,val] = args2(ln,cl); return { type: 'ChangeSoundEffectStmt', effect: e, value: val, line: ln, col: cl }; }
             if (v === 'clearSoundEffects') { args0(ln,cl); return { type: 'ClearSoundEffectsStmt', line: ln, col: cl }; }
 
-            // ── Variables ──
+            // Variables
             if (v === 'set') {
                 if (!check(TT.VAR)) {
                     errors.push({ line: ln, col: cl, len: v.length,
@@ -3886,7 +3886,7 @@
             if (v === 'showList')     { eat(TT.LPAREN); const va = eat(TT.VAR).value; eat(TT.RPAREN); return { type: 'ShowListStmt', name: va, line: ln, col: cl }; }
             if (v === 'hideList')     { eat(TT.LPAREN); const va = eat(TT.VAR).value; eat(TT.RPAREN); return { type: 'HideListStmt', name: va, line: ln, col: cl }; }
 
-            // ── Lists ──
+            // Lists
             if (v === 'listAdd') {
                 eat(TT.LPAREN); const item = parseExpr(); eat(TT.COMMA); const listName = eat(TT.VAR).value; eat(TT.RPAREN);
                 return { type: 'ListAddStmt', listName, item, line: ln, col: cl };
@@ -3904,7 +3904,7 @@
                 return { type: 'ListReplaceStmt', listName, index: idx, item, line: ln, col: cl };
             }
 
-            // ── Ergonomic aliases ─────────────────────────────────────────────
+            // Ergonomic aliases
             // print / println → say (programming-style output alias)
             if (v === 'print' || v === 'println') { const [m] = args1(ln,cl); return { type: 'SayStmt', msg: m, line: ln, col: cl }; }
             // step / forward → move (more natural direction vocabulary)
@@ -3946,7 +3946,7 @@
                 return { type: 'ListDeleteAllStmt', listName, line: ln, col: cl };
             }
 
-            // ── Scratchroutine control ──
+            // Scratchroutine control
             if (v === 'checkCancel') { args0(ln,cl); return { type: 'CheckCancelStmt', line: ln, col: cl }; }
 
             {
@@ -5299,7 +5299,7 @@
             const id = uid();
 
             switch (node.type) {
-                // ── Control ──
+                // Control
                 case 'IfStmt': {
                     const condInput = boolInput(node.cond, id);
                     const substackFirst = genBody(node.then, id);
@@ -5434,7 +5434,7 @@
                     return id;
                 }
 
-                // ── Motion ──
+                // Motion
                 case 'MoveStmt': {
                     addBlock({ id, opcode: 'motion_movesteps', next: null, parent: parentId,
                         inputs: { STEPS: numInput(node.steps, id) },
@@ -5492,7 +5492,7 @@
                     return id;
                 }
 
-                // ── Looks ──
+                // Looks
                 case 'SayStmt': {
                     addBlock({ id, opcode: 'looks_say', next: null, parent: parentId,
                         inputs: { MESSAGE: strInput(node.msg, id) }, fields: {}, shadow: false, topLevel: false });
@@ -5607,7 +5607,7 @@
                     return id;
                 }
 
-                // ── Sound ──
+                // Sound
                 case 'PlayStmt': {
                     const sndName = node.sound.type === 'Str' ? node.sound.value : '';
                     const menuId = menuBlock('sound_sounds_menu', 'SOUND_MENU', sndName, id);
@@ -5628,7 +5628,7 @@
                     return id;
                 }
 
-                // ── Events ──
+                // Events
                 case 'BroadcastStmt': {
                     const msgName = node.msg.type === 'Str' ? node.msg.value : '';
                     const msgId = resolveBroadcast(msgName);
@@ -5654,7 +5654,7 @@
                     return id;
                 }
 
-                // ── Variables ──
+                // Variables
                 case 'SetVarStmt': {
                     let v = resolveVar(node.varName);
                     if (!v) {
@@ -5728,7 +5728,7 @@
                     return id;
                 }
 
-                // ── Motion extras ──
+                // Motion extras
                 case 'SetDirectionStmt': {
                     addBlock({ id, opcode: 'motion_pointindirection', next: null, parent: parentId,
                         inputs: { DIRECTION: numInput(node.degrees, id) },
@@ -5770,7 +5770,7 @@
                     return id;
                 }
 
-                // ── Looks effects ──
+                // Looks effects
                 case 'SetEffectStmt': {
                     const eff = node.effect.type === 'Str' ? node.effect.value : 'color';
                     addBlock({ id, opcode: 'looks_seteffectto', next: null, parent: parentId,
@@ -5788,7 +5788,7 @@
                     return id;
                 }
 
-                // ── Sound extras ──
+                // Sound extras
                 case 'SetVolumeStmt': {
                     addBlock({ id, opcode: 'sound_setvolumeto', next: null, parent: parentId,
                         inputs: { VOLUME: numInput(node.value, id) },
@@ -5802,7 +5802,7 @@
                     return id;
                 }
 
-                // ── Sensing extras ──
+                // Sensing extras
                 case 'AskAndWaitStmt': {
                     addBlock({ id, opcode: 'sensing_askandwait', next: null, parent: parentId,
                         inputs: { QUESTION: strInput(node.question, id) },
@@ -5822,7 +5822,7 @@
                     return id;
                 }
 
-                // ── List delete all ──
+                // List delete all
                 case 'ListDeleteAllStmt': {
                     const v = resolveVar(node.listName);
                     if (!v) {
@@ -5836,7 +5836,7 @@
                     return id;
                 }
 
-                // ── Motion rotation style ──
+                // Motion rotation style
                 case 'SetRotationStyleStmt': {
                     const styleVal = node.style.type === 'Str' ? node.style.value : 'all around';
                     addBlock({ id, opcode: 'motion_setrotationstyle', next: null, parent: parentId,
@@ -5845,7 +5845,7 @@
                     return id;
                 }
 
-                // ── GlideTo (sprite) ──
+                // GlideTo (sprite)
                 case 'GlideToStmt': {
                     const menuId = menuBlock('motion_glidesecstosprite_menu', 'TO', node.target, id);
                     addBlock({ id, opcode: 'motion_glidesecstosprite', next: null, parent: parentId,
@@ -5854,7 +5854,7 @@
                     return id;
                 }
 
-                // ── Switch backdrop and wait ──
+                // Switch backdrop and wait
                 case 'SwitchBackdropWaitStmt': {
                     const menuId = menuBlock('looks_backdrops', 'BACKDROP', node.name.type === 'Str' ? node.name.value : '', id);
                     addBlock({ id, opcode: 'looks_switchbackdroptoandwait', next: null, parent: parentId,
@@ -5862,7 +5862,7 @@
                     return id;
                 }
 
-                // ── Sound effects ──
+                // Sound effects
                 case 'SetSoundEffectStmt': {
                     const effVal = node.effect.type === 'Str' ? node.effect.value.toUpperCase() : 'PITCH';
                     addBlock({ id, opcode: 'sound_seteffectto', next: null, parent: parentId,
@@ -5885,7 +5885,7 @@
                     return id;
                 }
 
-                // ── Custom block call ──
+                // Custom block call
                 case 'CallStmt': {
                     // yield() is sugar for wait(0) — handle before custom-block lookup
                     if (node.name === 'yield') {
@@ -6056,7 +6056,7 @@
         }
     }
 
-    // ─── [L2] Decompiler (Import) ─────────────────────────────────────────────
+    // [L2] Decompiler (Import)
 
     // Read a field value from either internal {name,value} or sb3 [value,id] format
     function fieldVal(block, name) {
@@ -6756,7 +6756,7 @@
         return { blocks, errors: codeErrors };
     }
 
-    // ─── [L3] Source Formatter ───────────────────────────────────────────────
+    // [L3] Source Formatter
 
     function formatSource(src) {
         try {
@@ -6776,7 +6776,7 @@
         } catch (_) { return null; }
     }
 
-    // ─── [M] Block Injector ───────────────────────────────────────────────────
+    // [M] Block Injector
 
     function injectBlocks(blockMap, vm, spriteName) {
         const target = spriteName === '__stage__'
@@ -6882,7 +6882,7 @@
         updateStatus(`Injected ${count} blocks into "${spriteName}"`);
     }
 
-    // ─── [N] Bootstrap ────────────────────────────────────────────────────────
+    // [N] Bootstrap
 
     function bootstrap() {
         buildOverlayDOM();
