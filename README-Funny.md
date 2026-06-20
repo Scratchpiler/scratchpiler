@@ -103,6 +103,75 @@ We added shorter aliases for functions whose names should probably not exist in 
 
 The list aliases have a saner argument order: `append([list], value)` instead of `listAdd(value, [list])`. The original order was chosen for mysterious historical reasons that have never been adequately explained. We are not investigating further.
 
+### `[x]++` and `[x]--`: Two Characters That Should Have Existed From Day One
+
+`[score]++` increments by 1. `[score]--` decrements by 1. They compile to `data_changevariableby`. That's it. That's the whole feature.
+
+The amount of time that was wasted before this existed, writing `change [score] by 1` like a Victorian-era programmer laboriously dipping a quill into an inkwell, is not something we care to calculate. It's done now.
+
+---
+
+### List Aggregates: `.sum()`, `.min()`, `.max()`, `.count()`
+
+```
+set [total] to [scores].sum()
+set [winner] to [scores].max()
+```
+
+Previously, computing the sum of a list required a `pyfor` loop, a temporary variable, a change statement, and the quiet, creeping awareness that you were spending more time managing loop boilerplate than actually writing the thing you wanted to write.
+
+`[list].sum()` compiles to exactly that `pyfor` loop. It generates three hidden internal variables (`_scratchpiler_internal_xxxx_agg_ctr`, `_scratchpiler_internal_xxxx_agg_item`, `_scratchpiler_internal_xxxx_agg_tmp`), builds the loop, then sets your output variable, all before your eyes. Or rather, completely invisibly, because that is the point.
+
+`.min()` and `.max()` on an empty list return `""`, which is Scratch's way of saying "I tried." Guard with a length check if you care about this edge case. We're not your guardian.
+
+---
+
+### Scratchroutines: Kotlin Coroutines, But Make It Scratch
+
+Someone looked at Scratch's broadcast system and said "this is basically cooperative multitasking with extra steps." They were right. The extra steps are the problem. Scratchroutines are the solution.
+
+```
+scratchroutine orbit(radius) {
+    set [angle] to 0
+    forever {
+        setX(([radius]) * sin([angle]))
+        setY(([radius]) * cos([angle]))
+        change [angle] by 5
+        checkCancel()
+        wait(0.05)
+    }
+}
+
+on flag {
+    launch orbit(80)   // fire and forget
+    wait(3)
+    cancel orbit       // politely request that it stop
+}
+```
+
+This compiles to a broadcast-based pseudo-coroutine. The broadcast is named `__sroutine_orbit`. The radius parameter is stored in a global variable named `__sroutine_orbit_radius`. There is a cancel flag named `__sroutine_orbit_cancelled`. There is a running counter named `__sroutine_orbit_count`. None of these are visible to you in the editor. They are all visible to you in Scratch's variable monitor, where they sit in the list looking extremely suspicious.
+
+**The lifecycle, honestly described:**
+
+`launch orbit(80)` sets `__sroutine_orbit_radius` to 80 and then broadcasts `"__sroutine_orbit"` without waiting. The routine picks up the value and begins running. If you `launch orbit(40)` immediately after, it will overwrite `__sroutine_orbit_radius` to 40 while the first instance is still reading it. This is a data race. Scratch doesn't have locks. You'll be fine, probably.
+
+`await orbit(80)` does the same but uses `broadcastAndWait`, blocking until the routine finishes. If the routine is a `forever` loop, `await` will block forever. Do not `await` a `forever` loop.
+
+`cancel orbit` sets `__sroutine_orbit_cancelled` to 1 and does nothing else. The routine continues running until it hits a `checkCancel()` call, which compiles to `if [__sroutine_orbit_cancelled] = 1 { stopThis() }`. No `checkCancel()` calls in the body means `cancel` is a strongly-worded suggestion that the routine is free to ignore indefinitely.
+
+`isRunning(orbit)` compiles to `[__sroutine_orbit_count] > 0`. The count is incremented when the routine starts and decremented when it finishes. Multiple concurrent instances of the same routine each increment and decrement the same counter. This means `isRunning` returns true as long as any instance is running, not just the one you launched. This is Scratch's fault for not having a better primitive, not ours.
+
+**What gets created on the Stage, globally, for every scratchroutine you define:**
+
+| Thing | Name | What it does |
+|---|---|---|
+| Broadcast | `__sroutine_name` | Triggers the routine |
+| Variable | `__sroutine_name_cancelled` | Cancel flag |
+| Variable | `__sroutine_name_count` | How many instances are running |
+| Variable | `__sroutine_name_param` | One per parameter |
+
+No lists. We considered using a global list to track running routines. We decided against it because `listDelete(indexOf(...))` requires a block chain long enough to give anyone a migraine, and we had already given ourselves enough migraines for one session.
+
 ### Type Checking: The Linter Knows What You Did
 
 The linter now understands the difference between lists and variables. If you try to call `listAdd` on a variable, it will tell you. If you try to `pyfor` over a variable, it will tell you. If you try to use `.item()` on a variable that is definitely not a list, the linter will produce a yellow underline and a message that is perhaps more informative than your code deserves.

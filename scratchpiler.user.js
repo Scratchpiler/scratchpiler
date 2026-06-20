@@ -13,14 +13,14 @@
 (function () {
     'use strict';
 
-    // ─── [C] Constants ────────────────────────────────────────────────────────
+    // Constants
 
     const MONACO_CDN = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min';
     const LANG_ID    = 'scratchpiler';
     const LS_KEY     = 'scratchpiler-content';
     const LS_INJ_KEY = 'scratchpiler-injected'; // persisted top-level hat block IDs per sprite
 
-    // ─── [D] VM Acquisition ───────────────────────────────────────────────────
+    // VM Acquisition
 
     function getFiberRoot() {
         const candidates = [
@@ -99,7 +99,7 @@
         }, 500);
     }
 
-    // ─── [E] Index ────────────────────────────────────────────────────────────
+    // Index project
 
     let scratchIndex = {
         sprites:         [],  // [{ name, costumes: string[], sounds: string[] }]
@@ -167,7 +167,7 @@
         document.head.appendChild(script);
     }
 
-    // ─── [G] Language + Completions ───────────────────────────────────────────
+    // DSL and completions
 
     const KEYWORDS = [
         // Control flow
@@ -305,7 +305,7 @@
                     };
                 }
 
-                // ── Context-aware string completions ──────────────────────────
+                // context aware completions (strings)
                 // Detect if cursor is inside an unclosed string literal and
                 // return only the appropriate completions for that argument slot.
                 const fullPrefix = model.getLineContent(position.lineNumber)
@@ -1003,7 +1003,7 @@
         return items;
     }
 
-    // ─── [H] Overlay DOM ──────────────────────────────────────────────────────
+    // Overlay DOM
 
     function buildOverlayDOM() {
         const fontLink = document.createElement('link');
@@ -1318,7 +1318,7 @@
                 .sp-menu-btn, .sp-dialog-btn { transition: none; }
             }
 
-            /* ── Search Nowhere ─────────────────────────────────────────────────── */
+            /* Search Nowhere */
             #sp-sn-backdrop {
                 position: fixed; inset: 0; z-index: 999999;
                 display: flex; align-items: flex-start; justify-content: center;
@@ -1397,7 +1397,7 @@
             #sp-sn-status { font-size: 11px; color: #3d5270; }
             #sp-sn-tip { font-size: 10px; color: #263040; font-family: ui-monospace, monospace; }
 
-            /* ── Compile button flash ───────────────────────────────────────── */
+            /* Compile button flash */
             @keyframes sp-flash-success {
                 0%   { background: #ff8c00; border-color: #ff8c00; box-shadow: none; }
                 35%  { background: #22c55e; border-color: #22c55e; box-shadow: 0 0 20px rgba(34,197,94,0.55); }
