@@ -15,6 +15,7 @@ Full example programs demonstrating scratchpiler features. Paste any `.sdsl` fil
 | `for-loop-spiral.sdsl` | `for` loop, growing step sizes, arithmetic transformations |
 | `trig-circle.sdsl` | `sin`/`cos`, circular motion, fighting degree limits |
 | `list-inventory.sdsl` | List operations, dot methods, `.contains`, `.indexOf` |
+| `list-sort.sdsl` | `.sort()`, `.sort("desc")`, leaderboard construction, Shell sort in the wild |
 | `clones-burst.sdsl` | Clone creation, `on clone`, data passing, thread explosion |
 | `ask-quiz.sdsl` | `askAndWait`, `answer`, `contains`, prompting for input |
 | `graphic-effects.sdsl` | All seven graphic effects, visual distortion |
@@ -331,3 +332,34 @@ on flag {
 ```
 
 The sprite image flips left/right but the movement code uses explicit `setDirection` so it always moves correctly regardless of visual orientation.
+
+---
+
+## Sorting a leaderboard
+
+Builds a list of scores, sorts it descending, and announces the top three. Uses `.sort("desc")` — three words that would have taken approximately forty Scratch blocks to achieve unassisted.
+
+Requires a list named `scores` and a variable named `i` in the active sprite.
+
+```
+on flag {
+    listDeleteAll([scores])
+    listAdd(42, [scores])
+    listAdd(7,  [scores])
+    listAdd(99, [scores])
+    listAdd(23, [scores])
+    listAdd(55, [scores])
+
+    [scores].sort("desc")   // 99, 55, 42, 23, 7
+
+    say("Top 3:")
+    wait(1)
+    for [i] from 1 to 3 {
+        sayFor(join("#", join([i], join(": ", [scores].item([i])))), 1.5)
+    }
+}
+```
+
+The sort operates in place, so `[scores]` is modified directly. There's no copy — it's mutating the original list because it lives on the edge. The decompiler will reconstruct this as `[scores].sort("desc")` on re-import, so you won't come back later to find forty mystery blocks where your one tidy line used to be.
+
+See `examples/list-sort.sdsl`.

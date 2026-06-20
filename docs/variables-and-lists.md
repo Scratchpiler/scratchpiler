@@ -151,6 +151,35 @@ if [pos] > 0 {
 }
 ```
 
+### .sort()
+
+Sorts a list **in place**, ascending, using Shell sort with the Knuth gap sequence (1, 4, 13, 40, …). This is O(n^(3/2)) — not the fastest sort ever devised by humanity, but it runs entirely inside Scratch's block execution model without recursion, which is worth something. Bragging rights, at minimum.
+
+```
+[scores].sort()
+```
+
+Pass `"desc"` for descending order:
+
+```
+[scores].sort("desc")
+```
+
+`.sort()` is a **statement**, not an expression. It sorts the list and returns nothing — because returning a sorted copy would require allocating a new list, and Scratch's list API would like to have a word with you about that. Write it on its own line.
+
+```
+// ✓ correct — standalone statement
+[leaderboard].sort()
+say([leaderboard].item(1))   // now displays the top score
+
+// ✗ wrong — sort() cannot be used inside an expression
+set [top] to [leaderboard].sort()   // parse error: "is a statement"
+```
+
+**Temp variables**: the sort creates four hidden internal variables (`_scratchpiler_internal_xxxx_gap`, `_i`, `_j`, `_tmp`) in the sprite. They disappear from your mental model the moment you stop looking at the variable monitor. The decompiler knows about them and will reconstruct `.sort()` cleanly on re-import.
+
+**Numeric vs string sorting**: Scratch stores everything as strings internally. If your list contains numeric strings (`"3"`, `"14"`, `"9"`), the sort compares them **lexicographically**, meaning `"14" < "3"` because `"1" < "3"`. To sort numbers correctly, make sure all values are actual numbers (Scratch treats numeric-looking strings as numbers in comparisons) — in practice this usually works, but mixing `"10"` with `"9.5"` can produce surprising results. Don't say we didn't warn you.
+
 ---
 
 ## Subscript syntax

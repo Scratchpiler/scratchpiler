@@ -76,6 +76,8 @@ hideList([list])
 [list][i]                // shorthand for .item([i])
 [list].contains(value)   // boolean
 [list].indexOf(value)    // 1-based index, or 0 if absent
+[list].sort()            // sort in place, ascending (Shell sort — O(n^1.5), no recursion required)
+[list].sort("desc")      // sort in place, descending
 ```
 
 ---
