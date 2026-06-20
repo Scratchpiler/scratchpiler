@@ -26,6 +26,8 @@ define blockName(p1, p2) { }   // custom block definition
 ```
 if condition { }
 if condition { } else { }
+if condition { } else if condition { } else { }   // elif also works
+elif condition { }   // alias for else if
 
 repeat 10 { }
 forever { }
@@ -52,12 +54,40 @@ stopMe()                 // stopThis()
 
 ---
 
+## Scratchroutines
+
+Broadcast-based pseudo-coroutines with parameter passing and lifecycle management.
+
+```
+// Define
+scratchroutine name(param1, param2) {
+    // params are readable as [param1], [param2] inside the body
+    checkCancel()   // stop immediately if cancel has been requested
+}
+
+// Launch (fire and forget — equivalent to broadcast)
+launch name(arg1, arg2)
+
+// Await (block until done — equivalent to broadcastAndWait)
+await name(arg1, arg2)
+
+// Cancel (set cancel flag — routine stops at next checkCancel())
+cancel name
+
+// Query (boolean: is the routine currently running?)
+if isRunning(name) { }
+wait until not isRunning(name)
+```
+
+---
+
 ## Variables
 
 ```
 set [x] to value
 change [x] by amount
 [x] += n    [x] -= n    [x] *= n    [x] /= n
+[x]++       [x]--       // increment / decrement (sugar for change by 1 / -1)
 
 showVariable([x])
 hideVariable([x])
@@ -83,6 +113,12 @@ hideList([list])
 [list].indexOf(value)    // 1-based index, or 0 if absent
 [list].sort()            // sort in place, ascending (Shell sort — O(n^1.5), no recursion required)
 [list].sort("desc")      // sort in place, descending
+
+// Aggregates (used in `set [x] to …` only)
+set [total] to [list].sum()          // sum of all numeric items
+set [lo]    to [list].min()          // minimum numeric item
+set [hi]    to [list].max()          // maximum numeric item
+set [n]     to [list].count(value)   // count items equal to value
 
 // Ergonomic aliases (list first, then args — more natural argument order)
 append([list], item)     // listAdd

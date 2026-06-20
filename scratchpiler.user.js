@@ -585,6 +585,18 @@
             'replace':    { label: 'replace([list], index, value)  — replace item (alias for listReplace)', params: [{ label: '[list]' }, { label: 'index' }, { label: 'value' }] },
             'clear':      { label: 'clear([list])  — delete all items (alias for listDeleteAll)', params: [{ label: '[list]' }] },
             'pop':        { label: 'pop([list])  — delete all items (alias for clear/listDeleteAll)', params: [{ label: '[list]' }] },
+            // Scratchroutines
+            'scratchroutine': { label: 'scratchroutine name(params) { … }', params: [{ label: 'name', documentation: 'Routine identifier' }, { label: 'params', documentation: 'Comma-separated parameter names (optional)' }] },
+            'launch':         { label: 'launch name(args)  — fire and forget (broadcast)', params: [{ label: 'name', documentation: 'Scratchroutine name' }, { label: 'args', documentation: 'Arguments (optional)' }] },
+            'await':          { label: 'await name(args)  — block until done (broadcastAndWait)', params: [{ label: 'name', documentation: 'Scratchroutine name' }, { label: 'args', documentation: 'Arguments (optional)' }] },
+            'cancel':         { label: 'cancel name  — set the cancel flag (check with checkCancel)', params: [{ label: 'name', documentation: 'Scratchroutine name' }] },
+            'isRunning':      { label: 'isRunning(name)  — boolean: is routine currently executing?', params: [{ label: 'name', documentation: 'Scratchroutine name' }] },
+            'checkCancel':    { label: 'checkCancel()  — stop this script if cancelled (inside scratchroutine only)', params: [] },
+            // List aggregates
+            'sum':   { label: '[list].sum()  — sum of all numeric items', params: [] },
+            'min':   { label: '[list].min()  — minimum numeric item',     params: [] },
+            'max':   { label: '[list].max()  — maximum numeric item',     params: [] },
+            'count': { label: '[list].count(value)  — how many items equal value', params: [{ label: 'value', documentation: 'Value to count' }] },
         };
 
         const KEYWORD_RE = /\b(wait until|repeat until|if|while|repeat|for)\s*$/;
@@ -932,6 +944,30 @@
              'Replace item at index — alias for `listReplace(index, [list], item)`');
         push('clear()',    CIK.Function, 'Aliases · listDeleteAll()','clear([$0])',
              'Delete all items from list — alias for `listDeleteAll([list])`');
+
+        // Increment / decrement
+        push('[var]++', CIK.Snippet, 'Variables', '[$1]++', 'Increment variable by 1 — sugar for `change [var] by 1`');
+        push('[var]--', CIK.Snippet, 'Variables', '[$1]--', 'Decrement variable by 1 — sugar for `change [var] by -1`');
+
+        // Scratchroutines
+        push('scratchroutine',  CIK.Keyword,   'Scratchroutines', 'scratchroutine ${1:name}($2) {\n    $0\n}',
+             'Define a named concurrent task (compiles to broadcast-based pseudo-coroutine)');
+        push('launch',          CIK.Keyword,   'Scratchroutines', 'launch ${1:name}($0)',
+             'Fire and forget — broadcasts the scratchroutine without waiting');
+        push('await',           CIK.Keyword,   'Scratchroutines', 'await ${1:name}($0)',
+             'Fire and wait — broadcasts the scratchroutine and blocks until it finishes');
+        push('cancel',          CIK.Keyword,   'Scratchroutines', 'cancel ${1:name}',
+             'Set the cancel flag for a running scratchroutine — use checkCancel() inside the body to react');
+        push('isRunning()',     CIK.Function,  'Scratchroutines', 'isRunning(${1:name})',
+             'Boolean — true if the named scratchroutine is currently running');
+        push('checkCancel()',   CIK.Function,  'Scratchroutines', 'checkCancel()',
+             'Inside a scratchroutine body: stop this script if cancel has been requested');
+
+        // List aggregates
+        push('[list].sum()',   CIK.Function, 'Lists · Aggregates', '[$1].sum()',   'Sum all numeric items in the list');
+        push('[list].min()',   CIK.Function, 'Lists · Aggregates', '[$1].min()',   'Find the minimum numeric item in the list');
+        push('[list].max()',   CIK.Function, 'Lists · Aggregates', '[$1].max()',   'Find the maximum numeric item in the list');
+        push('[list].count()', CIK.Function, 'Lists · Aggregates', '[$1].count($0)', 'Count how many items equal a given value');
 
         // Sprite names
         for (const s of scratchIndex.sprites)
@@ -3353,6 +3389,13 @@
         asin:     'asin(n)',        acos:     'acos(n)',        atan:   'atan(n)',
         ln:       'ln(n)',          log:      'log(n)',
         exp:      'exp(n)',         pow10:    'pow10(n)',
+        // Scratchroutines
+        scratchroutine: 'scratchroutine name(params) { … }',
+        launch:         'launch name(args)  — fire and forget',
+        await:          'await name(args)   — block until done',
+        cancel:         'cancel name        — set cancel flag',
+        isRunning:      'isRunning(name)    — boolean: currently running?',
+        checkCancel:    'checkCancel()      — stop this script if cancelled',
     };
 
     function parse(tokens) {
@@ -3393,6 +3436,8 @@
             while (!check(TT.EOF)) {
                 if (checkV('on') || checkV('define')) {
                     blocks.push(parseHatBlock());
+                } else if (checkV('scratchroutine')) {
+                    blocks.push(parseScratchroutine());
                 } else if (check(TT.LBRACE)) {
                     // Bare { ... } block with no hat — parse cleanly, lint will flag it
                     const t = peek();
@@ -3566,6 +3611,58 @@
             const listTok = check(TT.VAR) ? eat(TT.VAR) : { value: '_err_', line: t.line, col: t.col };
             const body = parseBody();
             return { type: 'PyForStmt', varName: varTok.value, listName: listTok.value, body, line: t.line, col: t.col };
+        }
+
+        function parseScratchroutine() {
+            const t = peek(); pos++; // consume 'scratchroutine'
+            const nameTok = peek();
+            if (nameTok.type !== TT.IDENT) {
+                errors.push({ line: t.line, col: t.col, len: 13,
+                    message: '`scratchroutine name(params) {}`: expected a routine name after `scratchroutine`' });
+            }
+            const name = nameTok.type === TT.IDENT ? (pos++, nameTok.value) : '_err_';
+            const params = [];
+            if (check(TT.LPAREN)) {
+                eat(TT.LPAREN);
+                while (!check(TT.RPAREN) && !check(TT.EOF)) {
+                    params.push(peek().value); pos++;
+                    if (!tryEat(TT.COMMA)) break;
+                }
+                eat(TT.RPAREN);
+            }
+            const body = parseBody();
+            return { type: 'ScratchroutineStmt', name, params, body, line: t.line, col: t.col };
+        }
+
+        function parseLaunchAwait(mode) {
+            const t = peek(); pos++; // consume 'launch'/'await'
+            const nameTok = peek();
+            if (nameTok.type !== TT.IDENT) {
+                errors.push({ line: t.line, col: t.col, len: mode.length,
+                    message: `\`${mode} name(args)\`: expected a scratchroutine name` });
+            }
+            const name = nameTok.type === TT.IDENT ? (pos++, nameTok.value) : '_err_';
+            const args = [];
+            if (check(TT.LPAREN)) {
+                eat(TT.LPAREN);
+                while (!check(TT.RPAREN) && !check(TT.EOF)) {
+                    args.push(parseExpr());
+                    if (!tryEat(TT.COMMA)) break;
+                }
+                eat(TT.RPAREN);
+            }
+            return { type: mode === 'launch' ? 'LaunchStmt' : 'AwaitStmt', name, args, line: t.line, col: t.col };
+        }
+
+        function parseCancel() {
+            const t = peek(); pos++; // consume 'cancel'
+            const nameTok = peek();
+            if (nameTok.type !== TT.IDENT) {
+                errors.push({ line: t.line, col: t.col, len: 6,
+                    message: '`cancel name`: expected a scratchroutine name after `cancel`' });
+            }
+            const name = nameTok.type === TT.IDENT ? (pos++, nameTok.value) : '_err_';
+            return { type: 'CancelStmt', name, line: t.line, col: t.col };
         }
 
         function parseSimpleStatement() {
@@ -3849,6 +3946,9 @@
                 return { type: 'ListDeleteAllStmt', listName, line: ln, col: cl };
             }
 
+            // ── Scratchroutine control ──
+            if (v === 'checkCancel') { args0(ln,cl); return { type: 'CheckCancelStmt', line: ln, col: cl }; }
+
             {
                 const all = Object.keys(CALL_SIGS);
                 const vl = v.toLowerCase();
@@ -3913,7 +4013,7 @@
         }
         function parseCallExpr() {
             const t = peek();
-            if (t.type === TT.IDENT || (KW_SET.has(t.value) && ['touching','key','xPos','yPos','direction','size','timer','answer','mouseDown','mouseX','mouseY','loudness','costumeNum','costumeName','volume','username','daysSince2000'].includes(t.value))) {
+            if (t.type === TT.IDENT || (KW_SET.has(t.value) && ['touching','key','xPos','yPos','direction','size','timer','answer','mouseDown','mouseX','mouseY','loudness','costumeNum','costumeName','volume','username','daysSince2000','isRunning'].includes(t.value))) {
                 pos++;
                 if (check(TT.LPAREN)) {
                     eat(TT.LPAREN);
@@ -4038,6 +4138,7 @@
                 case 'WhileStmt':
                 case 'ForStmt':
                 case 'PyForStmt':
+                case 'ScratchroutineStmt':
                     lintBody(stmt.body); break;
             }
         }
@@ -4046,7 +4147,7 @@
             if (block.type === 'OrphanedBlock') {
                 warn(block, 'Orphaned block — no hat event to trigger it. Wrap with `on flag { }`, `on click { }`, etc.');
                 lintChildren(block);
-            } else if (block.type !== 'OnBlock' && block.type !== 'DefineBlock') {
+            } else if (block.type !== 'OnBlock' && block.type !== 'DefineBlock' && block.type !== 'ScratchroutineStmt') {
                 warn(block, 'Orphaned statement — not inside an `on` or `define` block, will never run');
                 lintChildren(block);
             } else {
@@ -4194,11 +4295,16 @@
         let scriptIndex = 0;
         // Maps loop-variable name → {id, name, type} for active for-loop scopes
         const forScope = {};
+        // Maps scratchroutine param name → internal variable name (active inside a routine body)
+        const routineScope = {};
+        // Name of the currently-compiling scratchroutine (for checkCancel)
+        let currentRoutineName = null;
 
         // Resolve variable/list id by name (searches sprite then stage/globals)
         function resolveVar(name) {
-            // for-loop iterator variables take precedence over Scratch variables
-            if (forScope[name]) return forScope[name];
+            // for-loop / routine param variables take precedence over Scratch variables
+            if (forScope[name])   return forScope[name];
+            if (routineScope[name]) return routineScope[name];
             const target = spriteName === '__stage__'
                 ? vm.runtime.targets.find(t => t.isStage)
                 : vm.runtime.targets.find(t => t.sprite.name === spriteName);
@@ -4615,6 +4721,36 @@
                 return id;
             }
 
+            // isRunning(routineName) → [__sroutine_<name>_count] > 0
+            if (name === 'isRunning') {
+                const rname = args[0] && (args[0].type === 'Reporter' || args[0].type === 'CallExpr')
+                    ? args[0].name
+                    : args[0] && args[0].type === 'Str' ? args[0].value : '';
+                if (!rname) {
+                    errors.push({ line: expr.line||1, col: expr.col||1, len: 9,
+                        message: '`isRunning(name)`: expected a scratchroutine name as argument' });
+                    return null;
+                }
+                const countVarName = `__sroutine_${rname}_count`;
+                const countV = resolveVar(countVarName);
+                if (!countV) {
+                    errors.push({ line: expr.line||1, col: expr.col||1, len: 9,
+                        message: `\`isRunning(${rname})\`: scratchroutine \`${rname}\` has not been defined` });
+                    return null;
+                }
+                const zeroId = uid(); const varId = uid();
+                addBlock({ id: zeroId, opcode: 'math_number', next: null, parent: id,
+                    inputs: {}, fields: { NUM: { name: 'NUM', value: '0' } },
+                    shadow: true, topLevel: false });
+                addBlock({ id: varId, opcode: 'data_variable', next: null, parent: id,
+                    inputs: {}, fields: { VARIABLE: { name: 'VARIABLE', value: countV.name, id: countV.id } },
+                    shadow: false, topLevel: false });
+                addBlock({ id, opcode: 'operator_gt', next: null, parent: parentId,
+                    inputs: { OPERAND1: inp(varId, zeroId), OPERAND2: inp(zeroId, zeroId) },
+                    fields: {}, shadow: false, topLevel: false });
+                return id;
+            }
+
             return null;
         }
 
@@ -4643,6 +4779,14 @@
                 } else if (stmt.type === 'MemberCallStmt') {
                     const sortIds = genMemberCallStmt(stmt);
                     sortIds.forEach(id => { if (id) ids.push(id); });
+                } else if (stmt.type === 'SetVarStmt' &&
+                           stmt.value?.type === 'MemberCall' &&
+                           ['sum','min','max','count'].includes(stmt.value.method)) {
+                    const aggIds = genAggregateSetVar(stmt);
+                    aggIds.forEach(id => { if (id) ids.push(id); });
+                } else if (stmt.type === 'LaunchStmt' || stmt.type === 'AwaitStmt') {
+                    const launchIds = genLaunchOrAwaitStmt(stmt);
+                    launchIds.forEach(id => { if (id) ids.push(id); });
                 } else {
                     const id = genStmt(stmt, null);
                     if (id) ids.push(id);
@@ -4911,6 +5055,240 @@
             return [setCtrId, loopId];
         }
 
+        // Helper: create or reuse a variable on a target, return {id, name, type:''}
+        function ensureVar(activeTarget, name) {
+            const existing = Object.values(activeTarget.variables).find(v => v.name === name);
+            if (existing) return { id: existing.id, name: existing.name, type: '' };
+            const id = uid();
+            activeTarget.createVariable(id, name, '');
+            return { id, name, type: '' };
+        }
+
+        // List aggregate: set [out] to [list].sum() / .min() / .max() / .count(val)
+        // Compiles to a hidden pyfor loop that pre-computes a temp variable, then sets [out].
+        function genAggregateSetVar(stmt) {
+            const mc    = stmt.value;   // MemberCall node
+            const method = mc.method;
+            const listObj = mc.object;
+            const outName = stmt.varName;
+            const ln = stmt.line, cl = stmt.col;
+
+            const listV = resolveVar(listObj.name);
+            if (!listV || listV.type !== 'list') {
+                errors.push({ line: ln, col: cl, len: listObj.name.length,
+                    message: `\`[${listObj.name}].${method}()\` requires a list — [${listObj.name}] is ${!listV ? 'not found' : 'not a list'}` });
+                return [];
+            }
+
+            const activeTarget = spriteName === '__stage__'
+                ? vm.runtime.targets.find(t => t.isStage)
+                : vm.runtime.targets.find(t => t.sprite.name === spriteName);
+            if (!activeTarget) return [];
+
+            const rand4 = Math.random().toString(36).slice(2, 6);
+            const tmpName  = `_scratchpiler_internal_${rand4}_agg_tmp`;
+            const ctrName  = `_scratchpiler_internal_${rand4}_agg_ctr`;
+            const itemName = `_scratchpiler_internal_${rand4}_agg_item`;
+
+            const tmpV  = ensureVar(activeTarget, tmpName);
+            const ctrV  = ensureVar(activeTarget, ctrName);
+            const itemV = ensureVar(activeTarget, itemName);
+
+            const N     = v => ({ type: 'Num', value: v, line: ln, col: cl });
+            const LN    = { type: 'Var', name: listObj.name, line: ln, col: cl };
+            const CTR   = { type: 'Var', name: ctrName, line: ln, col: cl };
+            const ITEM  = { type: 'Var', name: itemName, line: ln, col: cl };
+            const TMP   = { type: 'Var', name: tmpName,  line: ln, col: cl };
+            const lenOf = () => ({ type: 'MemberCall', object: LN, method: 'length', args: [] });
+            const itemOf = i => ({ type: 'MemberCall', object: LN, method: 'item', args: [i] });
+            const bop   = (op, l, r) => ({ type: 'BinOp', op, left: l, right: r });
+
+            // Register temps in forScope so genStmt can resolve them
+            forScope[ctrName]  = ctrV;
+            forScope[itemName] = itemV;
+            forScope[tmpName]  = tmpV;
+
+            let initTmpStmt, updateTmpStmt;
+
+            if (method === 'sum') {
+                initTmpStmt   = { type: 'SetVarStmt',    varName: tmpName, value: N(0), line: ln, col: cl };
+                updateTmpStmt = { type: 'ChangeVarStmt', varName: tmpName, value: ITEM,  line: ln, col: cl };
+            } else if (method === 'min') {
+                initTmpStmt   = { type: 'SetVarStmt', varName: tmpName, value: itemOf(N(1)), line: ln, col: cl };
+                // if ITEM < TMP: set TMP to ITEM
+                updateTmpStmt = { type: 'IfStmt',
+                    cond: bop('<', ITEM, TMP),
+                    then: [{ type: 'SetVarStmt', varName: tmpName, value: ITEM, line: ln, col: cl }],
+                    alt: null, line: ln, col: cl };
+            } else if (method === 'max') {
+                initTmpStmt   = { type: 'SetVarStmt', varName: tmpName, value: itemOf(N(1)), line: ln, col: cl };
+                updateTmpStmt = { type: 'IfStmt',
+                    cond: bop('>', ITEM, TMP),
+                    then: [{ type: 'SetVarStmt', varName: tmpName, value: ITEM, line: ln, col: cl }],
+                    alt: null, line: ln, col: cl };
+            } else { // count(val)
+                const countVal = mc.args[0] || { type: 'Num', value: 0 };
+                initTmpStmt   = { type: 'SetVarStmt', varName: tmpName, value: N(0), line: ln, col: cl };
+                updateTmpStmt = { type: 'IfStmt',
+                    cond: bop('=', ITEM, countVal),
+                    then: [{ type: 'ChangeVarStmt', varName: tmpName, value: N(1), line: ln, col: cl }],
+                    alt: null, line: ln, col: cl };
+            }
+
+            // set ctr to 1; repeat until (ctr > list.length) { set item = list.item(ctr); update; change ctr by 1 }
+            const setItemStmt = { type: 'SetVarStmt', varName: itemName, value: itemOf(CTR), line: ln, col: cl };
+            const incrCtrStmt = { type: 'ChangeVarStmt', varName: ctrName, value: N(1), line: ln, col: cl };
+            const loopBody    = [setItemStmt, updateTmpStmt, incrCtrStmt];
+            const loopStmt    = { type: 'RepeatUntilStmt', cond: bop('>', CTR, lenOf()), body: loopBody, line: ln, col: cl };
+
+            const finalSetStmt = { type: 'SetVarStmt', varName: outName,
+                value: { type: 'Var', name: tmpName, line: ln, col: cl }, line: ln, col: cl };
+
+            // For min/max, skip the loop entirely if list is empty to avoid item(1) on empty list
+            // (Scratch returns "" for out-of-bounds, which is acceptable — no extra guard needed)
+
+            const setCtrId  = genStmt({ type: 'SetVarStmt', varName: ctrName, value: N(1), line: ln, col: cl }, null);
+            const initTmpId = genStmt(initTmpStmt, null);
+            const loopId    = genStmt(loopStmt, null);
+            const setOutId  = genStmt(finalSetStmt, null);
+
+            delete forScope[ctrName];
+            delete forScope[itemName];
+            delete forScope[tmpName];
+
+            // Chain: setCtr → initTmp → loop → setOut
+            const ids = [setCtrId, initTmpId, loopId, setOutId].filter(Boolean);
+            for (let i = 0; i < ids.length - 1; i++) {
+                blocks[ids[i]].next       = ids[i+1];
+                blocks[ids[i+1]].parent   = ids[i];
+            }
+            return ids;
+        }
+
+        // Scratchroutine generation helpers
+        function srInternalName(rname) { return `__sroutine_${rname}`; }
+
+        function ensureGlobalVar(name) {
+            const stage = vm.runtime.targets.find(t => t.isStage);
+            if (!stage) return null;
+            const existing = Object.values(stage.variables).find(v => v.name === name && v.type === '');
+            if (existing) return { id: existing.id, name: existing.name, type: '' };
+            const id = uid();
+            stage.createVariable(id, name, '');
+            return { id, name, type: '' };
+        }
+
+        function ensureBroadcast(name) {
+            const stage = vm.runtime.targets.find(t => t.isStage);
+            if (!stage) return uid();
+            const existing = Object.values(stage.variables).find(v => v.name === name && v.type === 'broadcast_msg');
+            if (existing) return existing.id;
+            const id = uid();
+            stage.createVariable(id, name, 'broadcast_msg');
+            return id;
+        }
+
+        function genScratchroutineStmt(node, scriptX) {
+            const rname     = node.name;
+            const bcastName = srInternalName(rname);
+            const cancelName = `__sroutine_${rname}_cancelled`;
+            const countName  = `__sroutine_${rname}_count`;
+
+            // Ensure infrastructure vars exist globally
+            ensureBroadcast(bcastName);
+            const cancelV = ensureGlobalVar(cancelName);
+            const countV  = ensureGlobalVar(countName);
+            if (!cancelV || !countV) {
+                errors.push({ line: node.line, col: node.col, len: 13,
+                    message: `scratchroutine ${rname}: could not create global variables` });
+                return;
+            }
+
+            // Ensure param vars exist globally and register in routineScope
+            const paramVars = [];
+            for (const p of node.params) {
+                const pVarName = `__sroutine_${rname}_${p}`;
+                const pV = ensureGlobalVar(pVarName);
+                if (pV) {
+                    routineScope[p] = pV;
+                    paramVars.push({ param: p, v: pV });
+                }
+            }
+
+            currentRoutineName = rname;
+
+            // Hat: on receive "__sroutine_<name>"
+            const bcastId = ensureBroadcast(bcastName);
+            const hatId   = uid();
+            addBlock({ id: hatId, opcode: 'event_whenbroadcastreceived', next: null, parent: null,
+                inputs: {}, fields: { BROADCAST_OPTION: { name: 'BROADCAST_OPTION', value: bcastName, id: bcastId } },
+                shadow: false, topLevel: true, x: scriptX, y: 50 });
+
+            // Preamble: set cancelled=0, change count by 1
+            const ln = node.line, cl = node.col;
+            const setCancelStmt = { type: 'SetVarStmt',    varName: cancelName, value: { type: 'Num', value: 0 }, line: ln, col: cl };
+            const incrCountStmt = { type: 'ChangeVarStmt', varName: countName,  value: { type: 'Num', value: 1 }, line: ln, col: cl };
+            // Postamble: change count by -1
+            const decrCountStmt = { type: 'ChangeVarStmt', varName: countName,  value: { type: 'Num', value: -1 }, line: ln, col: cl };
+
+            const fullBody = [setCancelStmt, incrCountStmt, ...node.body, decrCountStmt];
+
+            // Register infrastructure vars in routineScope so preamble/postamble genStmt can find them
+            routineScope[cancelName] = cancelV;
+            routineScope[countName]  = countV;
+
+            const bodyFirst = genBody(fullBody, hatId);
+            if (bodyFirst) {
+                blocks[hatId].next       = bodyFirst;
+                blocks[bodyFirst].parent = hatId;
+            }
+
+            // Clean up scopes
+            currentRoutineName = null;
+            for (const { param } of paramVars) delete routineScope[param];
+            delete routineScope[cancelName];
+            delete routineScope[countName];
+        }
+
+        function genLaunchOrAwaitStmt(node) {
+            const rname     = node.name;
+            const bcastName = srInternalName(rname);
+            const ln = node.line, cl = node.col;
+
+            // Ensure param vars exist (they must have been created by the scratchroutine definition)
+            // Set each param before the broadcast
+            const ids = [];
+            for (let i = 0; i < node.args.length; i++) {
+                const pVarName = `__sroutine_${rname}_param${i}`;
+                // Try positional param name lookup from the routine definition
+                // Since we don't have the param names here, use a positional approach
+                // Best effort: find the var whose name matches __sroutine_<name>_<something>
+                // We resolve by looking in global vars for positional match
+                const stage = vm.runtime.targets.find(t => t.isStage);
+                if (!stage) break;
+                const stageVars = Object.values(stage.variables).filter(v =>
+                    v.name.startsWith(`__sroutine_${rname}_`) && v.type === '' &&
+                    v.name !== `__sroutine_${rname}_cancelled` && v.name !== `__sroutine_${rname}_count`);
+                // Sort alphabetically to get stable param order
+                stageVars.sort((a, b) => a.name < b.name ? -1 : 1);
+                const pV = stageVars[i];
+                if (!pV) continue;
+                const setId = genStmt({ type: 'SetVarStmt', varName: pV.name,
+                    value: node.args[i], line: ln, col: cl }, null);
+                if (setId) ids.push(setId);
+            }
+
+            const bcastId = ensureBroadcast(bcastName);
+            const isAwait = node.type === 'AwaitStmt';
+            const bcastStmt = isAwait
+                ? { type: 'BroadcastWaitStmt', msg: { type: 'Str', value: bcastName, line: ln, col: cl }, line: ln, col: cl }
+                : { type: 'BroadcastStmt',     msg: { type: 'Str', value: bcastName, line: ln, col: cl }, line: ln, col: cl };
+            const bcastBlockId = genStmt(bcastStmt, null);
+            if (bcastBlockId) ids.push(bcastBlockId);
+
+            return ids;
+        }
+
         function genBody(stmts, parentId) {
             const [first] = genStmts(stmts, parentId);
             return first;
@@ -4996,6 +5374,52 @@
                     addBlock({ id, opcode: 'control_stop', next: null, parent: parentId,
                         inputs: {}, fields: { STOP_OPTION: { name: 'STOP_OPTION', value: node.option } },
                         shadow: false, topLevel: false });
+                    return id;
+                }
+                case 'CancelStmt': {
+                    // set [__sroutine_<name>_cancelled] to 1
+                    const flagName = `__sroutine_${node.name}_cancelled`;
+                    const flagV = resolveVar(flagName);
+                    if (!flagV) {
+                        errors.push({ line: node.line||1, col: node.col||1, len: 6,
+                            message: `\`cancel ${node.name}\`: scratchroutine \`${node.name}\` has not been defined` });
+                        return null;
+                    }
+                    addBlock({ id, opcode: 'data_setvariableto', next: null, parent: parentId,
+                        inputs: { VALUE: strInput({ type: 'Num', value: 1 }, id) },
+                        fields: { VARIABLE: { name: 'VARIABLE', value: flagV.name, id: flagV.id } },
+                        shadow: false, topLevel: false });
+                    return id;
+                }
+                case 'CheckCancelStmt': {
+                    // if [__sroutine_<currentRoutineName>_cancelled] = 1 { stopThis() }
+                    if (!currentRoutineName) {
+                        errors.push({ line: node.line||1, col: node.col||1, len: 11,
+                            message: '`checkCancel()` must be used inside a `scratchroutine` body' });
+                        return null;
+                    }
+                    const flagName2 = `__sroutine_${currentRoutineName}_cancelled`;
+                    const flagV2 = resolveVar(flagName2);
+                    if (!flagV2) { errors.push({ line: node.line||1, col: node.col||1, len: 11, message: `checkCancel: cancel flag not found` }); return null; }
+                    const flagVarId = uid();
+                    addBlock({ id: flagVarId, opcode: 'data_variable', next: null, parent: id,
+                        inputs: {}, fields: { VARIABLE: { name: 'VARIABLE', value: flagV2.name, id: flagV2.id } },
+                        shadow: false, topLevel: false });
+                    const oneId = uid();
+                    addBlock({ id: oneId, opcode: 'math_number', next: null, parent: id,
+                        inputs: {}, fields: { NUM: { name: 'NUM', value: '1' } },
+                        shadow: true, topLevel: false });
+                    const eqId = uid();
+                    addBlock({ id: eqId, opcode: 'operator_equals', next: null, parent: id,
+                        inputs: { OPERAND1: inp(flagVarId, oneId), OPERAND2: inp(oneId, oneId) },
+                        fields: {}, shadow: false, topLevel: false });
+                    const stopId = uid();
+                    addBlock({ id: stopId, opcode: 'control_stop', next: null, parent: id,
+                        inputs: {}, fields: { STOP_OPTION: { name: 'STOP_OPTION', value: 'this script' } },
+                        shadow: false, topLevel: false });
+                    addBlock({ id, opcode: 'control_if', next: null, parent: parentId,
+                        inputs: { CONDITION: inp(eqId, null), SUBSTACK: inp(stopId, null) },
+                        fields: {}, shadow: false, topLevel: false });
                     return id;
                 }
                 case 'CreateCloneStmt': {
@@ -5546,6 +5970,9 @@
             } else if (block.type === 'DefineBlock') {
                 genDefineBlock(block, scriptX);
                 scriptX += 400;
+            } else if (block.type === 'ScratchroutineStmt') {
+                genScratchroutineStmt(block, scriptX);
+                scriptX += 400;
             }
         }
 
@@ -5971,14 +6398,37 @@
             case 'sound_cleareffects':  return `${I}clearSoundEffects()\n`;
 
             // Events
-            case 'event_broadcast':        return `${I}broadcast(${decompBroadcast(block,'BROADCAST_INPUT',B)})\n`;
-            case 'event_broadcastandwait': return `${I}broadcastAndWait(${decompBroadcast(block,'BROADCAST_INPUT',B)})\n`;
+            case 'event_broadcast': {
+                const bcastStr = decompBroadcast(block,'BROADCAST_INPUT',B);
+                const srM = bcastStr.replace(/^"|"$/g,'').match(/^__sroutine_(.+)$/);
+                if (srM) return `${I}launch ${srM[1]}()\n`;
+                return `${I}broadcast(${bcastStr})\n`;
+            }
+            case 'event_broadcastandwait': {
+                const bcastStr = decompBroadcast(block,'BROADCAST_INPUT',B);
+                const srM = bcastStr.replace(/^"|"$/g,'').match(/^__sroutine_(.+)$/);
+                if (srM) return `${I}await ${srM[1]}()\n`;
+                return `${I}broadcastAndWait(${bcastStr})\n`;
+            }
 
             // Data – variables
-            case 'data_setvariableto':
-                return `${I}set [${fieldVal(block,'VARIABLE') ?? ''}] to ${decompInput(block,'VALUE',B,false)}\n`;
-            case 'data_changevariableby':
-                return `${I}change [${fieldVal(block,'VARIABLE') ?? ''}] by ${decompInput(block,'VALUE',B,true)}\n`;
+            case 'data_setvariableto': {
+                const sv = fieldVal(block,'VARIABLE') ?? '';
+                const cancelM = sv.match(/^__sroutine_(.+)_cancelled$/);
+                if (cancelM) return `${I}cancel ${cancelM[1]}\n`;
+                // Hide internal scratchroutine infrastructure vars from decompiled output
+                if (sv.startsWith('__sroutine_') || /^_scratchpiler_internal_[a-z0-9]{4}_agg_/.test(sv)) {
+                    return '';
+                }
+                return `${I}set [${sv}] to ${decompInput(block,'VALUE',B,false)}\n`;
+            }
+            case 'data_changevariableby': {
+                const cv = fieldVal(block,'VARIABLE') ?? '';
+                if (cv.startsWith('__sroutine_') || /^_scratchpiler_internal_[a-z0-9]{4}_agg_/.test(cv)) {
+                    return '';
+                }
+                return `${I}change [${cv}] by ${decompInput(block,'VALUE',B,true)}\n`;
+            }
             case 'data_showvariable': return `${I}showVariable([${fieldVal(block,'VARIABLE') ?? ''}])\n`;
             case 'data_hidevariable': return `${I}hideVariable([${fieldVal(block,'VARIABLE') ?? ''}])\n`;
             case 'data_showlist':     return `${I}showList([${fieldVal(block,'LIST') ?? ''}])\n`;
@@ -6134,6 +6584,44 @@
                 }
             }
 
+            // Detect scratchroutine launch/await: one or more param-set blocks → broadcast("__sroutine_*")
+            if (block.opcode === 'data_setvariableto') {
+                const varName0 = fieldVal(block, 'VARIABLE') ?? '';
+                const srParamMatch = varName0.match(/^__sroutine_(.+?)_(?!cancelled$|count$)(.+)$/);
+                if (srParamMatch) {
+                    const rname = srParamMatch[1];
+                    // Collect all consecutive param-set blocks for this routine
+                    const paramArgs = [];
+                    let scanId = id;
+                    while (scanId && B[scanId]) {
+                        const sb = B[scanId];
+                        const sv = fieldVal(sb, 'VARIABLE') ?? '';
+                        const pm = sv.match(new RegExp(`^__sroutine_${rname}_(?!cancelled$|count$)(.+)$`));
+                        if (sb.opcode === 'data_setvariableto' && pm) {
+                            paramArgs.push(decompInput(sb, 'VALUE', B, false));
+                            scanId = sb.next || null;
+                        } else break;
+                    }
+                    // Check if next is the broadcast for this routine
+                    const bcastBlock = scanId && B[scanId];
+                    const isBcast = bcastBlock &&
+                        (bcastBlock.opcode === 'event_broadcast' || bcastBlock.opcode === 'event_broadcastandwait');
+                    if (isBcast) {
+                        const inputBlock = inpBlock(bcastBlock, 'BROADCAST_INPUT', B);
+                        const msgVal = inputBlock && inputBlock.opcode === 'event_broadcast_menu'
+                            ? (fieldVal(inputBlock, 'BROADCAST_OPTION') ?? '')
+                            : decompInput(bcastBlock, 'BROADCAST_INPUT', B, false).replace(/^"|"$/g, '');
+                        if (msgVal === `__sroutine_${rname}`) {
+                            const kw = bcastBlock.opcode === 'event_broadcastandwait' ? 'await' : 'launch';
+                            const argsStr = paramArgs.length ? `(${paramArgs.join(', ')})` : '()';
+                            lines.push(`${indent}${kw} ${rname}${argsStr}\n`);
+                            id = bcastBlock.next || null;
+                            continue;
+                        }
+                    }
+                }
+            }
+
             // Detect compiled for-loop: set(internal_iter) → repeat_until(iter > end, [...body, change(iter, 1)])
             if (block.opcode === 'data_setvariableto') {
                 const iterName = fieldVal(block, 'VARIABLE') ?? '';
@@ -6205,9 +6693,31 @@
             case 'event_whenkeypressed':
                 header = `on key "${fieldVal(hat,'KEY_OPTION') ?? 'space'}"`;
                 break;
-            case 'event_whenbroadcastreceived':
-                header = `on receive "${fieldVal(hat,'BROADCAST_OPTION') ?? ''}"`;
+            case 'event_whenbroadcastreceived': {
+                const bcastVal = fieldVal(hat,'BROADCAST_OPTION') ?? '';
+                const srMatch  = bcastVal.match(/^__sroutine_(.+)$/);
+                if (srMatch) {
+                    const rname = srMatch[1];
+                    // Strip the scratchroutine preamble (set cancelled=0 + change count by 1)
+                    // and postamble (change count by -1) from the body
+                    let bodyStr = decompChain(hat.next, B, '    ');
+                    // The first two lines are preamble, the last is postamble
+                    const bodyLines = bodyStr.split('\n').filter(l => l.trim());
+                    const firstLine = bodyLines[0] || '';
+                    const secondLine = bodyLines[1] || '';
+                    const lastLine  = bodyLines[bodyLines.length - 1] || '';
+                    const isPreamble1 = firstLine.includes(`__sroutine_${rname}_cancelled`);
+                    const isPreamble2 = secondLine.includes(`__sroutine_${rname}_count`);
+                    const isPostamble = lastLine.includes(`__sroutine_${rname}_count`);
+                    const userLines = bodyLines.slice(
+                        (isPreamble1 ? 1 : 0) + (isPreamble2 ? 1 : 0),
+                        isPostamble ? bodyLines.length - 1 : bodyLines.length
+                    );
+                    return `scratchroutine ${rname} {\n${userLines.map(l => l + '\n').join('')}}`;
+                }
+                header = `on receive "${bcastVal}"`;
                 break;
+            }
             case 'event_whenbackdropswitchesto':
                 header = `on backdrop "${fieldVal(hat,'BACKDROP') ?? ''}"`;
                 break;

@@ -197,6 +197,38 @@ set [top] to [leaderboard].sort()   // parse error: "is a statement"
 
 ---
 
+### .sum(), .min(), .max(), .count(val)
+
+Aggregate methods compute a single value from a list. They are **expression-level** (used in `set [x] to` statements) but pre-compile to a hidden loop that iterates the list before the `set`:
+
+```
+set [total] to [scores].sum()
+set [lowest] to [scores].min()
+set [highest] to [scores].max()
+set [nPassed] to [scores].count(1)   // how many items equal 1
+```
+
+**What they compile to** (using `.sum()` as an example):
+
+```
+set [_internal_ctr] to 1
+set [_internal_tmp] to 0
+repeat until ([_internal_ctr] > [scores].length()) {
+    set [_internal_item] to [scores].item([_internal_ctr])
+    change [_internal_tmp] by [_internal_item]
+    change [_internal_ctr] by 1
+}
+set [total] to [_internal_tmp]
+```
+
+The internal variables are hidden from your code and cleaned up by the decompiler.
+
+**Supported only at the `set` statement level** — `set [x] to [list].sum()` works; `move([list].sum() * 2)` does not (the aggregate would need to be computed first; assign it to a variable and then use that variable).
+
+**min/max on empty lists**: returns the empty string `""` (Scratch's value for `list.item(1)` on an empty list). Guard with an `if [list].length() > 0 { }` if needed.
+
+---
+
 ## Subscript syntax
 
 `[list][index]` is shorthand for `[list].item(index)`. Both the list and the index must be variable references (`[...]`), and they must be on the same line (the parser can't distinguish line-spanning subscripts from unrelated adjacent variables).

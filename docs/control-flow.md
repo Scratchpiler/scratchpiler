@@ -333,3 +333,152 @@ forever {
     yield()    // let other scripts breathe before the VM suffocates
 }
 ```
+
+---
+
+## Increment and Decrement
+
+`[var]++` and `[var]--` are statement-level increment/decrement operators. They compile to `change [var] by 1` and `change [var] by -1` respectively. They are not expressions — you cannot use them inside another expression.
+
+```
+on flag {
+    set [counter] to 0
+    repeat 10 {
+        [counter]++
+    }
+    // [counter] is now 10
+}
+```
+
+---
+
+## else if / elif
+
+`else if` and its alias `elif` can be chained without the visual staircase of nested blocks. They compile to a series of `control_if_else` blocks.
+
+```
+on flag {
+    if [score] > 90 {
+        say("A grade")
+    } else if [score] > 70 {
+        say("B grade")
+    } elif [score] > 50 {
+        say("C grade")
+    } else {
+        say("Study harder")
+    }
+}
+```
+
+`elif` is an alias for `else if` and can be used interchangeably.
+
+---
+
+## Scratchroutines
+
+Scratchroutines are named concurrent tasks that compile to broadcast-based pseudo-coroutines. They support parameters, cancellation, and lifecycle queries.
+
+The concept: Scratch already supports concurrent execution through broadcasts — multiple hat blocks can react to the same broadcast simultaneously. Scratchroutines exploit this mechanism while adding a layer of parameter passing (via hidden global variables) and lifecycle tracking (via a hidden count variable per routine).
+
+### Defining a scratchroutine
+
+```
+scratchroutine bounce(speed) {
+    repeat until (touching("_edge_")) {
+        move([speed])
+        checkCancel()
+    }
+    bounce()
+}
+```
+
+This compiles to an `on receive "__sroutine_bounce"` hat block with:
+- A reset of the cancel flag (`__sroutine_bounce_cancelled`)
+- An increment of the running counter (`__sroutine_bounce_count`)
+- Your body (with `[speed]` resolved to the hidden global `__sroutine_bounce_speed`)
+- A decrement of the counter when done
+
+Parameters are passed via hidden global variables and mapped inside the body automatically.
+
+### launch — fire and forget
+
+Sets parameter variables, then broadcasts the routine without waiting.
+
+```
+launch bounce(5)
+```
+
+Equivalent to `broadcast("__sroutine_bounce")` after setting the param var.
+
+### await — block until done
+
+Sets parameter variables, then broadcasts and waits.
+
+```
+await bounce(5)
+// this line runs only after the bounce routine finishes
+say("done bouncing")
+```
+
+Equivalent to `broadcastAndWait("__sroutine_bounce")`.
+
+### cancel — request cancellation
+
+Sets a cancel flag. The routine only stops if it calls `checkCancel()` inside its body.
+
+```
+cancel bounce
+```
+
+This sets `__sroutine_bounce_cancelled` to 1. The running instance of bounce will stop at its next `checkCancel()` call.
+
+### checkCancel — yield to cancel requests
+
+Inside a scratchroutine body, polls the cancel flag and calls `stopThis()` if cancelled. Outside a scratchroutine, this is a compile error.
+
+```
+scratchroutine longTask() {
+    repeat 1000 {
+        // expensive work
+        checkCancel()   // stop here if someone called cancel longTask
+    }
+}
+```
+
+### isRunning — query lifecycle
+
+A boolean expression that is true while the routine's count is greater than 0.
+
+```
+if isRunning(bounce) {
+    say("still bouncing")
+}
+
+wait until not isRunning(bounce)
+say("finally stopped")
+```
+
+Note: because Scratch broadcasts are asynchronous, `isRunning` may be true briefly after a `launch` before the receiver script has started. Use `await` if you need to know exactly when it finishes.
+
+### Full example
+
+```
+scratchroutine orbit(radius) {
+    set [angle] to 0
+    repeat until ([angle] > 360) {
+        setX(([radius]) * sin([angle]))
+        setY(([radius]) * cos([angle]))
+        change [angle] by 5
+        checkCancel()
+        wait(0.05)
+    }
+}
+
+on flag {
+    launch orbit(80)
+    wait(3)
+    cancel orbit
+    wait until not isRunning(orbit)
+    say("orbit stopped")
+}
+```

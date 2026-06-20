@@ -79,10 +79,13 @@ Blocks are injected into the selected sprite. Variables must already exist in Sc
 - **Math & trig** — `abs`, `sqrt`, `floor`, `sin`, `cos`, `clamp`, `random`, and more (Scratch uses degrees, not radians, and so does scratchpiler)
 - **String operators** — `join`, `letterOf`, `contains`, `.length()`
 - **List dot-methods** — `[list].item(i)`, `[list].contains(val)`, `[list].indexOf(val)`, `[list].sort()`
-- **Compound assignment** — `[x] += 1`, `[x] *= 2`
+- **Compound assignment** — `[x] += 1`, `[x] *= 2`, `[x]++`, `[x]--`
 - **Custom blocks** — `define myBlock(param1, param2) { ... }`
 - **Hex color literals** — `#ff6600`
 - **Ergonomic aliases** — friendlier names for common operations: `print()`, `step()`, `left()`, `right()`, `front()`, `back()`, `clone()`, `ask()`, `send()`, `append()`, `push()`, `remove()`, `clear()`, and more
+- **Scratchroutines** — named concurrent tasks: `scratchroutine name(params) {}`, launched with `launch`/`await`, cancelled with `cancel`, queried with `isRunning()`, and interrupted with `checkCancel()`
+- **List aggregates** — `.sum()`, `.min()`, `.max()`, `.count(val)` compile to hidden pre-computation loops
+- **`else if` / `elif` chaining** — flat chaining without visual nesting
 - **Type checking** — linter warns when you pass a variable where a list is expected (or vice versa), before the compiler has to deal with you
 - **Configurable linter** — toggle type checking, dead code detection, and orphaned block warnings independently in Settings
 - **Configurable editor** — tab size, auto-save delay, theme, font size, word wrap, minimap
@@ -113,6 +116,7 @@ Blocks are injected into the selected sprite. Variables must already exist in Sc
 | [docs/looks.md](docs/looks.md) | Looks, costumes, effects |
 | [docs/sound.md](docs/sound.md) | Sound functions |
 | [docs/events.md](docs/events.md) | Events and broadcasting |
+| [docs/scratchroutines.md](docs/scratchroutines.md) | Scratchroutines: concurrent tasks with launch, await, cancel, isRunning |
 | [docs/sensing.md](docs/sensing.md) | Sensing, mouse, keyboard, time |
 | [docs/variables-and-lists.md](docs/variables-and-lists.md) | Variables, lists, dot methods |
 | [docs/math.md](docs/math.md) | Math functions and operators |
