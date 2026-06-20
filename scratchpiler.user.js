@@ -3514,6 +3514,12 @@
                             if (!tryEat(TT.COMMA)) break;
                         }
                         eat(TT.RPAREN, `\`[${t.value}].${method}(...)\`: expected \`)\``);
+                        // sort() is statement-only — can't return a value in expression context
+                        if (method === 'sort') {
+                            errors.push({ line: t.line, col: t.col, len: t.value.length,
+                                message: `\`[${t.value}].sort()\` is a statement — write it on its own line, not inside an expression` });
+                            return varExpr;
+                        }
                         return { type: 'MemberCall', object: varExpr, method, args, line: t.line, col: t.col };
                     }
                 }
@@ -5366,6 +5372,72 @@
         while (id) {
             const block = B[id];
             if (!block) break;
+
+            // Detect compiled .sort(): set(gap,1) → repeat_until(phase1_knuth) → repeat_until(phase2_shell)
+            if (block.opcode === 'data_setvariableto' &&
+                /^_scratchpiler_internal_[a-z0-9]{4}_gap$/.test(fieldVal(block, 'VARIABLE') ?? '')) {
+                const valStr  = decompInput(block, 'VALUE', B, true);
+                const phase1  = block.next ? B[block.next] : null;
+                const phase2  = phase1 && phase1.next ? B[phase1.next] : null;
+                if (valStr === '1' &&
+                    phase1?.opcode === 'control_repeat_until' &&
+                    phase2?.opcode === 'control_repeat_until') {
+                    // Find sorted list name: BFS through phase2's substack for first replaceitemoflist
+                    const listName = (() => {
+                        const q = [inpBlockId(phase2, 'SUBSTACK')];
+                        const seen = new Set();
+                        while (q.length) {
+                            const bid = q.shift();
+                            if (!bid || !B[bid] || seen.has(bid)) continue;
+                            seen.add(bid);
+                            const b = B[bid];
+                            if (b.opcode === 'data_replaceitemoflist') return fieldVal(b, 'LIST');
+                            if (b.next) q.push(b.next);
+                            const sub = inpBlockId(b, 'SUBSTACK');
+                            if (sub) q.push(sub);
+                        }
+                        return null;
+                    })();
+                    if (listName) {
+                        // Detect descending: phase2 body → outer loop → shift loop → condition
+                        // condition: OR(NOT(j>gap), NOT(item cmpOp tmp))
+                        // ascending: inner cmp = operator_gt; descending: operator_lt
+                        const isDesc = (() => {
+                            let bid = inpBlockId(phase2, 'SUBSTACK');
+                            while (bid && B[bid]) {
+                                const b = B[bid];
+                                if (b.opcode === 'control_repeat_until') {
+                                    let bid2 = inpBlockId(b, 'SUBSTACK');
+                                    while (bid2 && B[bid2]) {
+                                        const b2 = B[bid2];
+                                        if (b2.opcode === 'control_repeat_until') {
+                                            const condId  = inpBlockId(b2, 'CONDITION');
+                                            const condB   = condId && B[condId];
+                                            if (condB?.opcode === 'operator_or') {
+                                                const op2Id = inpBlockId(condB, 'OPERAND2');
+                                                const op2B  = op2Id && B[op2Id];
+                                                if (op2B?.opcode === 'operator_not') {
+                                                    const innerId = inpBlockId(op2B, 'OPERAND');
+                                                    const innerB  = innerId && B[innerId];
+                                                    return innerB?.opcode === 'operator_lt';
+                                                }
+                                            }
+                                            return false;
+                                        }
+                                        bid2 = b2.next || null;
+                                    }
+                                    return false;
+                                }
+                                bid = b.next || null;
+                            }
+                            return false;
+                        })();
+                        lines.push(`${indent}[${listName}].sort${isDesc ? '("desc")' : '()'}\n`);
+                        id = phase2.next || null;
+                        continue;
+                    }
+                }
+            }
 
             // Detect compiled for-loop: set(internal_iter) → repeat_until(iter > end, [...body, change(iter, 1)])
             if (block.opcode === 'data_setvariableto') {
