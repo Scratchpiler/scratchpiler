@@ -18,6 +18,7 @@
     const MONACO_CDN = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min';
     const LANG_ID    = 'scratchpiler';
     const LS_KEY     = 'scratchpiler-content';
+    const LS_INJ_KEY = 'scratchpiler-injected'; // persisted top-level hat block IDs per sprite
 
     // ─── [D] VM Acquisition ───────────────────────────────────────────────────
 
@@ -2267,11 +2268,13 @@
             const keysToRemove = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && key.startsWith('scratchpiler-content-')) keysToRemove.push(key);
+                if (key && (key.startsWith('scratchpiler-content-') || key.startsWith(`${LS_INJ_KEY}-`))) keysToRemove.push(key);
             }
             keysToRemove.forEach(k => { localStorage.removeItem(k); cleared++; });
             // Also clear the legacy key
             try { localStorage.removeItem('scratchpiler-editor-content'); cleared++; } catch {}
+            // Clear in-memory injected ID tracking too (persisted entries are already removed above)
+            injectedBlockIds.clear();
             updateStatus(`✓ Cleared ${cleared} cached entries`);
             // Reload editor from VM for current sprite
             if (currentSpriteContext) loadFromLocalStorage(currentSpriteContext);
@@ -2305,11 +2308,11 @@
             }
             injectedBlockIds.clear();
 
-            // 2. Clear all localStorage caches
+            // 2. Clear all localStorage caches (content + persisted injected IDs)
             const keysToRemove = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && key.startsWith('scratchpiler-content-')) keysToRemove.push(key);
+                if (key && (key.startsWith('scratchpiler-content-') || key.startsWith(`${LS_INJ_KEY}-`))) keysToRemove.push(key);
             }
             keysToRemove.forEach(k => localStorage.removeItem(k));
             try { localStorage.removeItem('scratchpiler-editor-content'); } catch {}
@@ -2675,7 +2678,33 @@
 
     let saveTimer = null;
     let lintTimer = null;
-    const injectedBlockIds = new Map(); // spriteName → Set<id>
+    const injectedBlockIds = new Map(); // spriteName → Set<id> (top-level hat block IDs only)
+
+    /** Persist the current in-memory injectedBlockIds entry for a sprite to localStorage. */
+    function persistInjectedIds(spriteName) {
+        const ids = injectedBlockIds.get(spriteName);
+        try {
+            if (ids && ids.size > 0) {
+                localStorage.setItem(`${LS_INJ_KEY}-${spriteName}`, JSON.stringify([...ids]));
+            } else {
+                localStorage.removeItem(`${LS_INJ_KEY}-${spriteName}`);
+            }
+        } catch (_) {}
+    }
+
+    /**
+     * Restore injectedBlockIds for a sprite from localStorage (if not already loaded).
+     * Called before each injection so cleanup works correctly after a page reload.
+     */
+    function restoreInjectedIds(spriteName) {
+        if (injectedBlockIds.has(spriteName)) return; // already loaded
+        try {
+            const raw = localStorage.getItem(`${LS_INJ_KEY}-${spriteName}`);
+            if (raw) {
+                injectedBlockIds.set(spriteName, new Set(JSON.parse(raw)));
+            }
+        } catch (_) {}
+    }
 
     let currentSpriteContext = null; // track current sprite for per-sprite save/load
 
@@ -5579,13 +5608,31 @@
             : (vm.runtime.targets.find(t => !t.isStage && t.sprite.name === spriteName) || vm.editingTarget);
         if (!target) { updateStatus('Error: sprite not found'); return; }
 
-        // Remove previously injected blocks for atomicity
+        // Restore previously-persisted injected IDs from localStorage.
+        // This is essential for cleanup to work after a page reload: without it,
+        // injectedBlockIds is empty and old hat blocks (baked into the saved project)
+        // are never removed, causing duplicates to accumulate with every injection.
+        restoreInjectedIds(spriteName);
+
+        // Remove previously injected top-level hat blocks.
+        // We only call deleteBlock on top-level blocks (topLevel === true) because
+        // Scratch's deleteBlock cascades and removes the entire sub-tree.  Calling
+        // it on individual child IDs first would detach them from their parents and
+        // leave the parent hat in a corrupted state, causing orphaned blocks.
         const prevIds = injectedBlockIds.get(spriteName);
         if (prevIds) {
             for (const id of prevIds) {
                 try { target.blocks.deleteBlock(id); } catch (_) {}
             }
         }
+
+        // Collect the top-level hat/define block IDs from the new blockMap so we
+        // can persist them for cleanup on the next injection (even after a reload).
+        const newTopLevelIds = new Set(
+            Object.values(blockMap)
+                .filter(b => b.topLevel && !b.shadow)
+                .map(b => b.id)
+        );
 
         let count = 0;
         for (const block of Object.values(blockMap)) {
@@ -5597,8 +5644,10 @@
             }
         }
 
-        // Track the injected IDs for this sprite
-        injectedBlockIds.set(spriteName, new Set(Object.keys(blockMap)));
+        // Track only the top-level hat/define IDs for this sprite and persist them
+        // to localStorage so cleanup survives page reloads.
+        injectedBlockIds.set(spriteName, newTopLevelIds);
+        persistInjectedIds(spriteName);
 
         // Reload the Blockly workspace from VM state.
         // setEditingTarget internally calls emitWorkspaceUpdate, which is the
@@ -5858,7 +5907,20 @@
                     currentVM = vm;
                     reindex(vm);
                     vm.on('targetsUpdate',   () => { reindex(vm); if (overlayVisible) populateSpriteDropdown(); });
-                    vm.runtime.on('PROJECT_LOADED', () => reindex(vm));
+                    vm.runtime.on('PROJECT_LOADED', () => {
+                        // A new project was loaded — any previously-tracked injected block IDs
+                        // are stale (they belonged to the old project).  Clear both the in-memory
+                        // map and the persisted localStorage entries so the next injection starts
+                        // clean and doesn't try to delete IDs that no longer exist.
+                        const injectedKeys = [];
+                        for (let i = 0; i < localStorage.length; i++) {
+                            const k = localStorage.key(i);
+                            if (k && k.startsWith(`${LS_INJ_KEY}-`)) injectedKeys.push(k);
+                        }
+                        injectedKeys.forEach(k => localStorage.removeItem(k));
+                        injectedBlockIds.clear();
+                        reindex(vm);
+                    });
 
                     // If the overlay was opened before the VM was acquired,
                     // re-trigger the sprite selection so the editor decompiles live code.
