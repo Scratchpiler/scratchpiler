@@ -215,6 +215,10 @@
         'print','println','step','forward','left','right',
         'append','push','pop','remove','insert','replace','clear',
         'front','back','clone','stopMe','ask','send','sendAndWait',
+        // else-if alias
+        'elif',
+        // Scratchroutines
+        'scratchroutine','launch','await','cancel','isRunning','checkCancel',
     ];
 
     function registerLanguage(monaco) {
@@ -3453,7 +3457,7 @@
             const t = peek();
             const v = t.value;
 
-            if (v === 'if')            return parseIf();
+            if (v === 'if' || v === 'elif') return parseIf();
             if (v === 'repeat' && tokens[pos+1] && tokens[pos+1].value === 'until') return parseRepeatUntil();
             if (v === 'repeat')        return parseRepeat();
             if (v === 'forever')       return parseForever();
@@ -3461,6 +3465,10 @@
             if (v === 'while')         return parseWhile();
             if (v === 'for')           return parseFor();
             if (v === 'pyfor')         return parsePyFor();
+            if (v === 'scratchroutine') return parseScratchroutine();
+            if (v === 'launch')        return parseLaunchAwait('launch');
+            if (v === 'await')         return parseLaunchAwait('await');
+            if (v === 'cancel')        return parseCancel();
 
             return parseSimpleStatement();
         }
@@ -3470,7 +3478,15 @@
             const cond = parseExpr();
             const then = parseBody();
             let alt = null;
-            if (checkV('else')) { pos++; alt = parseBody(); }
+            if (checkV('else')) {
+                pos++;
+                // else if / else elif — recursively parse, wrap in array so alt is a body
+                if (checkV('if') || checkV('elif')) {
+                    alt = [parseIf()];
+                } else {
+                    alt = parseBody();
+                }
+            }
             return { type: 'IfStmt', cond, then, alt, line: t.line, col: t.col };
         }
 
@@ -3573,6 +3589,21 @@
                 return { type: 'MemberCallStmt',
                     object: { type: 'Var', name: t.value, line: t.line, col: t.col },
                     method, args, line: t.line, col: t.col };
+            }
+
+            // Increment / decrement: [var]++ or [var]--
+            if (t.type === TT.VAR) {
+                const n1 = tokens[pos+1], n2 = tokens[pos+2];
+                if (n1 && n2 && n1.type === TT.PLUS  && n2.type === TT.PLUS) {
+                    pos += 3;
+                    return { type: 'ChangeVarStmt', varName: t.value,
+                             value: { type: 'Num', value: 1,  line: t.line, col: t.col }, line: t.line, col: t.col };
+                }
+                if (n1 && n2 && n1.type === TT.MINUS && n2.type === TT.MINUS) {
+                    pos += 3;
+                    return { type: 'ChangeVarStmt', varName: t.value,
+                             value: { type: 'Num', value: -1, line: t.line, col: t.col }, line: t.line, col: t.col };
+                }
             }
 
             // Compound assignment: [var] += / -= / *= / /= expr
