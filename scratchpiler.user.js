@@ -283,6 +283,8 @@
                         { label: 'contains(item)', insertText: 'contains(${1:item})', detail: 'List · data_listcontainsitem' },
                         { label: 'item(index)',    insertText: 'item(${1:index})',    detail: 'List · data_itemoflist' },
                         { label: 'indexOf(item)',  insertText: 'indexOf(${1:item})',  detail: 'List · data_itemnumoflist' },
+                        { label: 'sort()',         insertText: 'sort()',              detail: 'List · sort ascending (Shell sort)' },
+                        { label: 'sort("desc")',   insertText: 'sort("desc")',        detail: 'List · sort descending (Shell sort)' },
                     ];
                     return {
                         suggestions: DOT_METHODS.map(m => ({
@@ -356,6 +358,7 @@
             'contains':         { label: '[list].contains(item)', params: [{ label: 'item', documentation: 'Value to search for' }] },
             'item':             { label: '[list].item(index)',    params: [{ label: 'index', documentation: '1-based position' }] },
             'indexOf':          { label: '[list].indexOf(item)',  params: [{ label: 'item', documentation: 'Value to find' }] },
+            'sort':             { label: '[list].sort()  |  [list].sort("desc")', params: [] },
             // Math / trig
             'abs':     { label: 'abs(n)',                    params: [{ label: 'n' }] },
             'round':   { label: 'round(n)',                  params: [{ label: 'n' }] },
@@ -3192,6 +3195,23 @@
             const t = peek();
             const v = t.value;
 
+            // Statement-level dot method call: [var].sort() etc.
+            if (t.type === TT.VAR && tokens[pos+1]?.type === TT.DOT) {
+                pos++; pos++; // consume [var] and '.'
+                const mTok = peek();
+                const method = mTok.type === TT.IDENT ? mTok.value : '';
+                if (mTok.type === TT.IDENT) pos++;
+                eat(TT.LPAREN, `\`[${t.value}].${method}(...)\`: expected \`(\``);
+                const args = [];
+                while (!check(TT.RPAREN) && !check(TT.EOF)) {
+                    args.push(parseExpr()); if (!tryEat(TT.COMMA)) break;
+                }
+                eat(TT.RPAREN, `\`[${t.value}].${method}(...)\`: expected \`)\``);
+                return { type: 'MemberCallStmt',
+                    object: { type: 'Var', name: t.value, line: t.line, col: t.col },
+                    method, args, line: t.line, col: t.col };
+            }
+
             // Compound assignment: [var] += / -= / *= / /= expr
             if (t.type === TT.VAR) {
                 const next1 = tokens[pos+1];
@@ -3790,7 +3810,7 @@
             }
 
             errors.push({ line: expr.line||1, col: expr.col||1, len: m.length,
-                message: `Unknown method .${m}() — available: .length(), .contains(item), .item(index), .indexOf(item)` });
+                message: `Unknown method .${m}() — expression methods: .length(), .contains(item), .item(index), .indexOf(item) | statement method: .sort() / .sort("desc")` });
             return null;
         }
 
@@ -4048,6 +4068,9 @@
                     const [setId, loopId] = genForStmt(stmt);
                     if (setId)  ids.push(setId);
                     if (loopId) ids.push(loopId);
+                } else if (stmt.type === 'MemberCallStmt') {
+                    const sortIds = genMemberCallStmt(stmt);
+                    sortIds.forEach(id => { if (id) ids.push(id); });
                 } else {
                     const id = genStmt(stmt, null);
                     if (id) ids.push(id);
@@ -4061,6 +4084,102 @@
             // Fix parent of first
             if (ids[0] && parentId) blocks[ids[0]].parent = parentId;
             return [ids[0] || null, ids[ids.length - 1] || null];
+        }
+
+        function genMemberCallStmt(node) {
+            if (node.method !== 'sort') {
+                errors.push({ line: node.line||1, col: node.col||1, len: node.method.length,
+                    message: `Unknown statement-level method .${node.method}() — only .sort() / .sort("desc") are supported` });
+                return [];
+            }
+
+            const listVarName = node.object.name;
+            const listV = resolveVar(listVarName);
+            if (!listV || listV.type !== 'list') {
+                errors.push({ line: node.line||1, col: node.col||1, len: listVarName.length,
+                    message: `.sort() requires a list variable — [${listVarName}] is not a list or was not found. Create it in Scratch first.` });
+                return [];
+            }
+
+            const desc = node.args.length > 0 && node.args[0].type === 'Str' && node.args[0].value === 'desc';
+
+            const rand4 = Math.random().toString(36).slice(2, 6);
+            const pfx   = `_scratchpiler_internal_${rand4}_`;
+            const activeTarget = spriteName === '__stage__'
+                ? vm.runtime.targets.find(t => t.isStage)
+                : vm.runtime.targets.find(t => t.sprite.name === spriteName);
+            if (!activeTarget) {
+                errors.push({ line: node.line||1, col: node.col||1, len: 4,
+                    message: `sort: could not resolve target "${spriteName}"` });
+                return [];
+            }
+
+            // Create the four Knuth/shell-sort temp variables
+            const names = { gap: pfx+'gap', i: pfx+'i', j: pfx+'j', tmp: pfx+'tmp' };
+            for (const nm of Object.values(names)) {
+                if (!Object.values(activeTarget.variables).find(v => v.name === nm))
+                    activeTarget.createVariable(uid(), nm, '');
+            }
+
+            // Synthetic AST builder helpers — each call produces a fresh node
+            const ln = node.line, cl = node.col;
+            const Lnode = { type: 'Var', name: listVarName, line: ln, col: cl };
+            const V   = nm  => ({ type: 'Var',  name: nm,        line: ln, col: cl });
+            const N   = v   => ({ type: 'Num',  value: v,        line: ln, col: cl });
+            const bop = (op, l, r) => ({ type: 'BinOp', op, left: l, right: r, line: ln, col: cl });
+            const not_= e   => ({ type: 'UnaryOp', op: 'not', operand: e, line: ln, col: cl });
+            const itm = idx => ({ type: 'MemberCall', object: Lnode, method: 'item',   args: [idx], line: ln, col: cl });
+            const len = ()  => ({ type: 'MemberCall', object: Lnode, method: 'length', args: [],    line: ln, col: cl });
+            const flr = e   => ({ type: 'CallExpr',   name: 'floor', args: [e],        line: ln, col: cl });
+            const SET = (nm, val) => ({ type: 'SetVarStmt',    varName: nm, value: val, line: ln, col: cl });
+            const CHG = (nm, val) => ({ type: 'ChangeVarStmt', varName: nm, value: val, line: ln, col: cl });
+            const REP = (idx,val) => ({ type: 'ListReplaceStmt', listName: listVarName, index: idx, item: val, line: ln, col: cl });
+            const RU  = (cond, body) => ({ type: 'RepeatUntilStmt', cond, body, line: ln, col: cl });
+
+            const { gap, i, j, tmp } = names;
+
+            // ascending: shift while item[j-gap] > tmp | descending: shift while item[j-gap] < tmp
+            const cmpOp = desc ? '<' : '>';
+
+            // Inner shift body: move list[j-gap] → list[j], then j -= gap
+            const shiftBody = [
+                REP(V(j), itm(bop('-', V(j), V(gap)))),
+                SET(j,    bop('-', V(j), V(gap))),
+            ];
+            // Shift stop: NOT(j > gap) OR NOT(list[j-gap] cmpOp tmp)
+            const shiftStop = bop('or',
+                not_(bop('>',    V(j),                         V(gap))),
+                not_(bop(cmpOp,  itm(bop('-', V(j), V(gap))), V(tmp)))
+            );
+
+            // Insertion sort for one gap pass
+            const insertBody = [
+                SET(tmp, itm(V(i))),
+                SET(j,   V(i)),
+                RU(shiftStop, shiftBody),
+                REP(V(j), V(tmp)),
+                CHG(i, N(1)),
+            ];
+
+            // Shell sort: iterate through each outer i for this gap
+            const passBody = [
+                SET(i, bop('+', V(gap), N(1))),
+                RU(bop('>', V(i), len()), insertBody),
+                SET(gap, flr(bop('/', V(gap), N(3)))),
+            ];
+
+            // Phase 1 – find largest Knuth gap < list.length
+            // repeat until NOT(gap*3+1 < list.length): gap = gap*3+1
+            const p1Stop = not_(bop('<', bop('+', bop('*', V(gap), N(3)), N(1)), len()));
+            const p1Body = [SET(gap, bop('+', bop('*', V(gap), N(3)), N(1)))];
+
+            // Compile the three top-level sort blocks
+            const stmts = [
+                SET(gap, N(1)),
+                RU(p1Stop, p1Body),
+                RU(bop('<', V(gap), N(1)), passBody),
+            ];
+            return stmts.map(s => genStmt(s, null)).filter(Boolean);
         }
 
         function genForStmt(node) {
