@@ -495,6 +495,28 @@
             }
         });
 
+        monaco.languages.registerFoldingRangeProvider(LANG_ID, {
+            provideFoldingRanges(model) {
+                const ranges = [];
+                const lines = model.getLinesContent();
+                const stack = [];
+                for (let i = 0; i < lines.length; i++) {
+                    const t = lines[i].trim();
+                    if (t.endsWith('{')) stack.push(i + 1);
+                    else if (t === '}' || t.startsWith('}')) {
+                        if (stack.length) {
+                            const start = stack.pop();
+                            if (i + 1 > start) {
+                                ranges.push({ start, end: i + 1,
+                                    kind: monaco.languages.FoldingRangeKind.Region });
+                            }
+                        }
+                    }
+                }
+                return ranges;
+            }
+        });
+
         monaco.languages.setLanguageConfiguration(LANG_ID, {
             comments: { lineComment: '//' },
             brackets: [['{', '}'], ['(', ')'], ['[', ']']],
@@ -1121,6 +1143,126 @@
             }
             #sp-sn-status { font-size: 11px; color: #3d5270; }
             #sp-sn-tip { font-size: 10px; color: #263040; font-family: ui-monospace, monospace; }
+
+            /* ── Compile button flash ───────────────────────────────────────── */
+            @keyframes sp-flash-success {
+                0%   { background: #ff8c00; border-color: #ff8c00; box-shadow: none; }
+                35%  { background: #22c55e; border-color: #22c55e; box-shadow: 0 0 20px rgba(34,197,94,0.55); }
+                100% { background: #ff8c00; border-color: #ff8c00; box-shadow: none; }
+            }
+            @keyframes sp-flash-error {
+                0%   { background: #ff8c00; border-color: #ff8c00; box-shadow: none; }
+                35%  { background: #ef4444; border-color: #ef4444; box-shadow: 0 0 20px rgba(239,68,68,0.55); }
+                100% { background: #ff8c00; border-color: #ff8c00; box-shadow: none; }
+            }
+            #scratchpiler-compile-btn.sp-flash-ok  { animation: sp-flash-success 0.65s ease forwards; }
+            #scratchpiler-compile-btn.sp-flash-err { animation: sp-flash-error  0.65s ease forwards; }
+
+            /* ── Sidebar resize handle ──────────────────────────────────────── */
+            #sp-sidebar-resize {
+                width: 4px; cursor: col-resize; background: transparent;
+                flex-shrink: 0; transition: background 0.15s; z-index: 1;
+            }
+            #sp-sidebar-resize:hover, #sp-sidebar-resize.sp-resizing { background: #ff8c0066; }
+
+            /* ── Output panel ───────────────────────────────────────────────── */
+            #sp-output-panel {
+                border-top: 1px solid #002e5a; background: #001021;
+                display: flex; flex-direction: column; flex-shrink: 0;
+                overflow: hidden; height: 26px; transition: height 0.15s ease;
+            }
+            #sp-output-panel.sp-expanded { height: 160px; }
+            #sp-output-header {
+                display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+                padding: 0 8px; height: 26px; cursor: pointer;
+                border-bottom: 1px solid #002e5a; user-select: none;
+            }
+            #sp-output-header:hover { background: #001d3d; }
+            #sp-output-header-title {
+                font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+                text-transform: uppercase; color: #567399; flex: 1;
+            }
+            .sp-out-hdr-btn {
+                background: transparent; border: none; color: #567399;
+                font-family: inherit; font-size: 10px; cursor: pointer; padding: 2px 6px;
+                border-radius: 3px; line-height: 1;
+                transition: color 0.1s, background 0.1s;
+            }
+            .sp-out-hdr-btn:hover { color: #bbdaff; background: #002247; }
+            #sp-output-log {
+                flex: 1; overflow-y: auto; padding: 2px 0; min-height: 0;
+                font-family: ui-monospace, 'SF Mono', Consolas, monospace; font-size: 11px;
+                display: none;
+            }
+            #sp-output-panel.sp-expanded #sp-output-log { display: block; }
+            .sp-out-entry {
+                padding: 1px 10px; line-height: 1.55;
+                display: flex; gap: 8px; align-items: baseline;
+            }
+            .sp-out-entry.info  .sp-out-text { color: #8ba3c7; }
+            .sp-out-entry.ok    .sp-out-text { color: #4ade80; }
+            .sp-out-entry.error .sp-out-text { color: #f87171; }
+            .sp-out-entry.warn  .sp-out-text { color: #fbbf24; }
+            .sp-out-time { color: #2d3f58; flex-shrink: 0; }
+
+            /* ── Sprite Picker (Ctrl+P) ─────────────────────────────────────── */
+            #sp-picker-backdrop {
+                position: absolute; inset: 0; z-index: 100003;
+                display: flex; align-items: flex-start; justify-content: center;
+                padding-top: 60px; background: rgba(0,6,18,0.55);
+            }
+            #sp-picker-modal {
+                width: min(440px, 90%); background: #191e2d;
+                border: 1px solid #2a3550; border-radius: 8px;
+                box-shadow: 0 20px 70px rgba(0,0,0,0.75);
+                display: flex; flex-direction: column; overflow: hidden;
+                font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            }
+            #sp-picker-input {
+                width: 100%; background: transparent; border: none;
+                border-bottom: 1px solid #212a3f; outline: none;
+                color: #e0eeff; font-family: inherit; font-size: 14px;
+                caret-color: #ff8c00; padding: 11px 16px; box-sizing: border-box;
+            }
+            #sp-picker-input::placeholder { color: #35486a; }
+            #sp-picker-list { max-height: 280px; overflow-y: auto; padding: 4px 0; }
+            .sp-picker-item {
+                display: flex; align-items: center; gap: 10px;
+                padding: 7px 16px; cursor: pointer; transition: background 0.07s;
+            }
+            .sp-picker-item:hover, .sp-picker-item.sp-picker-focused { background: #223050; }
+            .sp-picker-item-icon { color: #567399; font-size: 11px; flex-shrink: 0; width: 16px; text-align: center; }
+            .sp-picker-item-name { font-size: 13px; color: #bdd4ee; }
+            .sp-picker-item-name em { color: #ff8c00; font-style: normal; font-weight: 600; }
+            .sp-picker-item-sub { font-size: 11px; color: #3d5270; margin-left: auto; flex-shrink: 0; }
+            #sp-picker-empty { padding: 18px 16px; text-align: center; color: #35486a; font-size: 13px; }
+            #sp-picker-footer {
+                padding: 5px 12px; border-top: 1px solid #1c2236;
+                background: #141824; font-size: 10px; color: #263040;
+                font-family: ui-monospace, monospace;
+            }
+
+            /* ── Sprite context menu ────────────────────────────────────────── */
+            .sp-ctx-menu {
+                position: fixed; z-index: 999998;
+                background: #001d36; border: 1px solid #002e5a; border-radius: 4px;
+                min-width: 195px; box-shadow: 0 6px 24px rgba(0,12,40,0.65); padding: 4px 0;
+                font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            }
+            .sp-ctx-item {
+                display: flex; align-items: center; justify-content: space-between;
+                width: 100%; background: none; border: none;
+                color: #e8f4ff; font-family: inherit; font-size: 12px;
+                padding: 7px 16px; cursor: pointer; text-align: left;
+                transition: background 0.1s; box-sizing: border-box;
+            }
+            .sp-ctx-item:hover { background: #002e5a; }
+            .sp-ctx-shortcut { color: #567399; font-size: 10px; font-family: ui-monospace, monospace; }
+            .sp-ctx-sep { height: 1px; background: #002e5a; margin: 3px 0; }
+
+            /* ── Clickable detail items ─────────────────────────────────────── */
+            .sp-detail-item { cursor: pointer; }
+            .sp-detail-item:hover { background: #002447; color: #e8f4ff; }
         `;
         document.head.appendChild(style);
 
@@ -1203,6 +1345,11 @@
                                     <div class="sp-sub-accordion">
                                         <div class="sp-sub-accordion-header active" id="sp-subacc-variables-header">▼ Local Variables</div>
                                         <div class="sp-sub-accordion-content active" id="sp-subacc-variables-content"></div>
+                                    </div>
+                                    <!-- Custom Blocks sub-accordion -->
+                                    <div class="sp-sub-accordion">
+                                        <div class="sp-sub-accordion-header active" id="sp-subacc-customblocks-header">▼ Custom Blocks</div>
+                                        <div class="sp-sub-accordion-content active" id="sp-subacc-customblocks-content"></div>
                                     </div>
                                 </div>
                             </div>
@@ -1291,8 +1438,24 @@
                         </div>
                     </div>
                 </div>
+                <div id="sp-sidebar-resize" title="Drag to resize"></div>
                 <div id="scratchpiler-editor-pane">
                     <div id="scratchpiler-editor-container"></div>
+                    <div id="sp-output-panel">
+                        <div id="sp-output-header" title="Toggle Output panel">
+                            <span id="sp-output-header-title">Output</span>
+                            <button class="sp-out-hdr-btn" id="sp-output-clear-btn" title="Clear output">Clear</button>
+                            <button class="sp-out-hdr-btn" id="sp-output-toggle-btn" title="Expand / Collapse">▸</button>
+                        </div>
+                        <div id="sp-output-log"></div>
+                    </div>
+                </div>
+            </div>
+            <div id="sp-picker-backdrop" style="display:none">
+                <div id="sp-picker-modal" role="dialog" aria-label="Go to Sprite">
+                    <input id="sp-picker-input" autocomplete="off" spellcheck="false" placeholder="Go to sprite…" />
+                    <div id="sp-picker-list"></div>
+                    <div id="sp-picker-footer">↑↓ navigate · Enter select · Esc close</div>
                 </div>
             </div>
             <div id="scratchpiler-dialog" style="display:none">
@@ -1628,6 +1791,242 @@
             : `${totalReal} result${totalReal !== 1 ? 's' : ''}  ·  ${totalFake} fabricated`;
     }
 
+    // ─── [I0] Utility: Output Panel, Sprite Picker, Context Menu, Resize ─────
+
+    // Output panel
+    function logToOutput(message, level = 'info') {
+        const log = document.getElementById('sp-output-log');
+        if (!log) return;
+        const panel = document.getElementById('sp-output-panel');
+        if (panel && !panel.classList.contains('sp-expanded')) {
+            panel.classList.add('sp-expanded');
+            const toggleBtn = document.getElementById('sp-output-toggle-btn');
+            if (toggleBtn) toggleBtn.textContent = '▾';
+            if (monacoEditor) setTimeout(() => monacoEditor.layout(), 160);
+        }
+        const now = new Date();
+        const ts = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+        const entry = document.createElement('div');
+        entry.className = `sp-out-entry ${level}`;
+        const safeMsg = String(message).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        entry.innerHTML = `<span class="sp-out-time">[${ts}]</span><span class="sp-out-text">${safeMsg}</span>`;
+        log.appendChild(entry);
+        log.scrollTop = log.scrollHeight;
+    }
+
+    // Compile button flash
+    function flashCompileBtn(ok) {
+        const btn = document.getElementById('scratchpiler-compile-btn');
+        if (!btn) return;
+        btn.classList.remove('sp-flash-ok', 'sp-flash-err');
+        void btn.offsetWidth; // force reflow to restart animation
+        btn.classList.add(ok ? 'sp-flash-ok' : 'sp-flash-err');
+        btn.addEventListener('animationend', () => btn.classList.remove('sp-flash-ok', 'sp-flash-err'), { once: true });
+    }
+
+    // Sprite picker (Ctrl+P)
+    let spPickerOpen     = false;
+    let spPickerFocusIdx = -1;
+
+    function openSpritePicker() {
+        if (spPickerOpen) return;
+        const backdrop = document.getElementById('sp-picker-backdrop');
+        if (!backdrop) return;
+        backdrop.style.display = 'flex';
+        spPickerOpen = true; spPickerFocusIdx = -1;
+        const input = document.getElementById('sp-picker-input');
+        if (input) { input.value = ''; input.focus(); }
+        spPickerRender('');
+    }
+
+    function closeSpritePicker() {
+        const backdrop = document.getElementById('sp-picker-backdrop');
+        if (backdrop) backdrop.style.display = 'none';
+        spPickerOpen = false;
+    }
+
+    function spPickerRender(query) {
+        const list = document.getElementById('sp-picker-list');
+        if (!list) return;
+        list.innerHTML = '';
+        spPickerFocusIdx = -1;
+
+        const all = [
+            { name: '__stage__', label: 'Stage.sp', icon: '▣',
+              sub: `${scratchIndex.stage.backdrops.length} bg · ${scratchIndex.globalVariables.length} var` },
+            ...scratchIndex.sprites.map(s => ({
+                name: s.name, label: `${s.name}.sp`, icon: '◻',
+                sub: `${s.costumes.length} costume · ${(scratchIndex.spriteVariables[s.name]||[]).length} var`,
+            })),
+        ];
+        const filtered = query
+            ? all.filter(s => s.name.toLowerCase().includes(query.toLowerCase()))
+            : all;
+
+        if (!filtered.length) {
+            list.innerHTML = '<div id="sp-picker-empty">No sprites match</div>';
+            return;
+        }
+        filtered.forEach(s => {
+            const el = document.createElement('div');
+            el.className = 'sp-picker-item';
+            const hl = query ? snHighlight(s.label, query) : snEscHtml(s.label);
+            el.innerHTML = `<span class="sp-picker-item-icon">${s.icon}</span><span class="sp-picker-item-name">${hl}</span><span class="sp-picker-item-sub">${snEscHtml(s.sub)}</span>`;
+            el.addEventListener('click', () => {
+                closeSpritePicker();
+                if (!overlayVisible) openOverlay();
+                setTimeout(() => selectSidebarSprite(s.name), overlayVisible ? 0 : 150);
+            });
+            list.appendChild(el);
+        });
+    }
+
+    function spPickerMoveFocus(delta) {
+        const items = Array.from(document.querySelectorAll('#sp-picker-list .sp-picker-item'));
+        spPickerFocusIdx = Math.max(-1, Math.min(items.length - 1, spPickerFocusIdx + delta));
+        items.forEach((el, i) => {
+            el.classList.toggle('sp-picker-focused', i === spPickerFocusIdx);
+            if (i === spPickerFocusIdx) el.scrollIntoView({ block: 'nearest' });
+        });
+    }
+
+    function setupSpritePicker() {
+        const backdrop = document.getElementById('sp-picker-backdrop');
+        const input    = document.getElementById('sp-picker-input');
+        if (!backdrop || !input) return;
+        backdrop.addEventListener('mousedown', e => { if (e.target === backdrop) closeSpritePicker(); });
+        input.addEventListener('input', () => spPickerRender(input.value.trim()));
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Escape')     { closeSpritePicker(); return; }
+            if (e.key === 'ArrowDown')  { e.preventDefault(); spPickerMoveFocus(+1); return; }
+            if (e.key === 'ArrowUp')    { e.preventDefault(); spPickerMoveFocus(-1); return; }
+            if (e.key === 'Enter') {
+                const items = document.querySelectorAll('#sp-picker-list .sp-picker-item');
+                const target = spPickerFocusIdx >= 0 ? items[spPickerFocusIdx] : items[0];
+                if (target) target.click();
+            }
+        });
+    }
+
+    // Sprite right-click context menu
+    function showSpriteContextMenu(e, spriteName) {
+        e.preventDefault();
+        closeSpriteContextMenu();
+        const menu = document.createElement('div');
+        menu.className = 'sp-ctx-menu';
+        menu.id = 'sp-active-ctx-menu';
+        menu.style.left = e.clientX + 'px';
+        menu.style.top  = e.clientY + 'px';
+
+        const items = [
+            { label: 'Open',
+              action: () => selectSidebarSprite(spriteName) },
+            { sep: true },
+            { label: 'Decompile from VM',
+              sub: 'Overwrite editor from live blocks',
+              action: () => {
+                if (!currentVM) { logToOutput('VM not available', 'error'); return; }
+                try {
+                    const code = decompile(currentVM, spriteName);
+                    selectSidebarSprite(spriteName);
+                    if (monacoEditor) monacoEditor.setValue(code);
+                    const key = `scratchpiler-content-${spriteName}`;
+                    if (code && code.trim()) localStorage.setItem(key, code);
+                    const label = spriteName === '__stage__' ? 'Stage' : spriteName;
+                    logToOutput(`Decompiled "${label}" from VM`, 'ok');
+                    updateStatus(`Decompiled "${label}"`);
+                } catch (err) {
+                    logToOutput('Decompile error: ' + err.message, 'error');
+                    updateStatus('Decompile error: ' + err.message);
+                }
+              },
+            },
+            { label: 'Export as .sp…',
+              action: () => { selectSidebarSprite(spriteName); setTimeout(exportToLocalFile, 50); },
+            },
+        ];
+
+        for (const item of items) {
+            if (item.sep) {
+                const sep = document.createElement('div'); sep.className = 'sp-ctx-sep';
+                menu.appendChild(sep);
+            } else {
+                const btn = document.createElement('button');
+                btn.className = 'sp-ctx-item';
+                const safe = String(item.label).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+                btn.innerHTML = safe;
+                btn.title = item.sub || '';
+                btn.addEventListener('click', () => { closeSpriteContextMenu(); item.action(); });
+                menu.appendChild(btn);
+            }
+        }
+
+        document.body.appendChild(menu);
+
+        // Nudge off-screen edges
+        requestAnimationFrame(() => {
+            const r = menu.getBoundingClientRect();
+            if (r.right  > window.innerWidth)  menu.style.left = (e.clientX - r.width)  + 'px';
+            if (r.bottom > window.innerHeight)  menu.style.top  = (e.clientY - r.height) + 'px';
+        });
+
+        setTimeout(() => {
+            const onOutside = ev => { if (!menu.contains(ev.target)) { closeSpriteContextMenu(); document.removeEventListener('mousedown', onOutside); } };
+            document.addEventListener('mousedown', onOutside);
+        }, 0);
+    }
+
+    function closeSpriteContextMenu() {
+        const m = document.getElementById('sp-active-ctx-menu');
+        if (m) m.remove();
+    }
+
+    // Sidebar resize handle
+    function setupSidebarResize() {
+        const handle  = document.getElementById('sp-sidebar-resize');
+        const sidebar = document.getElementById('scratchpiler-sidebar');
+        if (!handle || !sidebar) return;
+        let dragging = false, startX = 0, startW = 0;
+        handle.addEventListener('mousedown', e => {
+            if (!sidebarExpanded) return;
+            dragging = true; startX = e.clientX; startW = sidebar.offsetWidth;
+            handle.classList.add('sp-resizing');
+            document.body.style.cssText += ';cursor:col-resize!important;user-select:none!important';
+            e.preventDefault();
+        });
+        document.addEventListener('mousemove', e => {
+            if (!dragging) return;
+            const w = Math.max(150, Math.min(520, startW + e.clientX - startX));
+            sidebar.style.width = w + 'px';
+            if (monacoEditor) monacoEditor.layout();
+        });
+        document.addEventListener('mouseup', () => {
+            if (!dragging) return;
+            dragging = false;
+            handle.classList.remove('sp-resizing');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        });
+    }
+
+    // Output panel toggle setup
+    function setupOutputPanel() {
+        const toggleBtn = document.getElementById('sp-output-toggle-btn');
+        const clearBtn  = document.getElementById('sp-output-clear-btn');
+        const header    = document.getElementById('sp-output-header');
+        const panel     = document.getElementById('sp-output-panel');
+        if (!panel) return;
+
+        function toggle() {
+            panel.classList.toggle('sp-expanded');
+            if (toggleBtn) toggleBtn.textContent = panel.classList.contains('sp-expanded') ? '▾' : '▸';
+            if (monacoEditor) setTimeout(() => monacoEditor.layout(), 160);
+        }
+        if (toggleBtn) toggleBtn.addEventListener('click', e => { e.stopPropagation(); toggle(); });
+        if (clearBtn)  clearBtn.addEventListener('click',  e => { e.stopPropagation(); const log = document.getElementById('sp-output-log'); if (log) log.innerHTML = ''; });
+        if (header)    header.addEventListener('click', toggle);
+    }
+
     // ─── [I] Editor Lifecycle ─────────────────────────────────────────────────
 
     let monacoEditor  = null;
@@ -1643,27 +2042,25 @@
         if (!listEl) return;
         listEl.innerHTML = '';
 
+        function makeSpriteItem(spriteName, labelText, iconSvg) {
+            const el = document.createElement('div');
+            el.className = 'sp-list-item';
+            el.dataset.sprite = spriteName;
+            el.innerHTML = `${iconSvg}<span class="sp-item-name">${labelText}</span>`;
+            el.addEventListener('click', () => selectSidebarSprite(spriteName));
+            el.addEventListener('contextmenu', e => showSpriteContextMenu(e, spriteName));
+            return el;
+        }
+
         // Add Stage first
-        const stageEl = document.createElement('div');
-        stageEl.className = 'sp-list-item';
-        stageEl.dataset.sprite = '__stage__';
-        stageEl.innerHTML = `
-            <svg class="sp-item-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-            <span class="sp-item-name">Stage.sp</span>
-        `;
-        stageEl.addEventListener('click', () => selectSidebarSprite('__stage__'));
+        const stageEl = makeSpriteItem('__stage__', 'Stage.sp',
+            `<svg class="sp-item-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>`);
         listEl.appendChild(stageEl);
 
         // Add all other sprites
         for (const s of scratchIndex.sprites) {
-            const el = document.createElement('div');
-            el.className = 'sp-list-item';
-            el.dataset.sprite = s.name;
-            el.innerHTML = `
-                <svg class="sp-item-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                <span class="sp-item-name">${s.name}.sp</span>
-            `;
-            el.addEventListener('click', () => selectSidebarSprite(s.name));
+            const el = makeSpriteItem(s.name, `${s.name}.sp`,
+                `<svg class="sp-item-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`);
             listEl.appendChild(el);
         }
 
@@ -1717,66 +2114,83 @@
             detailTitle.textContent = spriteName === '__stage__' ? 'Stage' : spriteName;
         }
 
-        const costumesContent = document.getElementById('sp-subacc-costumes-content');
-        const soundsContent = document.getElementById('sp-subacc-sounds-content');
-        const varsContent = document.getElementById('sp-subacc-variables-content');
+        const costumesContent   = document.getElementById('sp-subacc-costumes-content');
+        const soundsContent     = document.getElementById('sp-subacc-sounds-content');
+        const varsContent       = document.getElementById('sp-subacc-variables-content');
+        const cbContent         = document.getElementById('sp-subacc-customblocks-content');
 
         if (!costumesContent || !soundsContent || !varsContent) return;
 
         costumesContent.innerHTML = '';
-        soundsContent.innerHTML = '';
-        varsContent.innerHTML = '';
+        soundsContent.innerHTML   = '';
+        varsContent.innerHTML     = '';
+        if (cbContent) cbContent.innerHTML = '';
 
-        let costumes = [];
-        let sounds = [];
-        let vars = [];
+        let costumes = [], sounds = [], vars = [], customBlocks = [];
 
         if (spriteName === '__stage__') {
             costumes = scratchIndex.stage.backdrops || [];
-            sounds = scratchIndex.stage.sounds || [];
-            vars = scratchIndex.globalVariables || [];
+            sounds   = scratchIndex.stage.sounds    || [];
+            vars     = scratchIndex.globalVariables || [];
         } else {
             const sprite = scratchIndex.sprites.find(s => s.name === spriteName);
-            if (sprite) {
-                costumes = sprite.costumes || [];
-                sounds = sprite.sounds || [];
-            }
-            vars = scratchIndex.spriteVariables[spriteName] || [];
+            if (sprite) { costumes = sprite.costumes || []; sounds = sprite.sounds || []; }
+            vars         = scratchIndex.spriteVariables[spriteName] || [];
+            customBlocks = scratchIndex.customBlocks[spriteName]    || [];
         }
 
-        // Costumes
+        function makeDetailItem(label, snippet, title) {
+            const div = document.createElement('div');
+            div.className = 'sp-detail-item';
+            div.textContent = label;
+            div.title = title;
+            div.addEventListener('click', () => {
+                if (monacoEditor) {
+                    monacoEditor.trigger('sidebar', 'type', { text: snippet });
+                    monacoEditor.focus();
+                }
+            });
+            return div;
+        }
+
+        // Costumes / backdrops
         if (costumes.length === 0) {
-            costumesContent.innerHTML = '<div class="sp-detail-empty">No costumes</div>';
+            costumesContent.innerHTML = '<div class="sp-detail-empty">None</div>';
         } else {
             for (const c of costumes) {
-                const div = document.createElement('div');
-                div.className = 'sp-detail-item';
-                div.textContent = c;
-                costumesContent.appendChild(div);
+                const snippet = spriteName === '__stage__'
+                    ? `switchBackdrop("${c}")` : `switchCostume("${c}")`;
+                costumesContent.appendChild(makeDetailItem(c, snippet, `Insert: ${snippet}`));
             }
         }
 
         // Sounds
         if (sounds.length === 0) {
-            soundsContent.innerHTML = '<div class="sp-detail-empty">No sounds</div>';
+            soundsContent.innerHTML = '<div class="sp-detail-empty">None</div>';
         } else {
             for (const s of sounds) {
-                const div = document.createElement('div');
-                div.className = 'sp-detail-item';
-                div.textContent = s;
-                soundsContent.appendChild(div);
+                soundsContent.appendChild(makeDetailItem(s, `play("${s}")`, `Insert: play("${s}")`));
             }
         }
 
-        // Variables
+        // Variables / lists
         if (vars.length === 0) {
-            varsContent.innerHTML = '<div class="sp-detail-empty">No variables</div>';
+            varsContent.innerHTML = '<div class="sp-detail-empty">None</div>';
         } else {
             for (const v of vars) {
-                const div = document.createElement('div');
-                div.className = 'sp-detail-item';
-                div.textContent = `${v.name} (${v.type})`;
-                varsContent.appendChild(div);
+                const snippet = `[${v.name}]`;
+                varsContent.appendChild(makeDetailItem(`${v.name} (${v.type})`, snippet, `Insert: ${snippet}`));
+            }
+        }
+
+        // Custom blocks
+        if (cbContent) {
+            if (customBlocks.length === 0) {
+                cbContent.innerHTML = '<div class="sp-detail-empty">None</div>';
+            } else {
+                for (const proc of customBlocks) {
+                    cbContent.appendChild(makeDetailItem(proc, proc, `Insert call: ${proc}`));
+                }
             }
         }
     }
@@ -2224,6 +2638,8 @@
         document.addEventListener('keydown', e => {
             if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyM') {
                 e.preventDefault(); e.stopPropagation(); toggleOverlay();
+            } else if (e.key === 'Escape' && spPickerOpen) {
+                e.preventDefault(); e.stopPropagation(); closeSpritePicker();
             } else if (e.key === 'Escape' && searchNowhereOpen) {
                 e.preventDefault(); e.stopPropagation(); closeSearchNowhere();
             } else if (e.key === 'Escape' && overlayVisible) {
@@ -2231,6 +2647,9 @@
             } else if ((e.ctrlKey || e.metaKey) && (e.key === 'Enter' || e.key === 's') && overlayVisible) {
                 e.preventDefault(); e.stopPropagation();
                 document.getElementById('scratchpiler-compile-btn').click();
+            } else if ((e.ctrlKey || e.metaKey) && e.key === 'p' && overlayVisible) {
+                e.preventDefault(); e.stopPropagation();
+                if (spPickerOpen) closeSpritePicker(); else openSpritePicker();
             }
         }, true);
 
@@ -5099,6 +5518,9 @@
         });
 
         setupActivityBar();
+        setupOutputPanel();
+        setupSpritePicker();
+        setupSidebarResize();
 
         const confirmDialog = () => {
             if (dialogCallback) dialogCallback(document.getElementById('scratchpiler-dialog-input').value);
@@ -5152,6 +5574,7 @@
                     smoothScrolling: true,
                     cursorSmoothCaretAnimation: 'on',
                     cursorBlinking: 'smooth',
+                    stickyScroll: { enabled: true },
                 }
             );
 
@@ -5208,6 +5631,8 @@
                 try { result = compileSource(source, currentVM, spriteName); }
                 catch (e) {
                     updateStatus('Compile error: ' + e.message);
+                    logToOutput('Compile error: ' + e.message, 'error');
+                    flashCompileBtn(false);
                     console.error('[scratchpiler] compile exception', e);
                     return;
                 }
@@ -5223,11 +5648,18 @@
                 );
 
                 if (result.errors.length > 0) {
-                    updateStatus(`${result.errors.length} error(s) — not injected`);
+                    const msg = `${result.errors.length} error(s) — not injected`;
+                    updateStatus(msg);
+                    result.errors.forEach(er => logToOutput(`Line ${er.line}:${er.col} — ${er.message}`, 'error'));
+                    flashCompileBtn(false);
                     return;
                 }
 
                 injectBlocks(result.blocks, currentVM, spriteName);
+                flashCompileBtn(true);
+                const blockCount = Object.keys(result.blocks).length;
+                const label = spriteName === '__stage__' ? 'Stage' : spriteName;
+                logToOutput(`Compiled & injected ${blockCount} block(s) into "${label}"`, 'ok');
             });
 
             acquireVM(
