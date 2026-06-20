@@ -6244,21 +6244,66 @@
         if (!target) { updateStatus('Error: sprite not found'); return; }
 
         // Restore previously-persisted injected IDs from localStorage.
-        // This is essential for cleanup to work after a page reload: without it,
-        // injectedBlockIds is empty and old hat blocks (baked into the saved project)
-        // are never removed, causing duplicates to accumulate with every injection.
         restoreInjectedIds(spriteName);
 
-        // Remove previously injected top-level hat blocks.
-        // We only call deleteBlock on top-level blocks (topLevel === true) because
-        // Scratch's deleteBlock cascades and removes the entire sub-tree.  Calling
-        // it on individual child IDs first would detach them from their parents and
-        // leave the parent hat in a corrupted state, causing orphaned blocks.
-        const prevIds = injectedBlockIds.get(spriteName);
-        if (prevIds) {
-            for (const id of prevIds) {
-                try { target.blocks.deleteBlock(id); } catch (_) {}
+        // Build a "hat signature" for a top-level block — a string that uniquely
+        // identifies which event/define this block represents. Used to find and
+        // remove any pre-existing block that would conflict with the new script,
+        // even if localStorage tracking is unavailable (e.g. cleared, new machine,
+        // or the project was saved to scratch.mit.edu and reloaded).
+        function hatSig(block, blocks) {
+            switch (block.opcode) {
+                case 'event_whenflagclicked':
+                case 'event_whenthisspriteclicked':
+                case 'event_whenstageclicked':
+                case 'control_start_as_clone':
+                    return block.opcode;
+                case 'event_whenkeypressed':
+                    return block.opcode + ':' + (block.fields?.KEY_OPTION?.value ?? '');
+                case 'event_whenbroadcastreceived':
+                    return block.opcode + ':' + (block.fields?.BROADCAST_OPTION?.value ?? '');
+                case 'event_whenbackdropswitchesto':
+                    return block.opcode + ':' + (block.fields?.BACKDROP?.value ?? '');
+                case 'event_whengreaterthan':
+                    return block.opcode + ':' + (block.fields?.WHICHINPUT?.value ?? '');
+                case 'procedures_definition': {
+                    // Resolve the prototype block to get the proccode
+                    const inp = block.inputs?.custom_block;
+                    const protoId = inp
+                        ? (Array.isArray(inp) ? inp[1] : (inp.block ?? inp.shadow))
+                        : null;
+                    const proto = protoId && blocks[protoId];
+                    return block.opcode + ':' + (proto?.mutation?.proccode ?? '');
+                }
+                default:
+                    return block.opcode;
             }
+        }
+
+        // Compute signatures of every top-level block in the incoming compilation.
+        const incomingSigs = new Set();
+        for (const b of Object.values(blockMap)) {
+            if (b.topLevel && !b.shadow) incomingSigs.add(hatSig(b, blockMap));
+        }
+
+        // Build the full set of IDs to delete:
+        //   1. IDs tracked by localStorage (fast path — works on re-compile).
+        //   2. Any existing top-level block in the VM whose hat signature matches
+        //      an incoming script (catches saved-project duplicates, cleared
+        //      localStorage, or blocks left by a previous scratchpiler session
+        //      on a different machine).
+        const idsToDelete = new Set(injectedBlockIds.get(spriteName) ?? []);
+        const existingBlocks = target.blocks._blocks ?? {};
+        for (const [id, b] of Object.entries(existingBlocks)) {
+            if (b.topLevel && !b.shadow && incomingSigs.has(hatSig(b, existingBlocks))) {
+                idsToDelete.add(id);
+            }
+        }
+
+        // Delete every block in one pass. deleteBlock cascades to children, so
+        // only call it on top-level IDs — deleting a child first corrupts the parent.
+        for (const id of idsToDelete) {
+            try { target.blocks.deleteBlock(id); } catch (_) {}
         }
 
         // Collect the top-level hat/define block IDs from the new blockMap so we
@@ -6285,8 +6330,6 @@
         persistInjectedIds(spriteName);
 
         // Reload the Blockly workspace from VM state.
-        // setEditingTarget internally calls emitWorkspaceUpdate, which is the
-        // event Scratch GUI listens to for refreshing the Blockly canvas.
         try {
             vm.setEditingTarget(target.id);
         } catch (_) {
