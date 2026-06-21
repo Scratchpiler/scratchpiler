@@ -95,6 +95,23 @@ hideVariable([x])
 
 ---
 
+## Structs
+
+Declare a group of related stage variables. Variables are auto-created on compile if they don't exist.
+
+```
+struct player { x, y, hp, speed }
+struct enemy  { x, y, hp, type }
+
+set [player.x] to 0
+set [player.hp] to 100
+if [player.hp] <= 0 { say("dead") }
+```
+
+Typing `[` in the editor shows all `struct.field]` completions. Typing `[player.` shows that struct's fields only.
+
+---
+
 ## Lists
 
 ```
@@ -296,6 +313,18 @@ clear([list])                  → listDeleteAll([list])
 
 ---
 
+## Debugging
+
+```
+breakpoint   // pause execution here; open the debug bar
+```
+
+When a `breakpoint` is hit at runtime, Scratchpiler's **debug bar** slides in at the bottom of the overlay. Click **Resume ▶** to continue execution. You can hit multiple breakpoints in sequence — each one pauses and waits.
+
+Compiles to four blocks: sets `[__dbg_at__]` to `1`, sets `[__dbg_resume__]` to `0`, waits until `[__dbg_resume__] = 1`, then clears `[__dbg_at__]`. The overlay polls `__dbg_at__` every 100ms to detect the pause.
+
+---
+
 ## Operators
 
 ```
@@ -342,6 +371,8 @@ and  or  not              // boolean
 | `Alt+Shift+F` | Format / auto-indent (hiding structural chaos with spacing) |
 | `Ctrl+Space` | Trigger autocomplete (request assistance from Monaco) |
 | `Esc` | Close overlay |
+
+When paused at a `breakpoint`, click the **Resume ▶** button in the debug bar to continue. The bar disappears once execution resumes.
 
 ---
 

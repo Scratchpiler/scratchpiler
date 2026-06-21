@@ -149,6 +149,36 @@ export function registerLanguage(monaco) {
                 }
             }
 
+            // Struct completions: inside an unclosed [ with no dot yet.
+            // Typing `[p` shows `player.x]`, `player.y]`, etc. — one-shot fill.
+            if (linePrefix.endsWith('[')) {
+                const src = model.getValue();
+                const structDefs = {};
+                const structRe = /\bstruct\s+(\w+)\s*\{([^}]*)\}/g;
+                let sm2;
+                while ((sm2 = structRe.exec(src)) !== null) {
+                    structDefs[sm2[1]] = sm2[2].split(/[\s,]+/).filter(f => f.length > 0);
+                }
+                const entries = Object.entries(structDefs);
+                if (entries.length > 0) {
+                    const CIKf = monaco.languages.CompletionItemKind;
+                    const suggestions = [];
+                    for (const [sName, fields] of entries) {
+                        for (const field of fields) {
+                            suggestions.push({
+                                label: `${sName}.${field}]`,
+                                kind: CIKf.Field,
+                                detail: `Struct field · ${sName}`,
+                                insertText: `${sName}.${field}]`,
+                                sortText: `0_${sName}_${field}`,
+                                range,
+                            });
+                        }
+                    }
+                    return { suggestions };
+                }
+            }
+
             // Dot-method completions after [varname].
             if (linePrefix.endsWith('.') && /\[[^\]]+\]\.$/.test(linePrefix)) {
                 const dotRange = { ...range, startColumn: word.startColumn };

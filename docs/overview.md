@@ -105,9 +105,42 @@ Step 2 is the most common source of errors. Variables must exist in Scratch befo
 
 ## Variables and lists
 
-Scratchpiler cannot create arbitrary variables. It creates exactly one kind automatically: for-loop iterator variables, which it manages internally using a naming scheme that ensures no collisions (`_scratchpiler_internal_xxxx_name`). Everything else — your game's `[score]`, your `[playerX]`, your `[inventory]` list — must already exist in the Scratch project.
+Scratchpiler creates variables automatically in two cases: for-loop iterator variables (internal, with collision-avoiding names like `_scratchpiler_internal_xxxx_i`), and struct fields (see below). Everything else — your game's `[score]`, your `[playerX]`, your `[inventory]` list — must already exist in the Scratch project.
 
-The toolbar's **Variables** and **Lists** menus let you create global or local variables without leaving the editor. Use them. The alternative is switching back to Scratch, finding the variable panel, clicking "Make a Variable", typing the name, clicking OK, switching back to scratchpiler, and trying to remember where you were before you were rudely interrupted. One of these options is faster. The other is a path to resentment.
+The toolbar's **Variables** and **Lists** menus give you full CRUD over the variable panel without leaving the editor: create global or local variables, rename them, delete them, or bulk-initialize a list from a comma-separated string. Right-clicking (hovering and clicking ⋮) any variable or list in the sprite panel exposes these actions inline.
+
+---
+
+## Structs
+
+`struct name { field1, field2, … }` is a compile-time declaration. On compile, scratchpiler walks every struct in the file and creates any missing stage variables named `name.field`. No blocks are generated — the struct is invisible to Scratch; only its variables survive.
+
+```
+struct player { x, y, hp, speed }
+// After compile: player.x, player.y, player.hp, player.speed exist on stage
+set [player.x] to 0
+set [player.hp] to 100
+```
+
+The editor's autocomplete knows about structs: typing `[` shows all `struct.field]` completions from every struct declared in the file. Typing `[player.` narrows the list to that struct's fields only. Completions update live as you edit struct declarations.
+
+---
+
+## Debugging
+
+The `breakpoint` keyword pauses a sprite's script at runtime and activates a debug bar at the bottom of the overlay.
+
+```
+on flag {
+    set [player.x] to 0
+    breakpoint
+    forever { ... }
+}
+```
+
+When execution hits `breakpoint`, the debug bar slides in: **"⏸ Paused at breakpoint"** with a **Resume ▶** button. Clicking Resume releases the pause and the script continues from where it stopped. Multiple breakpoints in one script work in sequence — each pause waits for its own resume.
+
+Under the hood, `breakpoint` compiles to four blocks: `set [__dbg_at__] to 1` → `set [__dbg_resume__] to 0` → `wait until [__dbg_resume__] = 1` → `set [__dbg_at__] to 0`. The overlay polls `__dbg_at__` at 100ms to detect a live pause. The `__dbg_at__` and `__dbg_resume__` variables are created automatically on first compile.
 
 ---
 

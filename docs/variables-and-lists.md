@@ -1,6 +1,6 @@
 # Variables and Lists
 
-Scratchpiler does not create variables. Variables and lists must exist in the Scratch project before you compile. If you reference `[score]` and there's no variable named `score` in Scratch, you'll get a compile error. Create variables using the **Variables** menu in the toolbar or directly in Scratch's variable panel.
+Variables and lists must exist in the Scratch project before you compile. If you reference `[score]` and there's no variable named `score` in Scratch, you'll get a compile error. Use the **Variables** and **Lists** menus in the toolbar to create, rename, or delete variables without leaving the editor — or use `struct` declarations to auto-create groups of related variables at compile time.
 
 ---
 
@@ -236,6 +236,60 @@ The internal variables are hidden from your code and cleaned up by the decompile
 ```
 set [val] to [myList][i]       // equivalent to [myList].item([i])
 ```
+
+---
+
+## Managing variables from the toolbar
+
+The **Variables** and **Lists** menus in the toolbar expose the full variable panel without leaving the editor:
+
+| Action | How |
+|---|---|
+| Create new variable | Variables → New variable… (prompts for name; creates on stage or active sprite) |
+| Create new list | Lists → New list… |
+| Rename | Hover a variable in the sprite panel, click ⋮, choose Rename |
+| Delete | Hover a variable in the sprite panel, click ⋮, choose Delete |
+| Bulk-initialize a list | Hover a list in the sprite panel, click ⋮, choose Initialize from CSV |
+
+**Initialize from CSV** accepts a comma-separated string (`1, 2, 3, hello, world`) and replaces the list's contents immediately. Useful for seeding data without writing setup code.
+
+---
+
+## Structs
+
+A `struct` is a compile-time directive that declares a group of related Scratch variables under a shared name prefix.
+
+```
+struct player { x, y, hp }
+```
+
+When you compile, scratchpiler checks whether `player.x`, `player.y`, and `player.hp` exist as Scratch variables on the stage. Any that are missing are created automatically. The struct itself generates no blocks — it is purely a declaration.
+
+Fields are accessed as ordinary variables with dot notation inside brackets:
+
+```
+set [player.x] to 0
+set [player.y] to 0
+set [player.hp] to 100
+
+change [player.x] by [player.speed]
+if [player.hp] <= 0 {
+    say("You died.")
+}
+```
+
+Multiple structs in the same file:
+
+```
+struct player { x, y, hp, speed }
+struct enemy  { x, y, hp, type }
+```
+
+**Autocomplete**: in the editor, typing `[player.` shows field completions. Typing `[` alone shows all `struct.field]` completions across all structs in the current file — one tab-complete fills the entire reference.
+
+**Scope**: struct variables are always created on the stage (global). There is no per-sprite struct support.
+
+**No nesting**: structs are flat lists of field names. `struct a { b { c } }` is not valid.
 
 ---
 
