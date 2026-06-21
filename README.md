@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/Scratchpiler/scratchpiler/actions/workflows/release.yml"><img src="https://github.com/Scratchpiler/scratchpiler/actions/workflows/release.yml/badge.svg" alt="Release Userscript" /></a>
   <a href="https://github.com/Scratchpiler/scratchpiler/releases/latest"><img src="https://img.shields.io/github/v/release/Scratchpiler/scratchpiler?label=latest" alt="Latest Release" /></a>
-  <img src="https://img.shields.io/badge/source-7%2C400%20LoC-blue" alt="Lines of Code" />
+  <img src="https://img.shields.io/endpoint?url=https://github.com/Scratchpiler/scratchpiler/releases/download/latest/loc.json" alt="Lines of Code" />
   <img src="https://img.shields.io/badge/license-ISC-lightgrey" alt="License: ISC" />
 </p>
 

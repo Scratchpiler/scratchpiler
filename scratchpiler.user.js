@@ -112,7 +112,7 @@
       }
     }, 500);
   }
-  var scratchIndex2 = {
+  var scratchIndex = {
     sprites: [],
     // [{ name, costumes: string[], sounds: string[] }]
     stage: { backdrops: [], sounds: [] },
@@ -150,8 +150,8 @@
         idx.customBlocks[name] = Object.values(target.blocks._blocks).filter((b) => b.opcode === "procedures_prototype").map((b) => b.mutation && b.mutation.proccode).filter(Boolean);
       }
     }
-    scratchIndex2 = idx;
-    updateStatus2(`Index: ${idx.sprites.length} sprites, ${idx.globalVariables.length} globals`);
+    scratchIndex = idx;
+    updateStatus(`Index: ${idx.sprites.length} sprites, ${idx.globalVariables.length} globals`);
   }
 
   // src/monaco.js
@@ -178,6 +178,102 @@
       });
     };
     document.head.appendChild(script);
+  }
+
+  // src/injector.js
+  function formatSource(src) {
+    try {
+      const lines = src.split("\n");
+      const result = [];
+      let indent = 0;
+      for (let raw of lines) {
+        const trimmed = raw.trim();
+        if (!trimmed) {
+          result.push("");
+          continue;
+        }
+        if (trimmed.startsWith("}")) indent = Math.max(0, indent - 1);
+        result.push("    ".repeat(indent) + trimmed);
+        if (trimmed.endsWith("{")) indent++;
+      }
+      return result.join("\n");
+    } catch (_) {
+      return null;
+    }
+  }
+  function injectBlocks(blockMap, vm, spriteName) {
+    const target = spriteName === "__stage__" ? vm.runtime.targets.find((t) => t.isStage) : vm.runtime.targets.find((t) => !t.isStage && t.sprite.name === spriteName) || vm.editingTarget;
+    if (!target) {
+      updateStatus("Error: sprite not found");
+      return;
+    }
+    restoreInjectedIds(spriteName);
+    function hatSig(block, blocks) {
+      switch (block.opcode) {
+        case "event_whenflagclicked":
+        case "event_whenthisspriteclicked":
+        case "event_whenstageclicked":
+        case "control_start_as_clone":
+          return block.opcode;
+        case "event_whenkeypressed":
+          return block.opcode + ":" + (block.fields?.KEY_OPTION?.value ?? "");
+        case "event_whenbroadcastreceived":
+          return block.opcode + ":" + (block.fields?.BROADCAST_OPTION?.value ?? "");
+        case "event_whenbackdropswitchesto":
+          return block.opcode + ":" + (block.fields?.BACKDROP?.value ?? "");
+        case "event_whengreaterthan":
+          return block.opcode + ":" + (block.fields?.WHICHINPUT?.value ?? "");
+        case "procedures_definition": {
+          const inp = block.inputs?.custom_block;
+          const protoId = inp ? Array.isArray(inp) ? inp[1] : inp.block ?? inp.shadow : null;
+          const proto = protoId && blocks[protoId];
+          return block.opcode + ":" + (proto?.mutation?.proccode ?? "");
+        }
+        default:
+          return block.opcode;
+      }
+    }
+    const incomingSigs = /* @__PURE__ */ new Set();
+    for (const b of Object.values(blockMap)) {
+      if (b.topLevel && !b.shadow) incomingSigs.add(hatSig(b, blockMap));
+    }
+    const idsToDelete = new Set(injectedBlockIds.get(spriteName) ?? []);
+    const existingBlocks = target.blocks._blocks ?? {};
+    for (const [id, b] of Object.entries(existingBlocks)) {
+      if (b.topLevel && !b.shadow && incomingSigs.has(hatSig(b, existingBlocks))) {
+        idsToDelete.add(id);
+      }
+    }
+    for (const id of idsToDelete) {
+      try {
+        target.blocks.deleteBlock(id);
+      } catch (_) {
+      }
+    }
+    const newTopLevelIds = new Set(
+      Object.values(blockMap).filter((b) => b.topLevel && !b.shadow).map((b) => b.id)
+    );
+    let count = 0;
+    for (const block of Object.values(blockMap)) {
+      try {
+        target.blocks.createBlock(block);
+        count++;
+      } catch (e) {
+        console.warn("[scratchpiler] block create failed", block.id, e);
+      }
+    }
+    injectedBlockIds.set(spriteName, newTopLevelIds);
+    persistInjectedIds(spriteName);
+    try {
+      vm.setEditingTarget(target.id);
+    } catch (_) {
+      try {
+        vm.emitWorkspaceUpdate();
+      } catch (__) {
+        console.warn("[scratchpiler] workspace refresh failed", __);
+      }
+    }
+    updateStatus(`Injected ${count} blocks into "${spriteName}"`);
   }
 
   // src/language.js
@@ -529,14 +625,14 @@
           const SPRITE_TARGETS = [
             "_mouse_",
             "_random_",
-            ...scratchIndex2.sprites.map((s) => s.name)
+            ...scratchIndex.sprites.map((s) => s.name)
           ];
           const TOUCH_TARGETS = [
             "_edge_",
             "_mouse_",
-            ...scratchIndex2.sprites.map((s) => s.name)
+            ...scratchIndex.sprites.map((s) => s.name)
           ];
-          const BACKDROPS = scratchIndex2.stage.backdrops || [];
+          const BACKDROPS = scratchIndex.stage.backdrops || [];
           const EFFECTS = ["color", "fisheye", "whirl", "pixelate", "mosaic", "brightness", "ghost"];
           const ROT_STYLES = ["all around", "left-right", "don't rotate"];
           const TIME_UNITS = ["year", "month", "date", "day", "hour", "minute", "second"];
@@ -589,7 +685,7 @@
             return { suggestions: strItems(TIME_UNITS, CIKs.Enum, "Time unit") };
           }
           if (/\b(?:createClone)\s*\($/.test(beforeQuote)) {
-            return { suggestions: strItems(["_myself_", ...scratchIndex2.sprites.map((s) => s.name)], CIKs.Class, "Sprite / self") };
+            return { suggestions: strItems(["_myself_", ...scratchIndex.sprites.map((s) => s.name)], CIKs.Class, "Sprite / self") };
           }
           if (/\b(?:sort)\s*\($/.test(beforeQuote)) {
             return { suggestions: strItems(["desc"], CIKs.Enum, "Sort direction") };
@@ -1190,27 +1286,27 @@
     push("[list].min()", CIK.Function, "Lists \xB7 Aggregates", "[$1].min()", "Find the minimum numeric item in the list");
     push("[list].max()", CIK.Function, "Lists \xB7 Aggregates", "[$1].max()", "Find the maximum numeric item in the list");
     push("[list].count()", CIK.Function, "Lists \xB7 Aggregates", "[$1].count($0)", "Count how many items equal a given value");
-    for (const s of scratchIndex2.sprites)
+    for (const s of scratchIndex.sprites)
       push(s.name, CIK.Class, "Sprite", s.name);
-    for (const b of scratchIndex2.stage.backdrops)
+    for (const b of scratchIndex.stage.backdrops)
       push(b, CIK.File, "Backdrop", b);
-    for (const v of scratchIndex2.globalVariables)
+    for (const v of scratchIndex.globalVariables)
       push(`[${v.name}]`, v.type === "list" ? CIK.Enum : CIK.Variable, `Global ${v.type}`, `[${v.name}]`);
     const activeName = getActiveSpriteNameFromDropdown2();
     if (activeName === "__stage__") {
-      for (const s of scratchIndex2.stage.sounds)
+      for (const s of scratchIndex.stage.sounds)
         push(s, CIK.Event, "Sound", s);
     } else if (activeName) {
-      const sprite = scratchIndex2.sprites.find((s) => s.name === activeName);
+      const sprite = scratchIndex.sprites.find((s) => s.name === activeName);
       if (sprite) {
         for (const c of sprite.costumes)
           push(c, CIK.Color, "Costume", c);
         for (const s of sprite.sounds)
           push(s, CIK.Event, "Sound", s);
       }
-      for (const v of scratchIndex2.spriteVariables[activeName] ?? [])
+      for (const v of scratchIndex.spriteVariables[activeName] ?? [])
         push(`[${v.name}]`, v.type === "list" ? CIK.Enum : CIK.Variable, `${activeName} ${v.type}`, `[${v.name}]`);
-      for (const p of scratchIndex2.customBlocks[activeName] ?? [])
+      for (const p of scratchIndex.customBlocks[activeName] ?? [])
         push(p, CIK.Function, "Custom block", p);
     }
     return items;
@@ -1799,6 +1895,808 @@
   // src/overlay.html
   var overlay_default2 = '\n        <div id="scratchpiler-header">\n            <div id="scratchpiler-wordmark">\n                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">\n                    <path d="M3.5 4l4.5 4-4.5 4" stroke="#ff8c00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>\n                    <path d="M10 12h3.5" stroke="#ff8c00" stroke-width="1.8" stroke-linecap="round"/>\n                </svg>\n                Scratchpiler\n            </div>\n            <div id="scratchpiler-menubar">\n                <button class="sp-menu-btn" id="sp-menu-file">File</button>\n                <button class="sp-menu-btn" id="sp-menu-edit">Edit</button>\n                <button class="sp-menu-btn" id="sp-menu-variables">Variables</button>\n                <button class="sp-menu-btn" id="sp-menu-lists">Lists</button>\n                <button class="sp-menu-btn" id="sp-menu-help">Help</button>\n            </div>\n            <div id="scratchpiler-header-center">\n                <span id="scratchpiler-status">&mdash;</span>\n            </div>\n            <div id="scratchpiler-header-actions">\n                <button id="scratchpiler-compile-btn">Compile &amp; Inject</button>\n                <button id="scratchpiler-close-btn" title="Close (Escape)">\u2715</button>\n\n                <!-- Hidden compat buttons -->\n                <button id="scratchpiler-import-btn" style="display:none"></button>\n                <button id="scratchpiler-format-btn" style="display:none"></button>\n            </div>\n        </div>\n        <div id="scratchpiler-workspace">\n            <div id="scratchpiler-activitybar">\n                <button class="sp-activity-btn sp-active" id="sp-activity-explorer" title="Explorer">\n                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4H4v16h16v-12l-4-4z"/><path d="M16 4v4h4"/></svg>\n                </button>\n                <button class="sp-activity-btn" id="sp-activity-search" title="Search">\n                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>\n                </button>\n                <button class="sp-activity-btn" id="sp-activity-settings" title="Settings">\n                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>\n                </button>\n                <button class="sp-activity-btn" id="sp-activity-fixes" title="Fixes">\n                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>\n                </button>\n            </div>\n            <div id="scratchpiler-sidebar">\n                <div id="scratchpiler-sidebar-title">Explorer</div>\n                <div id="scratchpiler-sidebar-content">\n                    <!-- Explorer Panel -->\n                    <div class="sp-sidebar-panel active" id="sp-panel-explorer">\n                        <!-- Sprites Accordion -->\n                        <div class="sp-accordion">\n                            <div class="sp-accordion-header active" id="sp-acc-sprites-header">\n                                <span class="sp-chevron">\u25BC</span> Sprites\n                            </div>\n                            <div class="sp-accordion-content active" id="sp-acc-sprites-content">\n                                <div class="sp-sidebar-list" id="scratchpiler-sprites-list"></div>\n                            </div>\n                        </div>\n                        <!-- Sprite Details Accordion -->\n                        <div class="sp-accordion">\n                            <div class="sp-accordion-header active" id="sp-acc-details-header">\n                                <span class="sp-chevron">\u25BC</span> Sprite Details: <span id="scratchpiler-detail-spritename">-</span>\n                            </div>\n                            <div class="sp-accordion-content active" id="sp-acc-details-content">\n                                <!-- Costumes sub-accordion -->\n                                <div class="sp-sub-accordion">\n                                    <div class="sp-sub-accordion-header active" id="sp-subacc-costumes-header">\u25BC Costumes</div>\n                                    <div class="sp-sub-accordion-content active" id="sp-subacc-costumes-content"></div>\n                                </div>\n                                <!-- Sounds sub-accordion -->\n                                <div class="sp-sub-accordion">\n                                    <div class="sp-sub-accordion-header active" id="sp-subacc-sounds-header">\u25BC Sounds</div>\n                                    <div class="sp-sub-accordion-content active" id="sp-subacc-sounds-content"></div>\n                                </div>\n                                <!-- Variables sub-accordion -->\n                                <div class="sp-sub-accordion">\n                                    <div class="sp-sub-accordion-header active" id="sp-subacc-variables-header">\u25BC Local Variables</div>\n                                    <div class="sp-sub-accordion-content active" id="sp-subacc-variables-content"></div>\n                                </div>\n                                <!-- Custom Blocks sub-accordion -->\n                                <div class="sp-sub-accordion">\n                                    <div class="sp-sub-accordion-header active" id="sp-subacc-customblocks-header">\u25BC Custom Blocks</div>\n                                    <div class="sp-sub-accordion-content active" id="sp-subacc-customblocks-content"></div>\n                                </div>\n                            </div>\n                        </div>\n                    </div>\n\n                    <!-- Search Panel -->\n                    <div class="sp-sidebar-panel" id="sp-panel-search">\n                        <div class="sp-search-container">\n                            <input type="text" id="scratchpiler-search-input" placeholder="Search..." autocomplete="off" />\n                            <input type="text" id="scratchpiler-replace-input" placeholder="Replace" autocomplete="off" />\n                            <div class="sp-search-actions">\n                                <button id="scratchpiler-search-btn" title="Search">Find</button>\n                                <button id="scratchpiler-replace-btn" title="Replace Current">Replace</button>\n                                <button id="scratchpiler-replace-all-btn" title="Replace All">All</button>\n                            </div>\n                        </div>\n                        <div id="scratchpiler-search-results"></div>\n                    </div>\n\n                    <!-- Settings Panel -->\n                    <div class="sp-sidebar-panel" id="sp-panel-settings">\n                        <div class="sp-settings-group">\n                            <label for="sp-setting-theme">Editor Theme</label>\n                            <select id="sp-setting-theme">\n                                <option value="scratchpiler-dark">Scratchpiler Dark</option>\n                                <option value="vs-dark">VS Code Dark</option>\n                                <option value="hc-black">High Contrast Black</option>\n                                <option value="vs">VS Code Light</option>\n                            </select>\n                        </div>\n                        <div class="sp-settings-group">\n                            <label for="sp-setting-fontsize">Font Size</label>\n                            <select id="sp-setting-fontsize">\n                                <option value="12">12px</option>\n                                <option value="13">13px</option>\n                                <option value="14">14px</option>\n                                <option value="15">15px</option>\n                                <option value="16">16px</option>\n                                <option value="18">18px</option>\n                                <option value="20">20px</option>\n                            </select>\n                        </div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-wrap" />\n                            <label for="sp-setting-wrap">Line Wrap</label>\n                        </div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-minimap" />\n                            <label for="sp-setting-minimap">Show Minimap</label>\n                        </div>\n                        <div class="sp-settings-group">\n                            <label for="sp-setting-tabsize">Tab Size</label>\n                            <select id="sp-setting-tabsize">\n                                <option value="2">2 spaces</option>\n                                <option value="4">4 spaces</option>\n                                <option value="8">8 spaces</option>\n                            </select>\n                        </div>\n                        <div class="sp-settings-group">\n                            <label for="sp-setting-autosave">Auto-save Delay</label>\n                            <select id="sp-setting-autosave">\n                                <option value="0">Instant</option>\n                                <option value="500">500 ms</option>\n                                <option value="1000">1 second</option>\n                                <option value="2000">2 seconds</option>\n                            </select>\n                        </div>\n                        <div style="font-size:11px; color:#6b8db5; margin-top:4px; margin-bottom:2px;">Lint Rules</div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-lint-typecheck" />\n                            <label for="sp-setting-lint-typecheck">Type checking (list vs variable)</label>\n                        </div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-lint-unreachable" />\n                            <label for="sp-setting-lint-unreachable">Unreachable code</label>\n                        </div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-lint-orphaned" />\n                            <label for="sp-setting-lint-orphaned">Orphaned blocks</label>\n                        </div>\n                    </div>\n\n                    <!-- Fixes Panel -->\n                    <div class="sp-sidebar-panel" id="sp-panel-fixes">\n                        <div style="font-size:11px; color:#6b8db5; margin-bottom:4px;">Maintenance & recovery actions</div>\n\n                        <button class="sp-fix-action" id="sp-fix-clear-cache">\n                            <div class="sp-fix-action-icon">\n                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>\n                            </div>\n                            <div class="sp-fix-action-text">\n                                <span class="sp-fix-action-title">Clear Local Code Cache</span>\n                                <span class="sp-fix-action-desc">Purge all cached SDSL code from localStorage. The editor will decompile fresh from the VM on next sprite switch.</span>\n                            </div>\n                        </button>\n\n                        <button class="sp-fix-action" id="sp-fix-reindex">\n                            <div class="sp-fix-action-icon">\n                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>\n                            </div>\n                            <div class="sp-fix-action-text">\n                                <span class="sp-fix-action-title">Invalidate &amp; Re-Index</span>\n                                <span class="sp-fix-action-desc">Re-scan all VM targets to rebuild the sprite index, variables, and custom blocks. Fixes stale sidebar data.</span>\n                            </div>\n                        </button>\n\n                        <button class="sp-fix-action destructive" id="sp-fix-reset-all">\n                            <div class="sp-fix-action-icon">\n                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>\n                            </div>\n                            <div class="sp-fix-action-text">\n                                <span class="sp-fix-action-title">Reset All Changes</span>\n                                <span class="sp-fix-action-desc">Remove all Scratchpiler-injected blocks and clear cached code. Restores sprites to their last-saved project state.</span>\n                            </div>\n                        </button>\n                    </div>\n                </div>\n            </div>\n            <div id="sp-sidebar-resize" title="Drag to resize"></div>\n            <div id="scratchpiler-editor-pane">\n                <div id="sp-tab-bar"></div>\n                <div id="scratchpiler-editor-container"></div>\n                <div id="sp-output-panel">\n                    <div id="sp-output-header" title="Toggle Output panel">\n                        <span id="sp-output-header-title">Output</span>\n                        <button class="sp-out-hdr-btn" id="sp-output-clear-btn" title="Clear output">Clear</button>\n                        <button class="sp-out-hdr-btn" id="sp-output-toggle-btn" title="Expand / Collapse">\u25B8</button>\n                    </div>\n                    <div id="sp-output-log"></div>\n                </div>\n            </div>\n        </div>\n        <div id="sp-status-bar">\n            <div class="sp-sb-group sp-sb-left">\n                <span class="sp-sb-item" id="sp-sb-vm-status">\n                    <span class="sp-sb-dot sp-sb-dot-pending" id="sp-sb-vm-dot"></span>\n                    <span id="sp-sb-vm-text">Acquiring VM</span>\n                </span>\n                <span class="sp-sb-vsep">\u2502</span>\n                <span class="sp-sb-item" id="sp-sb-sprite-name">&mdash;</span>\n                <span class="sp-sb-vsep">\u2502</span>\n                <span class="sp-sb-item sp-sb-clickable" id="sp-sb-problems" title="Toggle Output panel">\n                    <span id="sp-sb-err-count" class="sp-sb-zero">0 errors</span>\n                    <span id="sp-sb-warn-count" class="sp-sb-zero">0 warnings</span>\n                </span>\n            </div>\n            <div class="sp-sb-group sp-sb-right">\n                <span class="sp-sb-item sp-sb-mono" id="sp-sb-cursor">Ln 1, Col 1</span>\n            </div>\n        </div>\n        <div id="sp-picker-backdrop" style="display:none">\n            <div id="sp-picker-modal" role="dialog" aria-label="Go to Sprite">\n                <input id="sp-picker-input" autocomplete="off" spellcheck="false" placeholder="Go to sprite\u2026" />\n                <div id="sp-picker-list"></div>\n                <div id="sp-picker-footer">\u2191\u2193 navigate \xB7 Enter select \xB7 Esc close</div>\n            </div>\n        </div>\n        <div id="scratchpiler-dialog" style="display:none">\n            <div id="scratchpiler-dialog-box">\n                <div id="scratchpiler-dialog-title"></div>\n                <input id="scratchpiler-dialog-input" type="text" autocomplete="off" spellcheck="false" />\n                <div id="scratchpiler-dialog-actions">\n                    <button class="sp-dialog-btn" id="scratchpiler-dialog-cancel">Cancel</button>\n                    <button class="sp-dialog-btn sp-primary" id="scratchpiler-dialog-ok">Create</button>\n                </div>\n            </div>\n        </div>\n    ';
 
+  // src/decompiler.js
+  function fieldVal(block, name) {
+    const f = block.fields && block.fields[name];
+    if (!f) return null;
+    return Array.isArray(f) ? f[0] : f.value;
+  }
+  function inpBlock(block, name, B) {
+    const input = block.inputs && block.inputs[name];
+    if (!input) return null;
+    if (Array.isArray(input)) {
+      const ref = input[1];
+      return Array.isArray(ref) ? null : B[ref] || null;
+    }
+    const id = input.block !== null && input.block !== void 0 ? input.block : input.shadow;
+    return id ? B[id] || null : null;
+  }
+  function inpBlockId(block, name) {
+    const input = block.inputs && block.inputs[name];
+    if (!input) return null;
+    if (Array.isArray(input)) {
+      const ref = input[1];
+      return Array.isArray(ref) ? null : ref;
+    }
+    return input.block || null;
+  }
+  function decompInput(block, name, B, isNum) {
+    const input = block.inputs && block.inputs[name];
+    if (!input) return isNum ? "0" : '""';
+    return decompInputRaw(input, B, isNum);
+  }
+  function decompInputRaw(input, B, isNum) {
+    let blockId, shadowId;
+    if (Array.isArray(input)) {
+      const ref = input[1];
+      if (Array.isArray(ref)) {
+        const t = ref[0];
+        if (t === 4 || t === 5 || t === 6 || t === 7 || t === 8) return String(ref[1] ?? "0");
+        if (t === 10) return JSON.stringify(String(ref[1] ?? ""));
+        if (t === 11) return JSON.stringify(String(ref[1] ?? ""));
+        if (t === 12) return `[${ref[1]}]`;
+        if (t === 13) return `[${ref[1]}]`;
+        return isNum ? "0" : '""';
+      }
+      blockId = ref;
+      shadowId = input[2] || null;
+    } else {
+      blockId = input.block ?? null;
+      shadowId = input.shadow ?? null;
+    }
+    if (blockId === null || blockId === shadowId) {
+      if (!shadowId) return isNum ? "0" : '""';
+      const s = B[shadowId];
+      return s ? decompExpr(s, B) : isNum ? "0" : '""';
+    }
+    const b = B[blockId];
+    return b ? decompExpr(b, B) : isNum ? "0" : '""';
+  }
+  function decompBroadcast(block, inputName, B) {
+    const input = block.inputs && block.inputs[inputName];
+    if (!input) return '""';
+    if (Array.isArray(input)) {
+      const ref = input[1];
+      if (Array.isArray(ref) && ref[0] === 11) return JSON.stringify(String(ref[1] ?? ""));
+    }
+    const id = Array.isArray(input) ? Array.isArray(input[1]) ? null : input[1] : input.block ?? input.shadow ?? null;
+    const b = id && B[id];
+    if (!b) return '""';
+    if (b.opcode === "event_broadcast_menu") return JSON.stringify(fieldVal(b, "BROADCAST_OPTION") ?? "");
+    return decompExpr(b, B);
+  }
+  function decompExpr(block, B) {
+    if (!block) return "false";
+    switch (block.opcode) {
+      case "math_number":
+      case "math_integer":
+      case "math_angle":
+      case "math_whole_number":
+      case "math_positive_number":
+        return String(fieldVal(block, "NUM") ?? "0");
+      case "text":
+        return JSON.stringify(String(fieldVal(block, "TEXT") ?? ""));
+      case "data_variable":
+        return `[${fieldVal(block, "VARIABLE") ?? ""}]`;
+      case "data_listcontents":
+        return `[${fieldVal(block, "LIST") ?? ""}]`;
+      case "motion_xposition":
+        return "xPos";
+      case "motion_yposition":
+        return "yPos";
+      case "motion_direction":
+        return "direction";
+      case "looks_size":
+        return "size";
+      case "looks_costumenumbername":
+        return fieldVal(block, "NUMBER_NAME") === "name" ? "costumeName" : "costumeNum";
+      case "sensing_timer":
+        return "timer";
+      case "sensing_answer":
+        return "answer";
+      case "sensing_mousedown":
+        return "mouseDown";
+      case "sensing_mousex":
+        return "mouseX";
+      case "sensing_mousey":
+        return "mouseY";
+      case "sensing_loudness":
+        return "loudness";
+      case "sound_volume":
+        return "volume";
+      case "sensing_username":
+        return "username";
+      case "sensing_dayssince2000":
+        return "daysSince2000";
+      case "operator_random":
+        return `random(${decompInput(block, "FROM", B, true)}, ${decompInput(block, "TO", B, true)})`;
+      case "operator_join":
+        return `join(${decompInput(block, "STRING1", B, false)}, ${decompInput(block, "STRING2", B, false)})`;
+      case "operator_letter_of":
+        return `letterOf(${decompInput(block, "LETTER", B, true)}, ${decompInput(block, "STRING", B, false)})`;
+      case "operator_contains":
+        return `contains(${decompInput(block, "STRING1", B, false)}, ${decompInput(block, "STRING2", B, false)})`;
+      case "motion_distanceto": {
+        const menuId = inpBlockId(block, "DISTANCETOMENU");
+        const menu = menuId && B[menuId];
+        return `distanceTo("${fieldVal(menu, "DISTANCETOMENU") ?? "_mouse_"}")`;
+      }
+      case "sensing_current": {
+        const unit = (fieldVal(block, "CURRENTMENU") ?? "HOUR").toLowerCase();
+        return `currentTime("${unit}")`;
+      }
+      case "sensing_of": {
+        const prop = fieldVal(block, "PROPERTY") ?? "";
+        const menuId = inpBlockId(block, "OBJECT");
+        const menu = menuId && B[menuId];
+        const sprite = fieldVal(menu, "OBJECT") ?? "";
+        const REV_PROP = {
+          "x position": "xOf",
+          "y position": "yOf",
+          "direction": "directionOf",
+          "costume #": "costumeNumOf",
+          "costume name": "costumeNameOf",
+          "size": "sizeOf",
+          "volume": "volumeOf"
+        };
+        return `${REV_PROP[prop] ?? "xOf"}("${sprite}")`;
+      }
+      case "sensing_touchingobject": {
+        const menuId = inpBlockId(block, "TOUCHINGOBJECTMENU");
+        const menu = menuId && B[menuId];
+        return `touching("${fieldVal(menu, "TOUCHINGOBJECTMENU") ?? "_edge_"}")`;
+      }
+      case "sensing_keypressed": {
+        const menuId = inpBlockId(block, "KEY_OPTION");
+        const menu = menuId && B[menuId];
+        return `key("${fieldVal(menu, "KEY_OPTION") ?? "space"}")`;
+      }
+      case "operator_add":
+        return `${decompInput(block, "NUM1", B, true)} + ${decompInput(block, "NUM2", B, true)}`;
+      case "operator_subtract":
+        return `${decompInput(block, "NUM1", B, true)} - ${decompInput(block, "NUM2", B, true)}`;
+      case "operator_multiply":
+        return `${decompInput(block, "NUM1", B, true)} * ${decompInput(block, "NUM2", B, true)}`;
+      case "operator_divide":
+        return `${decompInput(block, "NUM1", B, true)} / ${decompInput(block, "NUM2", B, true)}`;
+      case "operator_mod":
+        return `${decompInput(block, "NUM1", B, true)} mod ${decompInput(block, "NUM2", B, true)}`;
+      case "operator_lt":
+        return `${decompInput(block, "OPERAND1", B, true)} < ${decompInput(block, "OPERAND2", B, true)}`;
+      case "operator_gt":
+        return `${decompInput(block, "OPERAND1", B, true)} > ${decompInput(block, "OPERAND2", B, true)}`;
+      case "operator_equals":
+        return `${decompInput(block, "OPERAND1", B, false)} = ${decompInput(block, "OPERAND2", B, false)}`;
+      case "operator_and":
+        return `${decompExpr(inpBlock(block, "OPERAND1", B), B)} and ${decompExpr(inpBlock(block, "OPERAND2", B), B)}`;
+      case "operator_or":
+        return `${decompExpr(inpBlock(block, "OPERAND1", B), B)} or ${decompExpr(inpBlock(block, "OPERAND2", B), B)}`;
+      case "operator_not":
+        return `not ${decompExpr(inpBlock(block, "OPERAND", B), B)}`;
+      case "operator_length":
+        return `${decompInput(block, "STRING", B, false)}.length()`;
+      case "operator_round":
+        return `round(${decompInput(block, "NUM", B, true)})`;
+      case "operator_mathop": {
+        const op = fieldVal(block, "OPERATOR") ?? "abs";
+        const num = decompInput(block, "NUM", B, true);
+        const REV = {
+          "abs": "abs",
+          "sqrt": "sqrt",
+          "floor": "floor",
+          "ceiling": "ceiling",
+          "sin": "sin",
+          "cos": "cos",
+          "tan": "tan",
+          "asin": "asin",
+          "acos": "acos",
+          "atan": "atan",
+          "ln": "ln",
+          "log": "log",
+          "e ^": "exp",
+          "10 ^": "pow10"
+        };
+        return `${REV[op] ?? `mathop_${op}`}(${num})`;
+      }
+      case "data_lengthoflist":
+        return `[${fieldVal(block, "LIST") ?? ""}].length()`;
+      case "data_listcontainsitem":
+        return `[${fieldVal(block, "LIST") ?? ""}].contains(${decompInput(block, "ITEM", B, false)})`;
+      case "data_itemoflist":
+        return `[${fieldVal(block, "LIST") ?? ""}].item(${decompInput(block, "INDEX", B, true)})`;
+      case "data_itemnumoflist":
+        return `[${fieldVal(block, "LIST") ?? ""}].indexOf(${decompInput(block, "ITEM", B, false)})`;
+      default:
+        return `/* ${block.opcode} */`;
+    }
+  }
+  function decompStmt(block, B, indent) {
+    const I = indent, op = block.opcode;
+    switch (op) {
+      // Control
+      case "control_if": {
+        const cond = decompExpr(inpBlock(block, "CONDITION", B), B);
+        const body = decompChain(inpBlockId(block, "SUBSTACK"), B, I + "    ");
+        return `${I}if ${cond} {
+${body}${I}}
+`;
+      }
+      case "control_if_else": {
+        const cond = decompExpr(inpBlock(block, "CONDITION", B), B);
+        const body = decompChain(inpBlockId(block, "SUBSTACK"), B, I + "    ");
+        const body2 = decompChain(inpBlockId(block, "SUBSTACK2"), B, I + "    ");
+        return `${I}if ${cond} {
+${body}${I}} else {
+${body2}${I}}
+`;
+      }
+      case "control_repeat": {
+        const times = decompInput(block, "TIMES", B, true);
+        const body = decompChain(inpBlockId(block, "SUBSTACK"), B, I + "    ");
+        return `${I}repeat ${times} {
+${body}${I}}
+`;
+      }
+      case "control_forever": {
+        const body = decompChain(inpBlockId(block, "SUBSTACK"), B, I + "    ");
+        return `${I}forever {
+${body}${I}}
+`;
+      }
+      case "control_repeat_until": {
+        const condBlock = inpBlock(block, "CONDITION", B);
+        const body = decompChain(inpBlockId(block, "SUBSTACK"), B, I + "    ");
+        if (condBlock && condBlock.opcode === "operator_not") {
+          const inner = decompExpr(inpBlock(condBlock, "OPERAND", B), B);
+          return `${I}while (${inner}) {
+${body}${I}}
+`;
+        }
+        const cond = decompExpr(condBlock, B);
+        return `${I}repeat until (${cond}) {
+${body}${I}}
+`;
+      }
+      case "control_wait_until": {
+        const cond = decompExpr(inpBlock(block, "CONDITION", B), B);
+        return `${I}wait until ${cond}
+`;
+      }
+      case "control_wait":
+        return `${I}wait(${decompInput(block, "DURATION", B, true)})
+`;
+      case "control_stop": {
+        const opt = fieldVal(block, "STOP_OPTION") ?? "all";
+        if (opt === "all") return `${I}stopAll()
+`;
+        if (opt === "this script") return `${I}stopThis()
+`;
+        return `${I}stopOtherScripts()
+`;
+      }
+      case "control_create_clone_of": {
+        const menuId = inpBlockId(block, "CLONE_OPTION");
+        const menu = menuId && B[menuId];
+        const t = menu ? fieldVal(menu, "CLONE_OPTION") : "_myself_";
+        return !t || t === "_myself_" ? `${I}createClone()
+` : `${I}createClone("${t}")
+`;
+      }
+      case "control_delete_this_clone":
+        return `${I}deleteClone()
+`;
+      // Motion
+      case "motion_movesteps":
+        return `${I}move(${decompInput(block, "STEPS", B, true)})
+`;
+      case "motion_turnright":
+        return `${I}turnRight(${decompInput(block, "DEGREES", B, true)})
+`;
+      case "motion_turnleft":
+        return `${I}turnLeft(${decompInput(block, "DEGREES", B, true)})
+`;
+      case "motion_gotoxy":
+        return `${I}goTo(${decompInput(block, "X", B, true)}, ${decompInput(block, "Y", B, true)})
+`;
+      case "motion_goto": {
+        const menuId = inpBlockId(block, "TO");
+        const menu = menuId && B[menuId];
+        return `${I}goTo("${fieldVal(menu, "TO") ?? "_mouse_"}")
+`;
+      }
+      case "motion_glidesecstoxy":
+        return `${I}glide(${decompInput(block, "SECS", B, true)}, ${decompInput(block, "X", B, true)}, ${decompInput(block, "Y", B, true)})
+`;
+      case "motion_setx":
+        return `${I}setX(${decompInput(block, "X", B, true)})
+`;
+      case "motion_sety":
+        return `${I}setY(${decompInput(block, "Y", B, true)})
+`;
+      case "motion_changexby":
+        return `${I}changeX(${decompInput(block, "DX", B, true)})
+`;
+      case "motion_changeyby":
+        return `${I}changeY(${decompInput(block, "DY", B, true)})
+`;
+      case "motion_ifonedgebounce":
+        return `${I}bounce()
+`;
+      case "motion_pointindirection":
+        return `${I}setDirection(${decompInput(block, "DIRECTION", B, true)})
+`;
+      case "motion_pointtowards": {
+        const menuId = inpBlockId(block, "TOWARDS");
+        const menu = menuId && B[menuId];
+        return `${I}pointTowards("${fieldVal(menu, "TOWARDS") ?? "_mouse_"}")
+`;
+      }
+      // Looks
+      case "looks_say":
+        return `${I}say(${decompInput(block, "MESSAGE", B, false)})
+`;
+      case "looks_sayforsecs":
+        return `${I}sayFor(${decompInput(block, "MESSAGE", B, false)}, ${decompInput(block, "SECS", B, true)})
+`;
+      case "looks_think":
+        return `${I}think(${decompInput(block, "MESSAGE", B, false)})
+`;
+      case "looks_thinkforsecs":
+        return `${I}thinkFor(${decompInput(block, "MESSAGE", B, false)}, ${decompInput(block, "SECS", B, true)})
+`;
+      case "looks_switchcostumeto": {
+        const menuId = inpBlockId(block, "COSTUME");
+        const menu = menuId && B[menuId];
+        return `${I}switchCostume("${fieldVal(menu, "COSTUME") ?? ""}")
+`;
+      }
+      case "looks_switchbackdropto": {
+        const menuId = inpBlockId(block, "BACKDROP");
+        const menu = menuId && B[menuId];
+        return `${I}switchBackdrop("${fieldVal(menu, "BACKDROP") ?? ""}")
+`;
+      }
+      case "looks_nextcostume":
+        return `${I}nextCostume()
+`;
+      case "looks_nextbackdrop":
+        return `${I}nextBackdrop()
+`;
+      case "looks_setsizeto":
+        return `${I}setSize(${decompInput(block, "SIZE", B, true)})
+`;
+      case "looks_changesizeby":
+        return `${I}changeSize(${decompInput(block, "CHANGE", B, true)})
+`;
+      case "looks_show":
+        return `${I}show()
+`;
+      case "looks_hide":
+        return `${I}hide()
+`;
+      case "looks_cleargraphiceffects":
+        return `${I}clearEffects()
+`;
+      case "looks_seteffectto":
+        return `${I}setEffect("${fieldVal(block, "EFFECT") ?? "color"}", ${decompInput(block, "VALUE", B, true)})
+`;
+      case "looks_changeeffectby":
+        return `${I}changeEffect("${fieldVal(block, "EFFECT") ?? "color"}", ${decompInput(block, "CHANGE", B, true)})
+`;
+      case "looks_gotofrontback": {
+        const fb = fieldVal(block, "FRONT_BACK") ?? "front";
+        return fb === "back" ? `${I}goToBack()
+` : `${I}goToFront()
+`;
+      }
+      case "looks_goforwardbackwardlayers": {
+        const fb = fieldVal(block, "FORWARD_BACKWARD") ?? "forward";
+        return fb === "backward" ? `${I}moveBackward(${decompInput(block, "NUM", B, true)})
+` : `${I}moveForward(${decompInput(block, "NUM", B, true)})
+`;
+      }
+      // Sound
+      case "sound_play": {
+        const menuId = inpBlockId(block, "SOUND_MENU");
+        const menu = menuId && B[menuId];
+        return `${I}play("${fieldVal(menu, "SOUND_MENU") ?? ""}")
+`;
+      }
+      case "sound_playuntildone": {
+        const menuId = inpBlockId(block, "SOUND_MENU");
+        const menu = menuId && B[menuId];
+        return `${I}playUntilDone("${fieldVal(menu, "SOUND_MENU") ?? ""}")
+`;
+      }
+      case "sound_stopallsounds":
+        return `${I}stopSounds()
+`;
+      case "sound_setvolumeto":
+        return `${I}setVolume(${decompInput(block, "VOLUME", B, true)})
+`;
+      case "sound_changevolumeby":
+        return `${I}changeVolume(${decompInput(block, "VOLUME", B, true)})
+`;
+      // Sensing
+      case "sensing_askandwait":
+        return `${I}askAndWait(${decompInput(block, "QUESTION", B, false)})
+`;
+      case "sensing_resettimer":
+        return `${I}resetTimer()
+`;
+      case "sensing_setdragmode":
+        return `${I}setDragMode("${fieldVal(block, "DRAG_MODE") ?? "draggable"}")
+`;
+      // Data – list extras
+      case "data_deletealloflist":
+        return `${I}listDeleteAll([${fieldVal(block, "LIST") ?? ""}])
+`;
+      // Motion extras
+      case "motion_setrotationstyle":
+        return `${I}setRotationStyle("${fieldVal(block, "STYLE") ?? "all around"}")
+`;
+      case "motion_glidesecstosprite": {
+        const menuId = inpBlockId(block, "TO");
+        const menu = menuId && B[menuId];
+        return `${I}glide(${decompInput(block, "SECS", B, true)}, "${fieldVal(menu, "TO") ?? "_mouse_"}")
+`;
+      }
+      // Looks extras
+      case "looks_switchbackdroptoandwait": {
+        const menuId = inpBlockId(block, "BACKDROP");
+        const menu = menuId && B[menuId];
+        return `${I}switchBackdropAndWait("${fieldVal(menu, "BACKDROP") ?? ""}")
+`;
+      }
+      // Sound effects
+      case "sound_seteffectto":
+        return `${I}setSoundEffect("${fieldVal(block, "SOUND_EFFECT") ?? "PITCH"}", ${decompInput(block, "VALUE", B, true)})
+`;
+      case "sound_changeeffectby":
+        return `${I}changeSoundEffect("${fieldVal(block, "SOUND_EFFECT") ?? "PITCH"}", ${decompInput(block, "VALUE", B, true)})
+`;
+      case "sound_cleareffects":
+        return `${I}clearSoundEffects()
+`;
+      // Events
+      case "event_broadcast": {
+        const bcastStr = decompBroadcast(block, "BROADCAST_INPUT", B);
+        const srM = bcastStr.replace(/^"|"$/g, "").match(/^__sroutine_(.+)$/);
+        if (srM) return `${I}launch ${srM[1]}()
+`;
+        return `${I}broadcast(${bcastStr})
+`;
+      }
+      case "event_broadcastandwait": {
+        const bcastStr = decompBroadcast(block, "BROADCAST_INPUT", B);
+        const srM = bcastStr.replace(/^"|"$/g, "").match(/^__sroutine_(.+)$/);
+        if (srM) return `${I}await ${srM[1]}()
+`;
+        return `${I}broadcastAndWait(${bcastStr})
+`;
+      }
+      // Data – variables
+      case "data_setvariableto": {
+        const sv = fieldVal(block, "VARIABLE") ?? "";
+        const cancelM = sv.match(/^__sroutine_(.+)_cancelled$/);
+        if (cancelM) return `${I}cancel ${cancelM[1]}
+`;
+        if (sv.startsWith("__sroutine_") || /^_scratchpiler_internal_[a-z0-9]{4}_agg_/.test(sv)) {
+          return "";
+        }
+        return `${I}set [${sv}] to ${decompInput(block, "VALUE", B, false)}
+`;
+      }
+      case "data_changevariableby": {
+        const cv = fieldVal(block, "VARIABLE") ?? "";
+        if (cv.startsWith("__sroutine_") || /^_scratchpiler_internal_[a-z0-9]{4}_agg_/.test(cv)) {
+          return "";
+        }
+        return `${I}change [${cv}] by ${decompInput(block, "VALUE", B, true)}
+`;
+      }
+      case "data_showvariable":
+        return `${I}showVariable([${fieldVal(block, "VARIABLE") ?? ""}])
+`;
+      case "data_hidevariable":
+        return `${I}hideVariable([${fieldVal(block, "VARIABLE") ?? ""}])
+`;
+      case "data_showlist":
+        return `${I}showList([${fieldVal(block, "LIST") ?? ""}])
+`;
+      case "data_hidelist":
+        return `${I}hideList([${fieldVal(block, "LIST") ?? ""}])
+`;
+      case "data_addtolist":
+        return `${I}listAdd(${decompInput(block, "ITEM", B, false)}, [${fieldVal(block, "LIST") ?? ""}])
+`;
+      case "data_deleteoflist":
+        return `${I}listDelete(${decompInput(block, "INDEX", B, true)}, [${fieldVal(block, "LIST") ?? ""}])
+`;
+      case "data_insertatlist":
+        return `${I}listInsert(${decompInput(block, "ITEM", B, false)}, ${decompInput(block, "INDEX", B, true)}, [${fieldVal(block, "LIST") ?? ""}])
+`;
+      case "data_replaceitemoflist":
+        return `${I}listReplace(${decompInput(block, "INDEX", B, true)}, [${fieldVal(block, "LIST") ?? ""}], ${decompInput(block, "ITEM", B, false)})
+`;
+      // Custom block calls
+      case "procedures_call": {
+        const proccode = block.mutation && block.mutation.proccode || "";
+        const name = proccode.split(" ")[0];
+        const argIds = JSON.parse(block.mutation && block.mutation.argumentids || "[]");
+        const argStrs = argIds.map((aid) => {
+          const inputData = block.inputs && block.inputs[aid];
+          return inputData ? decompInputRaw(inputData, B, false) : '""';
+        });
+        return `${I}${name}(${argStrs.join(", ")})
+`;
+      }
+      default:
+        return `${I}// unsupported: ${op}
+`;
+    }
+  }
+  function decompChain(startId, B, indent) {
+    const lines = [];
+    let id = startId;
+    while (id) {
+      const block = B[id];
+      if (!block) break;
+      if (block.opcode === "data_setvariableto" && /^_scratchpiler_internal_[a-z0-9]{4}_gap$/.test(fieldVal(block, "VARIABLE") ?? "")) {
+        const valStr = decompInput(block, "VALUE", B, true);
+        const phase1 = block.next ? B[block.next] : null;
+        const phase2 = phase1 && phase1.next ? B[phase1.next] : null;
+        if (valStr === "1" && phase1?.opcode === "control_repeat_until" && phase2?.opcode === "control_repeat_until") {
+          const listName = (() => {
+            const q = [inpBlockId(phase2, "SUBSTACK")];
+            const seen = /* @__PURE__ */ new Set();
+            while (q.length) {
+              const bid = q.shift();
+              if (!bid || !B[bid] || seen.has(bid)) continue;
+              seen.add(bid);
+              const b = B[bid];
+              if (b.opcode === "data_replaceitemoflist") return fieldVal(b, "LIST");
+              if (b.next) q.push(b.next);
+              const sub = inpBlockId(b, "SUBSTACK");
+              if (sub) q.push(sub);
+            }
+            return null;
+          })();
+          if (listName) {
+            const isDesc = (() => {
+              let bid = inpBlockId(phase2, "SUBSTACK");
+              while (bid && B[bid]) {
+                const b = B[bid];
+                if (b.opcode === "control_repeat_until") {
+                  let bid2 = inpBlockId(b, "SUBSTACK");
+                  while (bid2 && B[bid2]) {
+                    const b2 = B[bid2];
+                    if (b2.opcode === "control_repeat_until") {
+                      const condId = inpBlockId(b2, "CONDITION");
+                      const condB = condId && B[condId];
+                      if (condB?.opcode === "operator_or") {
+                        const op2Id = inpBlockId(condB, "OPERAND2");
+                        const op2B = op2Id && B[op2Id];
+                        if (op2B?.opcode === "operator_not") {
+                          const innerId = inpBlockId(op2B, "OPERAND");
+                          const innerB = innerId && B[innerId];
+                          return innerB?.opcode === "operator_lt";
+                        }
+                      }
+                      return false;
+                    }
+                    bid2 = b2.next || null;
+                  }
+                  return false;
+                }
+                bid = b.next || null;
+              }
+              return false;
+            })();
+            lines.push(`${indent}[${listName}].sort${isDesc ? '("desc")' : "()"}
+`);
+            id = phase2.next || null;
+            continue;
+          }
+        }
+      }
+      if (block.opcode === "data_setvariableto") {
+        const ctrName = fieldVal(block, "VARIABLE") ?? "";
+        const mCtr = ctrName.match(/^_scratchpiler_internal_([a-z0-9]{4})_pyfor_ctr$/);
+        if (mCtr && decompInput(block, "VALUE", B, true) === "1") {
+          const nextBlock = block.next && B[block.next];
+          if (nextBlock && nextBlock.opcode === "control_repeat_until") {
+            const substackIds = [];
+            let bid = inpBlockId(nextBlock, "SUBSTACK");
+            while (bid && B[bid]) {
+              substackIds.push(bid);
+              bid = B[bid].next;
+            }
+            const firstBid = substackIds[0];
+            const firstBlk = firstBid && B[firstBid];
+            const lastBid = substackIds[substackIds.length - 1];
+            const lastBlk = lastBid && B[lastBid];
+            const rand4 = mCtr[1];
+            if (firstBlk && firstBlk.opcode === "data_setvariableto") {
+              const itemVarName = fieldVal(firstBlk, "VARIABLE") ?? "";
+              const mItem = itemVarName.match(
+                new RegExp(`^_scratchpiler_internal_${rand4}_(.+)$`)
+              );
+              const hasFinalIncr = lastBlk && lastBlk.opcode === "data_changevariableby" && fieldVal(lastBlk, "VARIABLE") === ctrName;
+              if (mItem) {
+                const condBlock = B[inpBlockId(nextBlock, "CONDITION")];
+                let listName = null;
+                if (condBlock && condBlock.opcode === "operator_gt") {
+                  const op2Block = B[inpBlockId(condBlock, "OPERAND2")];
+                  if (op2Block && op2Block.opcode === "data_lengthoflist") {
+                    listName = fieldVal(op2Block, "LIST");
+                  }
+                }
+                if (listName) {
+                  const shortName = mItem[1];
+                  const bodyIds = substackIds.slice(1, hasFinalIncr ? -1 : void 0);
+                  let body = "";
+                  for (const bid2 of bodyIds) body += decompStmt(B[bid2], B, indent + "    ");
+                  lines.push(`${indent}pyfor [${shortName}] in [${listName}] {
+${body}${indent}}
+`);
+                  id = nextBlock.next || null;
+                  continue;
+                }
+              }
+            }
+          }
+        }
+      }
+      if (block.opcode === "data_setvariableto") {
+        const varName0 = fieldVal(block, "VARIABLE") ?? "";
+        const srParamMatch = varName0.match(/^__sroutine_(.+?)_(?!cancelled$|count$)(.+)$/);
+        if (srParamMatch) {
+          const rname = srParamMatch[1];
+          const paramArgs = [];
+          let scanId = id;
+          while (scanId && B[scanId]) {
+            const sb = B[scanId];
+            const sv = fieldVal(sb, "VARIABLE") ?? "";
+            const pm = sv.match(new RegExp(`^__sroutine_${rname}_(?!cancelled$|count$)(.+)$`));
+            if (sb.opcode === "data_setvariableto" && pm) {
+              paramArgs.push(decompInput(sb, "VALUE", B, false));
+              scanId = sb.next || null;
+            } else break;
+          }
+          const bcastBlock = scanId && B[scanId];
+          const isBcast = bcastBlock && (bcastBlock.opcode === "event_broadcast" || bcastBlock.opcode === "event_broadcastandwait");
+          if (isBcast) {
+            const inputBlock = inpBlock(bcastBlock, "BROADCAST_INPUT", B);
+            const msgVal = inputBlock && inputBlock.opcode === "event_broadcast_menu" ? fieldVal(inputBlock, "BROADCAST_OPTION") ?? "" : decompInput(bcastBlock, "BROADCAST_INPUT", B, false).replace(/^"|"$/g, "");
+            if (msgVal === `__sroutine_${rname}`) {
+              const kw = bcastBlock.opcode === "event_broadcastandwait" ? "await" : "launch";
+              const argsStr = paramArgs.length ? `(${paramArgs.join(", ")})` : "()";
+              lines.push(`${indent}${kw} ${rname}${argsStr}
+`);
+              id = bcastBlock.next || null;
+              continue;
+            }
+          }
+        }
+      }
+      if (block.opcode === "data_setvariableto") {
+        const iterName = fieldVal(block, "VARIABLE") ?? "";
+        const m = iterName.match(/^_scratchpiler_internal_[a-z0-9]{4}_(.+)$/);
+        if (m) {
+          const nextBlock = block.next && B[block.next];
+          if (nextBlock && nextBlock.opcode === "control_repeat_until") {
+            const condBlock = B[inpBlockId(nextBlock, "CONDITION")];
+            if (condBlock && condBlock.opcode === "operator_gt") {
+              const op1Block = B[inpBlockId(condBlock, "OPERAND1")];
+              if (op1Block && op1Block.opcode === "data_variable" && fieldVal(op1Block, "VARIABLE") === iterName) {
+                const shortName = m[1];
+                const startExpr = decompInput(block, "VALUE", B, true);
+                const endExpr = decompInput(condBlock, "OPERAND2", B, true);
+                const substackIds = [];
+                let bid = inpBlockId(nextBlock, "SUBSTACK");
+                while (bid && B[bid]) {
+                  substackIds.push(bid);
+                  bid = B[bid].next;
+                }
+                const lastBid = substackIds[substackIds.length - 1];
+                const lastBlk = lastBid && B[lastBid];
+                const hasIncr = lastBlk && lastBlk.opcode === "data_changevariableby" && fieldVal(lastBlk, "VARIABLE") === iterName;
+                const bodyIds = hasIncr ? substackIds.slice(0, -1) : substackIds;
+                let body = "";
+                for (const bid2 of bodyIds) body += decompStmt(B[bid2], B, indent + "    ");
+                lines.push(`${indent}for [${shortName}] from ${startExpr} to ${endExpr} {
+${body}${indent}}
+`);
+                id = nextBlock.next || null;
+                continue;
+              }
+            }
+          }
+        }
+      }
+      lines.push(decompStmt(block, B, indent));
+      id = block.next || null;
+    }
+    return lines.join("");
+  }
+  function decompScript(hat, B) {
+    if (hat.opcode === "procedures_definition") {
+      const protoInput = hat.inputs && hat.inputs.custom_block;
+      const protoId = protoInput ? Array.isArray(protoInput) ? protoInput[1] : protoInput.block : null;
+      const proto = protoId && B[protoId];
+      if (!proto || !proto.mutation) return null;
+      const proccode = proto.mutation.proccode || "";
+      const name = proccode.split(" ")[0];
+      const params = JSON.parse(proto.mutation.argumentnames || "[]");
+      const body2 = decompChain(hat.next, B, "    ");
+      return `define ${name}(${params.join(", ")}) {
+${body2}}`;
+    }
+    let header;
+    switch (hat.opcode) {
+      case "event_whenflagclicked":
+        header = "on flag";
+        break;
+      case "event_whenthisspriteclicked":
+        header = "on click";
+        break;
+      case "event_whenstageclicked":
+        header = "on click";
+        break;
+      case "control_start_as_clone":
+        header = "on clone";
+        break;
+      case "event_whenkeypressed":
+        header = `on key "${fieldVal(hat, "KEY_OPTION") ?? "space"}"`;
+        break;
+      case "event_whenbroadcastreceived": {
+        const bcastVal = fieldVal(hat, "BROADCAST_OPTION") ?? "";
+        const srMatch = bcastVal.match(/^__sroutine_(.+)$/);
+        if (srMatch) {
+          const rname = srMatch[1];
+          let bodyStr = decompChain(hat.next, B, "    ");
+          const bodyLines = bodyStr.split("\n").filter((l) => l.trim());
+          const firstLine = bodyLines[0] || "";
+          const secondLine = bodyLines[1] || "";
+          const lastLine = bodyLines[bodyLines.length - 1] || "";
+          const isPreamble1 = firstLine.includes(`__sroutine_${rname}_cancelled`);
+          const isPreamble2 = secondLine.includes(`__sroutine_${rname}_count`);
+          const isPostamble = lastLine.includes(`__sroutine_${rname}_count`);
+          const userLines = bodyLines.slice(
+            (isPreamble1 ? 1 : 0) + (isPreamble2 ? 1 : 0),
+            isPostamble ? bodyLines.length - 1 : bodyLines.length
+          );
+          return `scratchroutine ${rname} {
+${userLines.map((l) => l + "\n").join("")}}`;
+        }
+        header = `on receive "${bcastVal}"`;
+        break;
+      }
+      case "event_whenbackdropswitchesto":
+        header = `on backdrop "${fieldVal(hat, "BACKDROP") ?? ""}"`;
+        break;
+      case "event_whengreaterthan": {
+        const sense = (fieldVal(hat, "WHENGREATERTHANMENU") ?? "TIMER").toLowerCase();
+        const valStr = decompInput(hat, "VALUE", B, true);
+        header = `on ${sense} > ${valStr}`;
+        break;
+      }
+      default:
+        return `// unsupported hat: ${hat.opcode}`;
+    }
+    const body = decompChain(hat.next, B, "    ");
+    return `${header} {
+${body}}`;
+  }
+  function decompile(vm, spriteName) {
+    const target = spriteName === "__stage__" ? vm.runtime.targets.find((t) => t.isStage) : vm.runtime.targets.find((t) => !t.isStage && t.sprite.name === spriteName) || vm.editingTarget;
+    if (!target) return "// Error: sprite not found\n";
+    const B = target.blocks._blocks;
+    const roots = Object.values(B).filter((b) => b.topLevel && !b.shadow).sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+    return roots.map((r) => decompScript(r, B)).filter(Boolean).join("\n\n") + "\n";
+  }
+
   // src/ui-dom.js
   function buildOverlayDOM() {
     const fontLink = document.createElement("link");
@@ -2372,7 +3270,7 @@
   }
 
   // src/editor.js
-  var monacoEditor2 = null;
+  var monacoEditor = null;
   var overlayVisible = false;
   var currentVM = null;
   var applySettingsFn = null;
@@ -2397,7 +3295,7 @@
       `<svg class="sp-item-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>`
     );
     listEl.appendChild(stageEl);
-    for (const s of scratchIndex2.sprites) {
+    for (const s of scratchIndex.sprites) {
       const el = makeSpriteItem(
         s.name,
         `${s.name}.sp`,
@@ -2482,7 +3380,7 @@
         selectSidebarSprite(next);
       } else {
         currentSpriteContext = null;
-        if (monacoEditor2) monacoEditor2.setValue("");
+        if (monacoEditor) monacoEditor.setValue("");
         renderTabs();
       }
     } else {
@@ -2533,17 +3431,17 @@
     if (cbContent) cbContent.innerHTML = "";
     let costumes = [], sounds = [], vars = [], customBlocks = [];
     if (spriteName === "__stage__") {
-      costumes = scratchIndex2.stage.backdrops || [];
-      sounds = scratchIndex2.stage.sounds || [];
-      vars = scratchIndex2.globalVariables || [];
+      costumes = scratchIndex.stage.backdrops || [];
+      sounds = scratchIndex.stage.sounds || [];
+      vars = scratchIndex.globalVariables || [];
     } else {
-      const sprite = scratchIndex2.sprites.find((s) => s.name === spriteName);
+      const sprite = scratchIndex.sprites.find((s) => s.name === spriteName);
       if (sprite) {
         costumes = sprite.costumes || [];
         sounds = sprite.sounds || [];
       }
-      vars = scratchIndex2.spriteVariables[spriteName] || [];
-      customBlocks = scratchIndex2.customBlocks[spriteName] || [];
+      vars = scratchIndex.spriteVariables[spriteName] || [];
+      customBlocks = scratchIndex.customBlocks[spriteName] || [];
     }
     function makeDetailItem(label, snippet, title) {
       const div = document.createElement("div");
@@ -2551,9 +3449,9 @@
       div.textContent = label;
       div.title = title;
       div.addEventListener("click", () => {
-        if (monacoEditor2) {
-          monacoEditor2.trigger("sidebar", "type", { text: snippet });
-          monacoEditor2.focus();
+        if (monacoEditor) {
+          monacoEditor.trigger("sidebar", "type", { text: snippet });
+          monacoEditor.focus();
         }
       });
       return div;
@@ -2631,8 +3529,8 @@
         });
         currentActiveTab = tabId;
       }
-      if (monacoEditor2) {
-        setTimeout(() => monacoEditor2.layout(), 50);
+      if (monacoEditor) {
+        setTimeout(() => monacoEditor.layout(), 50);
       }
     }
     actExplorer.addEventListener("click", () => switchTab("explorer"));
@@ -2656,12 +3554,12 @@
       } catch {
       }
       injectedBlockIds2.clear();
-      updateStatus2(`\u2713 Cleared ${cleared} cached entries`);
+      updateStatus(`\u2713 Cleared ${cleared} cached entries`);
       if (currentSpriteContext) loadFromLocalStorage(currentSpriteContext);
     });
     document.getElementById("sp-fix-reindex").addEventListener("click", () => {
       if (!currentVM) {
-        updateStatus2("Error: VM not available");
+        updateStatus("Error: VM not available");
         return;
       }
       reindex(currentVM);
@@ -2669,11 +3567,11 @@
       if (currentSpriteContext) {
         selectSidebarSprite(currentSpriteContext);
       }
-      updateStatus2("\u2713 Re-indexed all sprites & variables");
+      updateStatus("\u2713 Re-indexed all sprites & variables");
     });
     document.getElementById("sp-fix-reset-all").addEventListener("click", () => {
       if (!currentVM) {
-        updateStatus2("Error: VM not available");
+        updateStatus("Error: VM not available");
         return;
       }
       if (!confirm("Reset all Scratchpiler changes?\n\nThis will:\n\u2022 Remove all injected blocks from every sprite\n\u2022 Clear all cached SDSL code\n\u2022 Re-index the project\n\nThe project will return to its last-saved state.")) return;
@@ -2710,9 +3608,9 @@
       if (currentSpriteContext) {
         selectSidebarSprite(currentSpriteContext);
       } else {
-        if (monacoEditor2) monacoEditor2.setValue("");
+        if (monacoEditor) monacoEditor.setValue("");
       }
-      updateStatus2(`\u2713 Reset complete \u2014 removed ${removedCount} injected blocks, cleared ${keysToRemove.length} cache entries`);
+      updateStatus(`\u2713 Reset complete \u2014 removed ${removedCount} injected blocks, cleared ${keysToRemove.length} cache entries`);
     });
     document.querySelectorAll(".sp-accordion-header").forEach((hdr) => {
       hdr.addEventListener("click", () => {
@@ -2753,7 +3651,7 @@
     const matches = [];
     const stageCode = localStorage.getItem("scratchpiler-content-__stage__") || "";
     searchCode(stageCode, "__stage__", query, matches);
-    for (const s of scratchIndex2.sprites) {
+    for (const s of scratchIndex.sprites) {
       const code = localStorage.getItem(`scratchpiler-content-${s.name}`) || "";
       searchCode(code, s.name, query, matches);
     }
@@ -2778,10 +3676,10 @@
         item.querySelector(".sp-search-line-text").textContent = m.text;
         item.addEventListener("click", () => {
           selectSidebarSprite(m.spriteName);
-          if (monacoEditor2) {
-            monacoEditor2.setPosition({ lineNumber: m.line, column: 1 });
-            monacoEditor2.revealLineInCenter(m.line);
-            monacoEditor2.focus();
+          if (monacoEditor) {
+            monacoEditor.setPosition({ lineNumber: m.line, column: 1 });
+            monacoEditor.revealLineInCenter(m.line);
+            monacoEditor.focus();
           }
         });
         resultsEl.appendChild(item);
@@ -2805,9 +3703,9 @@
     const searchVal = document.getElementById("scratchpiler-search-input").value;
     const replaceVal = document.getElementById("scratchpiler-replace-input").value;
     if (!searchVal) return;
-    if (monacoEditor2) {
-      const selection = monacoEditor2.getSelection();
-      const selectedText = monacoEditor2.getModel().getValueInRange(selection);
+    if (monacoEditor) {
+      const selection = monacoEditor.getSelection();
+      const selectedText = monacoEditor.getModel().getValueInRange(selection);
       if (selectedText.toLowerCase().includes(searchVal.toLowerCase())) {
         const range = new monaco.Range(
           selection.startLineNumber,
@@ -2815,7 +3713,7 @@
           selection.endLineNumber,
           selection.endColumn
         );
-        monacoEditor2.executeEdits("search-replace", [{
+        monacoEditor.executeEdits("search-replace", [{
           range,
           text: replaceVal,
           forceMoveMarkers: true
@@ -2823,13 +3721,13 @@
         saveToLocalStorage(currentSpriteContext);
         runSearch();
       } else {
-        const model = monacoEditor2.getModel();
+        const model = monacoEditor.getModel();
         const matches = model.findMatches(searchVal, true, false, false, null, true);
         if (matches.length > 0) {
           const match = matches[0];
-          monacoEditor2.setSelection(match.range);
-          monacoEditor2.revealRangeInCenter(match.range);
-          monacoEditor2.focus();
+          monacoEditor.setSelection(match.range);
+          monacoEditor.revealRangeInCenter(match.range);
+          monacoEditor.focus();
         }
       }
     }
@@ -2843,11 +3741,11 @@
     }
     let replacedCount = 0;
     replacedCount += replaceInSprite("__stage__", searchVal, replaceVal);
-    for (const s of scratchIndex2.sprites) {
+    for (const s of scratchIndex.sprites) {
       replacedCount += replaceInSprite(s.name, searchVal, replaceVal);
     }
     loadFromLocalStorage(currentSpriteContext);
-    updateStatus2(`Replaced ${replacedCount} occurrence(s) across all sprites.`);
+    updateStatus(`Replaced ${replacedCount} occurrence(s) across all sprites.`);
     runSearch();
   }
   function replaceInSprite(spriteName, searchVal, replaceVal) {
@@ -2905,7 +3803,7 @@
     spSettings.lintUnreachable = settings.lintUnreachable;
     spSettings.lintOrphaned = settings.lintOrphaned;
     function applySettings() {
-      if (!monacoEditor2) return;
+      if (!monacoEditor) return;
       const newTabSize = parseInt(tabSizeSelect.value, 10) || 4;
       const newAutosave = parseInt(autosaveSelect.value, 10);
       spSettings.tabSize = newTabSize;
@@ -2914,7 +3812,7 @@
       spSettings.lintUnreachable = lintUnreachChk.checked;
       spSettings.lintOrphaned = lintOrphanedChk.checked;
       monaco.editor.setTheme(themeSelect.value);
-      monacoEditor2.updateOptions({
+      monacoEditor.updateOptions({
         fontSize: parseInt(fontSizeSelect.value, 10),
         wordWrap: wrapCheckbox.checked ? "on" : "off",
         minimap: { enabled: minimapCheckbox.checked },
@@ -2953,9 +3851,9 @@
       if (!file) return;
       const rdr = new FileReader();
       rdr.onload = (ev) => {
-        if (monacoEditor2) {
-          monacoEditor2.setValue(ev.target.result);
-          updateStatus2(`Loaded file: ${file.name}`);
+        if (monacoEditor) {
+          monacoEditor.setValue(ev.target.result);
+          updateStatus(`Loaded file: ${file.name}`);
         }
       };
       rdr.readAsText(file);
@@ -2963,8 +3861,8 @@
     inp.click();
   }
   function exportToLocalFile() {
-    if (!monacoEditor2) return;
-    const code = monacoEditor2.getValue();
+    if (!monacoEditor) return;
+    const code = monacoEditor.getValue();
     const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -2973,10 +3871,10 @@
     a.href = url;
     a.click();
     URL.revokeObjectURL(url);
-    updateStatus2(`Exported ${name}.sp`);
+    updateStatus(`Exported ${name}.sp`);
   }
   function loadExample(name) {
-    if (!monacoEditor2) return;
+    if (!monacoEditor) return;
     let code = "";
     if (name === "hello-world") {
       code = `// Hello World
@@ -3014,8 +3912,8 @@ on flag {
 `;
     }
     if (code) {
-      monacoEditor2.setValue(code);
-      updateStatus2(`Loaded example: ${name}`);
+      monacoEditor.setValue(code);
+      updateStatus(`Loaded example: ${name}`);
     }
   }
   function populateSpriteDropdown() {
@@ -3032,9 +3930,9 @@ on flag {
     selectSidebarSprite(currentSpriteContext);
     const trigger = document.getElementById("scratchpiler-trigger");
     if (trigger) trigger.style.display = "none";
-    if (monacoEditor2) {
-      monacoEditor2.layout();
-      monacoEditor2.focus();
+    if (monacoEditor) {
+      monacoEditor.layout();
+      monacoEditor.focus();
     }
   }
   function closeOverlay() {
@@ -3103,9 +4001,9 @@ on flag {
   var injectedBlockIds2 = /* @__PURE__ */ new Map();
   var currentSpriteContext = null;
   function saveToLocalStorage(spriteName) {
-    if (!monacoEditor2) return;
+    if (!monacoEditor) return;
     const key = spriteName ? `scratchpiler-content-${spriteName}` : LS_KEY;
-    const val = monacoEditor2.getValue();
+    const val = monacoEditor.getValue();
     if (!val || !val.trim()) return;
     try {
       localStorage.setItem(key, val);
@@ -3113,31 +4011,31 @@ on flag {
     }
   }
   function loadFromLocalStorage(spriteName) {
-    if (!monacoEditor2) return;
+    if (!monacoEditor) return;
     const key = spriteName ? `scratchpiler-content-${spriteName}` : LS_KEY;
     try {
       const v = localStorage.getItem(key);
       if (v !== null && v.trim() !== "") {
-        monacoEditor2.setValue(v);
+        monacoEditor.setValue(v);
       } else {
         if (currentVM) {
           try {
-            const code = decompile2(currentVM, spriteName);
-            monacoEditor2.setValue(code);
-            updateStatus2(`Decompiled "${spriteName === "__stage__" ? "Stage" : spriteName}"`);
+            const code = decompile(currentVM, spriteName);
+            monacoEditor.setValue(code);
+            updateStatus(`Decompiled "${spriteName === "__stage__" ? "Stage" : spriteName}"`);
           } catch (e) {
-            monacoEditor2.setValue("");
+            monacoEditor.setValue("");
             console.warn("[scratchpiler] decompile failed for", spriteName, e);
           }
         } else {
-          monacoEditor2.setValue("");
+          monacoEditor.setValue("");
         }
       }
     } catch (e) {
-      monacoEditor2.setValue("");
+      monacoEditor.setValue("");
     }
   }
-  function updateStatus2(text) {
+  function updateStatus(text) {
     const el = document.getElementById("scratchpiler-status");
     if (!el) return;
     let prefix = "> ";
@@ -3207,26 +4105,26 @@ on flag {
   }
   function doCreateVariable(name, isGlobal, isList) {
     if (!currentVM) {
-      updateStatus2("Error: VM not available");
+      updateStatus("Error: VM not available");
       return;
     }
     const spriteName = getActiveSpriteNameFromDropdown();
     const stage = currentVM.runtime.targets.find((t) => t.isStage);
     const target = isGlobal || spriteName === "__stage__" ? stage : currentVM.runtime.targets.find((t) => !t.isStage && t.sprite.name === spriteName);
     if (!target) {
-      updateStatus2("Error: target not found");
+      updateStatus("Error: target not found");
       return;
     }
     const varType = isList ? "list" : "";
     const existing = Object.values(target.variables).find((v) => v.name === name && v.type === varType);
     if (existing) {
-      updateStatus2(`Error: ${isList ? "list" : "variable"} "${name}" already exists`);
+      updateStatus(`Error: ${isList ? "list" : "variable"} "${name}" already exists`);
       return;
     }
     target.createVariable(uid(), name, varType);
     reindex(currentVM);
     const scope = isGlobal || spriteName === "__stage__" ? "global" : "local";
-    updateStatus2(`Created ${scope} ${isList ? "list" : "variable"} "${name}"`);
+    updateStatus(`Created ${scope} ${isList ? "list" : "variable"} "${name}"`);
   }
   function bootstrap() {
     buildOverlayDOM();
@@ -3243,13 +4141,13 @@ on flag {
         { label: "Save as .sp file...", action: () => exportToLocalFile() },
         "-",
         { label: "Clear Editor", action: () => {
-          if (confirm("Clear all editor content?")) monacoEditor2.setValue("");
+          if (confirm("Clear all editor content?")) monacoEditor.setValue("");
         } }
       ]);
     });
     document.getElementById("sp-menu-edit").addEventListener("click", () => {
       openMenu("sp-menu-edit", [
-        { label: "Format Document", action: () => monacoEditor2.getAction("editor.action.formatDocument").run() },
+        { label: "Format Document", action: () => monacoEditor.getAction("editor.action.formatDocument").run() },
         { label: "Find & Replace", action: () => {
           const searchBtn = document.getElementById("sp-activity-search");
           if (searchBtn) {
@@ -3278,7 +4176,7 @@ on flag {
               else panels[k].classList.remove("active");
             });
             currentActiveTab = "search";
-            if (monacoEditor2) monacoEditor2.layout();
+            if (monacoEditor) monacoEditor.layout();
           }
           const searchInput = document.getElementById("scratchpiler-search-input");
           if (searchInput) searchInput.focus();
@@ -3342,24 +4240,24 @@ on flag {
     });
     document.getElementById("scratchpiler-import-btn").addEventListener("click", () => {
       if (!currentVM) {
-        updateStatus2("Error: VM not available");
+        updateStatus("Error: VM not available");
         return;
       }
       const spriteName = getActiveSpriteNameFromDropdown();
-      updateStatus2("Importing...");
+      updateStatus("Importing...");
       try {
-        const code = decompile2(currentVM, spriteName);
-        monacoEditor2.setValue(code);
-        monacoEditor2.setScrollPosition({ scrollTop: 0 });
-        updateStatus2(`Imported from "${spriteName}"`);
+        const code = decompile(currentVM, spriteName);
+        monacoEditor.setValue(code);
+        monacoEditor.setScrollPosition({ scrollTop: 0 });
+        updateStatus(`Imported from "${spriteName}"`);
       } catch (e) {
-        updateStatus2("Import error: " + e.message);
+        updateStatus("Import error: " + e.message);
         console.error("[scratchpiler] import exception", e);
       }
     });
     loadMonaco(function(monaco2) {
       registerLanguage(monaco2);
-      monacoEditor2 = monaco2.editor.create(
+      monacoEditor = monaco2.editor.create(
         document.getElementById("scratchpiler-editor-container"),
         {
           value: "",
@@ -3380,18 +4278,18 @@ on flag {
           stickyScroll: { enabled: true }
         }
       );
-      monacoEditor2.onDidChangeCursorPosition((e) => {
+      monacoEditor.onDidChangeCursorPosition((e) => {
         updateStatusBarCursor(e.position.lineNumber, e.position.column);
       });
       applySettingsFn = setupSettings();
       if (applySettingsFn) applySettingsFn();
-      monacoEditor2.addCommand(monaco2.KeyMod.CtrlCmd | monaco2.KeyCode.Enter, () => {
+      monacoEditor.addCommand(monaco2.KeyMod.CtrlCmd | monaco2.KeyCode.Enter, () => {
         document.getElementById("scratchpiler-compile-btn").click();
       });
       document.getElementById("scratchpiler-format-btn").addEventListener("click", () => {
-        monacoEditor2.getAction("editor.action.formatDocument").run();
+        monacoEditor.getAction("editor.action.formatDocument").run();
       });
-      monacoEditor2.onDidChangeModelContent(() => {
+      monacoEditor.onDidChangeModelContent(() => {
         clearTimeout(saveTimer);
         clearTimeout(lintTimer);
         const saveDelay = isFinite(spSettings.autosave) ? spSettings.autosave : 1e3;
@@ -3401,11 +4299,11 @@ on flag {
           saveTimer = setTimeout(() => saveToLocalStorage(currentSpriteContext), saveDelay);
         }
         lintTimer = setTimeout(() => {
-          const src = monacoEditor2.getValue();
+          const src = monacoEditor.getValue();
           try {
             const toks = tokenize(src);
             const { ast, errors } = parse(toks);
-            const model = monacoEditor2.getModel();
+            const model = monacoEditor.getModel();
             const sn = getActiveSpriteNameFromDropdown();
             const rawLint = lint(ast);
             const lintWarnings = rawLint.filter((w) => {
@@ -3448,24 +4346,24 @@ on flag {
       });
       document.getElementById("scratchpiler-compile-btn").addEventListener("click", () => {
         if (!currentVM) {
-          updateStatus2("Error: VM not available");
+          updateStatus("Error: VM not available");
           return;
         }
         const spriteName = getActiveSpriteNameFromDropdown();
-        const source = monacoEditor2.getValue();
-        updateStatus2("Compiling...");
+        const source = monacoEditor.getValue();
+        updateStatus("Compiling...");
         let result;
         try {
           result = compileSource(source, currentVM, spriteName);
         } catch (e) {
-          updateStatus2("Compile error: " + e.message);
+          updateStatus("Compile error: " + e.message);
           logToOutput("Compile error: " + e.message, "error");
           flashCompileBtn(false);
           console.error("[scratchpiler] compile exception", e);
           return;
         }
         monaco2.editor.setModelMarkers(
-          monacoEditor2.getModel(),
+          monacoEditor.getModel(),
           LANG_ID,
           result.errors.map((e) => ({
             startLineNumber: e.line,
@@ -3478,7 +4376,7 @@ on flag {
         );
         if (result.errors.length > 0) {
           const msg = `${result.errors.length} error(s) \u2014 not injected`;
-          updateStatus2(msg);
+          updateStatus(msg);
           result.errors.forEach((er) => logToOutput(`Line ${er.line}:${er.col} \u2014 ${er.message}`, "error"));
           flashCompileBtn(false);
           return;
@@ -3495,7 +4393,7 @@ on flag {
         if (!panel) return;
         panel.classList.add("sp-expanded");
         if (toggleBtn) toggleBtn.textContent = "\u25BE";
-        if (monacoEditor2) setTimeout(() => monacoEditor2.layout(), 160);
+        if (monacoEditor) setTimeout(() => monacoEditor.layout(), 160);
       });
       acquireVM(
         (vm) => {
@@ -3522,7 +4420,7 @@ on flag {
           }
         },
         () => {
-          updateStatus2("Warning: VM not found after 15s");
+          updateStatus("Warning: VM not found after 15s");
           updateStatusBarVM("error");
         }
       );
@@ -4936,8 +5834,8 @@ on flag {
     const listNames = /* @__PURE__ */ new Set();
     const varNames = /* @__PURE__ */ new Set();
     const allVars = [
-      ...scratchIndex2.globalVariables || [],
-      ...scratchIndex2.spriteVariables[spriteName] || []
+      ...scratchIndex.globalVariables || [],
+      ...scratchIndex.spriteVariables[spriteName] || []
     ];
     for (const v of allVars) {
       if (v.type === "list") listNames.add(v.name);
@@ -7700,904 +8598,6 @@ on flag {
     if (parseErrors.length > 0) return { blocks: {}, errors: parseErrors };
     const { blocks, errors: codeErrors } = compile(ast, vm, spriteName);
     return { blocks, errors: codeErrors };
-  }
-
-  // src/injector.js
-  function formatSource2(src) {
-    try {
-      const lines = src.split("\n");
-      const result = [];
-      let indent = 0;
-      for (let raw of lines) {
-        const trimmed = raw.trim();
-        if (!trimmed) {
-          result.push("");
-          continue;
-        }
-        if (trimmed.startsWith("}")) indent = Math.max(0, indent - 1);
-        result.push("    ".repeat(indent) + trimmed);
-        if (trimmed.endsWith("{")) indent++;
-      }
-      return result.join("\n");
-    } catch (_) {
-      return null;
-    }
-  }
-  function injectBlocks(blockMap, vm, spriteName) {
-    const target = spriteName === "__stage__" ? vm.runtime.targets.find((t) => t.isStage) : vm.runtime.targets.find((t) => !t.isStage && t.sprite.name === spriteName) || vm.editingTarget;
-    if (!target) {
-      updateStatus("Error: sprite not found");
-      return;
-    }
-    restoreInjectedIds(spriteName);
-    function hatSig(block, blocks) {
-      switch (block.opcode) {
-        case "event_whenflagclicked":
-        case "event_whenthisspriteclicked":
-        case "event_whenstageclicked":
-        case "control_start_as_clone":
-          return block.opcode;
-        case "event_whenkeypressed":
-          return block.opcode + ":" + (block.fields?.KEY_OPTION?.value ?? "");
-        case "event_whenbroadcastreceived":
-          return block.opcode + ":" + (block.fields?.BROADCAST_OPTION?.value ?? "");
-        case "event_whenbackdropswitchesto":
-          return block.opcode + ":" + (block.fields?.BACKDROP?.value ?? "");
-        case "event_whengreaterthan":
-          return block.opcode + ":" + (block.fields?.WHICHINPUT?.value ?? "");
-        case "procedures_definition": {
-          const inp = block.inputs?.custom_block;
-          const protoId = inp ? Array.isArray(inp) ? inp[1] : inp.block ?? inp.shadow : null;
-          const proto = protoId && blocks[protoId];
-          return block.opcode + ":" + (proto?.mutation?.proccode ?? "");
-        }
-        default:
-          return block.opcode;
-      }
-    }
-    const incomingSigs = /* @__PURE__ */ new Set();
-    for (const b of Object.values(blockMap)) {
-      if (b.topLevel && !b.shadow) incomingSigs.add(hatSig(b, blockMap));
-    }
-    const idsToDelete = new Set(injectedBlockIds.get(spriteName) ?? []);
-    const existingBlocks = target.blocks._blocks ?? {};
-    for (const [id, b] of Object.entries(existingBlocks)) {
-      if (b.topLevel && !b.shadow && incomingSigs.has(hatSig(b, existingBlocks))) {
-        idsToDelete.add(id);
-      }
-    }
-    for (const id of idsToDelete) {
-      try {
-        target.blocks.deleteBlock(id);
-      } catch (_) {
-      }
-    }
-    const newTopLevelIds = new Set(
-      Object.values(blockMap).filter((b) => b.topLevel && !b.shadow).map((b) => b.id)
-    );
-    let count = 0;
-    for (const block of Object.values(blockMap)) {
-      try {
-        target.blocks.createBlock(block);
-        count++;
-      } catch (e) {
-        console.warn("[scratchpiler] block create failed", block.id, e);
-      }
-    }
-    injectedBlockIds.set(spriteName, newTopLevelIds);
-    persistInjectedIds(spriteName);
-    try {
-      vm.setEditingTarget(target.id);
-    } catch (_) {
-      try {
-        vm.emitWorkspaceUpdate();
-      } catch (__) {
-        console.warn("[scratchpiler] workspace refresh failed", __);
-      }
-    }
-    updateStatus(`Injected ${count} blocks into "${spriteName}"`);
-  }
-
-  // src/decompiler.js
-  function fieldVal(block, name) {
-    const f = block.fields && block.fields[name];
-    if (!f) return null;
-    return Array.isArray(f) ? f[0] : f.value;
-  }
-  function inpBlock(block, name, B) {
-    const input = block.inputs && block.inputs[name];
-    if (!input) return null;
-    if (Array.isArray(input)) {
-      const ref = input[1];
-      return Array.isArray(ref) ? null : B[ref] || null;
-    }
-    const id = input.block !== null && input.block !== void 0 ? input.block : input.shadow;
-    return id ? B[id] || null : null;
-  }
-  function inpBlockId(block, name) {
-    const input = block.inputs && block.inputs[name];
-    if (!input) return null;
-    if (Array.isArray(input)) {
-      const ref = input[1];
-      return Array.isArray(ref) ? null : ref;
-    }
-    return input.block || null;
-  }
-  function decompInput(block, name, B, isNum) {
-    const input = block.inputs && block.inputs[name];
-    if (!input) return isNum ? "0" : '""';
-    return decompInputRaw(input, B, isNum);
-  }
-  function decompInputRaw(input, B, isNum) {
-    let blockId, shadowId;
-    if (Array.isArray(input)) {
-      const ref = input[1];
-      if (Array.isArray(ref)) {
-        const t = ref[0];
-        if (t === 4 || t === 5 || t === 6 || t === 7 || t === 8) return String(ref[1] ?? "0");
-        if (t === 10) return JSON.stringify(String(ref[1] ?? ""));
-        if (t === 11) return JSON.stringify(String(ref[1] ?? ""));
-        if (t === 12) return `[${ref[1]}]`;
-        if (t === 13) return `[${ref[1]}]`;
-        return isNum ? "0" : '""';
-      }
-      blockId = ref;
-      shadowId = input[2] || null;
-    } else {
-      blockId = input.block ?? null;
-      shadowId = input.shadow ?? null;
-    }
-    if (blockId === null || blockId === shadowId) {
-      if (!shadowId) return isNum ? "0" : '""';
-      const s = B[shadowId];
-      return s ? decompExpr(s, B) : isNum ? "0" : '""';
-    }
-    const b = B[blockId];
-    return b ? decompExpr(b, B) : isNum ? "0" : '""';
-  }
-  function decompBroadcast(block, inputName, B) {
-    const input = block.inputs && block.inputs[inputName];
-    if (!input) return '""';
-    if (Array.isArray(input)) {
-      const ref = input[1];
-      if (Array.isArray(ref) && ref[0] === 11) return JSON.stringify(String(ref[1] ?? ""));
-    }
-    const id = Array.isArray(input) ? Array.isArray(input[1]) ? null : input[1] : input.block ?? input.shadow ?? null;
-    const b = id && B[id];
-    if (!b) return '""';
-    if (b.opcode === "event_broadcast_menu") return JSON.stringify(fieldVal(b, "BROADCAST_OPTION") ?? "");
-    return decompExpr(b, B);
-  }
-  function decompExpr(block, B) {
-    if (!block) return "false";
-    switch (block.opcode) {
-      case "math_number":
-      case "math_integer":
-      case "math_angle":
-      case "math_whole_number":
-      case "math_positive_number":
-        return String(fieldVal(block, "NUM") ?? "0");
-      case "text":
-        return JSON.stringify(String(fieldVal(block, "TEXT") ?? ""));
-      case "data_variable":
-        return `[${fieldVal(block, "VARIABLE") ?? ""}]`;
-      case "data_listcontents":
-        return `[${fieldVal(block, "LIST") ?? ""}]`;
-      case "motion_xposition":
-        return "xPos";
-      case "motion_yposition":
-        return "yPos";
-      case "motion_direction":
-        return "direction";
-      case "looks_size":
-        return "size";
-      case "looks_costumenumbername":
-        return fieldVal(block, "NUMBER_NAME") === "name" ? "costumeName" : "costumeNum";
-      case "sensing_timer":
-        return "timer";
-      case "sensing_answer":
-        return "answer";
-      case "sensing_mousedown":
-        return "mouseDown";
-      case "sensing_mousex":
-        return "mouseX";
-      case "sensing_mousey":
-        return "mouseY";
-      case "sensing_loudness":
-        return "loudness";
-      case "sound_volume":
-        return "volume";
-      case "sensing_username":
-        return "username";
-      case "sensing_dayssince2000":
-        return "daysSince2000";
-      case "operator_random":
-        return `random(${decompInput(block, "FROM", B, true)}, ${decompInput(block, "TO", B, true)})`;
-      case "operator_join":
-        return `join(${decompInput(block, "STRING1", B, false)}, ${decompInput(block, "STRING2", B, false)})`;
-      case "operator_letter_of":
-        return `letterOf(${decompInput(block, "LETTER", B, true)}, ${decompInput(block, "STRING", B, false)})`;
-      case "operator_contains":
-        return `contains(${decompInput(block, "STRING1", B, false)}, ${decompInput(block, "STRING2", B, false)})`;
-      case "motion_distanceto": {
-        const menuId = inpBlockId(block, "DISTANCETOMENU");
-        const menu = menuId && B[menuId];
-        return `distanceTo("${fieldVal(menu, "DISTANCETOMENU") ?? "_mouse_"}")`;
-      }
-      case "sensing_current": {
-        const unit = (fieldVal(block, "CURRENTMENU") ?? "HOUR").toLowerCase();
-        return `currentTime("${unit}")`;
-      }
-      case "sensing_of": {
-        const prop = fieldVal(block, "PROPERTY") ?? "";
-        const menuId = inpBlockId(block, "OBJECT");
-        const menu = menuId && B[menuId];
-        const sprite = fieldVal(menu, "OBJECT") ?? "";
-        const REV_PROP = {
-          "x position": "xOf",
-          "y position": "yOf",
-          "direction": "directionOf",
-          "costume #": "costumeNumOf",
-          "costume name": "costumeNameOf",
-          "size": "sizeOf",
-          "volume": "volumeOf"
-        };
-        return `${REV_PROP[prop] ?? "xOf"}("${sprite}")`;
-      }
-      case "sensing_touchingobject": {
-        const menuId = inpBlockId(block, "TOUCHINGOBJECTMENU");
-        const menu = menuId && B[menuId];
-        return `touching("${fieldVal(menu, "TOUCHINGOBJECTMENU") ?? "_edge_"}")`;
-      }
-      case "sensing_keypressed": {
-        const menuId = inpBlockId(block, "KEY_OPTION");
-        const menu = menuId && B[menuId];
-        return `key("${fieldVal(menu, "KEY_OPTION") ?? "space"}")`;
-      }
-      case "operator_add":
-        return `${decompInput(block, "NUM1", B, true)} + ${decompInput(block, "NUM2", B, true)}`;
-      case "operator_subtract":
-        return `${decompInput(block, "NUM1", B, true)} - ${decompInput(block, "NUM2", B, true)}`;
-      case "operator_multiply":
-        return `${decompInput(block, "NUM1", B, true)} * ${decompInput(block, "NUM2", B, true)}`;
-      case "operator_divide":
-        return `${decompInput(block, "NUM1", B, true)} / ${decompInput(block, "NUM2", B, true)}`;
-      case "operator_mod":
-        return `${decompInput(block, "NUM1", B, true)} mod ${decompInput(block, "NUM2", B, true)}`;
-      case "operator_lt":
-        return `${decompInput(block, "OPERAND1", B, true)} < ${decompInput(block, "OPERAND2", B, true)}`;
-      case "operator_gt":
-        return `${decompInput(block, "OPERAND1", B, true)} > ${decompInput(block, "OPERAND2", B, true)}`;
-      case "operator_equals":
-        return `${decompInput(block, "OPERAND1", B, false)} = ${decompInput(block, "OPERAND2", B, false)}`;
-      case "operator_and":
-        return `${decompExpr(inpBlock(block, "OPERAND1", B), B)} and ${decompExpr(inpBlock(block, "OPERAND2", B), B)}`;
-      case "operator_or":
-        return `${decompExpr(inpBlock(block, "OPERAND1", B), B)} or ${decompExpr(inpBlock(block, "OPERAND2", B), B)}`;
-      case "operator_not":
-        return `not ${decompExpr(inpBlock(block, "OPERAND", B), B)}`;
-      case "operator_length":
-        return `${decompInput(block, "STRING", B, false)}.length()`;
-      case "operator_round":
-        return `round(${decompInput(block, "NUM", B, true)})`;
-      case "operator_mathop": {
-        const op = fieldVal(block, "OPERATOR") ?? "abs";
-        const num = decompInput(block, "NUM", B, true);
-        const REV = {
-          "abs": "abs",
-          "sqrt": "sqrt",
-          "floor": "floor",
-          "ceiling": "ceiling",
-          "sin": "sin",
-          "cos": "cos",
-          "tan": "tan",
-          "asin": "asin",
-          "acos": "acos",
-          "atan": "atan",
-          "ln": "ln",
-          "log": "log",
-          "e ^": "exp",
-          "10 ^": "pow10"
-        };
-        return `${REV[op] ?? `mathop_${op}`}(${num})`;
-      }
-      case "data_lengthoflist":
-        return `[${fieldVal(block, "LIST") ?? ""}].length()`;
-      case "data_listcontainsitem":
-        return `[${fieldVal(block, "LIST") ?? ""}].contains(${decompInput(block, "ITEM", B, false)})`;
-      case "data_itemoflist":
-        return `[${fieldVal(block, "LIST") ?? ""}].item(${decompInput(block, "INDEX", B, true)})`;
-      case "data_itemnumoflist":
-        return `[${fieldVal(block, "LIST") ?? ""}].indexOf(${decompInput(block, "ITEM", B, false)})`;
-      default:
-        return `/* ${block.opcode} */`;
-    }
-  }
-  function decompStmt(block, B, indent) {
-    const I = indent, op = block.opcode;
-    switch (op) {
-      // Control
-      case "control_if": {
-        const cond = decompExpr(inpBlock(block, "CONDITION", B), B);
-        const body = decompChain(inpBlockId(block, "SUBSTACK"), B, I + "    ");
-        return `${I}if ${cond} {
-${body}${I}}
-`;
-      }
-      case "control_if_else": {
-        const cond = decompExpr(inpBlock(block, "CONDITION", B), B);
-        const body = decompChain(inpBlockId(block, "SUBSTACK"), B, I + "    ");
-        const body2 = decompChain(inpBlockId(block, "SUBSTACK2"), B, I + "    ");
-        return `${I}if ${cond} {
-${body}${I}} else {
-${body2}${I}}
-`;
-      }
-      case "control_repeat": {
-        const times = decompInput(block, "TIMES", B, true);
-        const body = decompChain(inpBlockId(block, "SUBSTACK"), B, I + "    ");
-        return `${I}repeat ${times} {
-${body}${I}}
-`;
-      }
-      case "control_forever": {
-        const body = decompChain(inpBlockId(block, "SUBSTACK"), B, I + "    ");
-        return `${I}forever {
-${body}${I}}
-`;
-      }
-      case "control_repeat_until": {
-        const condBlock = inpBlock(block, "CONDITION", B);
-        const body = decompChain(inpBlockId(block, "SUBSTACK"), B, I + "    ");
-        if (condBlock && condBlock.opcode === "operator_not") {
-          const inner = decompExpr(inpBlock(condBlock, "OPERAND", B), B);
-          return `${I}while (${inner}) {
-${body}${I}}
-`;
-        }
-        const cond = decompExpr(condBlock, B);
-        return `${I}repeat until (${cond}) {
-${body}${I}}
-`;
-      }
-      case "control_wait_until": {
-        const cond = decompExpr(inpBlock(block, "CONDITION", B), B);
-        return `${I}wait until ${cond}
-`;
-      }
-      case "control_wait":
-        return `${I}wait(${decompInput(block, "DURATION", B, true)})
-`;
-      case "control_stop": {
-        const opt = fieldVal(block, "STOP_OPTION") ?? "all";
-        if (opt === "all") return `${I}stopAll()
-`;
-        if (opt === "this script") return `${I}stopThis()
-`;
-        return `${I}stopOtherScripts()
-`;
-      }
-      case "control_create_clone_of": {
-        const menuId = inpBlockId(block, "CLONE_OPTION");
-        const menu = menuId && B[menuId];
-        const t = menu ? fieldVal(menu, "CLONE_OPTION") : "_myself_";
-        return !t || t === "_myself_" ? `${I}createClone()
-` : `${I}createClone("${t}")
-`;
-      }
-      case "control_delete_this_clone":
-        return `${I}deleteClone()
-`;
-      // Motion
-      case "motion_movesteps":
-        return `${I}move(${decompInput(block, "STEPS", B, true)})
-`;
-      case "motion_turnright":
-        return `${I}turnRight(${decompInput(block, "DEGREES", B, true)})
-`;
-      case "motion_turnleft":
-        return `${I}turnLeft(${decompInput(block, "DEGREES", B, true)})
-`;
-      case "motion_gotoxy":
-        return `${I}goTo(${decompInput(block, "X", B, true)}, ${decompInput(block, "Y", B, true)})
-`;
-      case "motion_goto": {
-        const menuId = inpBlockId(block, "TO");
-        const menu = menuId && B[menuId];
-        return `${I}goTo("${fieldVal(menu, "TO") ?? "_mouse_"}")
-`;
-      }
-      case "motion_glidesecstoxy":
-        return `${I}glide(${decompInput(block, "SECS", B, true)}, ${decompInput(block, "X", B, true)}, ${decompInput(block, "Y", B, true)})
-`;
-      case "motion_setx":
-        return `${I}setX(${decompInput(block, "X", B, true)})
-`;
-      case "motion_sety":
-        return `${I}setY(${decompInput(block, "Y", B, true)})
-`;
-      case "motion_changexby":
-        return `${I}changeX(${decompInput(block, "DX", B, true)})
-`;
-      case "motion_changeyby":
-        return `${I}changeY(${decompInput(block, "DY", B, true)})
-`;
-      case "motion_ifonedgebounce":
-        return `${I}bounce()
-`;
-      case "motion_pointindirection":
-        return `${I}setDirection(${decompInput(block, "DIRECTION", B, true)})
-`;
-      case "motion_pointtowards": {
-        const menuId = inpBlockId(block, "TOWARDS");
-        const menu = menuId && B[menuId];
-        return `${I}pointTowards("${fieldVal(menu, "TOWARDS") ?? "_mouse_"}")
-`;
-      }
-      // Looks
-      case "looks_say":
-        return `${I}say(${decompInput(block, "MESSAGE", B, false)})
-`;
-      case "looks_sayforsecs":
-        return `${I}sayFor(${decompInput(block, "MESSAGE", B, false)}, ${decompInput(block, "SECS", B, true)})
-`;
-      case "looks_think":
-        return `${I}think(${decompInput(block, "MESSAGE", B, false)})
-`;
-      case "looks_thinkforsecs":
-        return `${I}thinkFor(${decompInput(block, "MESSAGE", B, false)}, ${decompInput(block, "SECS", B, true)})
-`;
-      case "looks_switchcostumeto": {
-        const menuId = inpBlockId(block, "COSTUME");
-        const menu = menuId && B[menuId];
-        return `${I}switchCostume("${fieldVal(menu, "COSTUME") ?? ""}")
-`;
-      }
-      case "looks_switchbackdropto": {
-        const menuId = inpBlockId(block, "BACKDROP");
-        const menu = menuId && B[menuId];
-        return `${I}switchBackdrop("${fieldVal(menu, "BACKDROP") ?? ""}")
-`;
-      }
-      case "looks_nextcostume":
-        return `${I}nextCostume()
-`;
-      case "looks_nextbackdrop":
-        return `${I}nextBackdrop()
-`;
-      case "looks_setsizeto":
-        return `${I}setSize(${decompInput(block, "SIZE", B, true)})
-`;
-      case "looks_changesizeby":
-        return `${I}changeSize(${decompInput(block, "CHANGE", B, true)})
-`;
-      case "looks_show":
-        return `${I}show()
-`;
-      case "looks_hide":
-        return `${I}hide()
-`;
-      case "looks_cleargraphiceffects":
-        return `${I}clearEffects()
-`;
-      case "looks_seteffectto":
-        return `${I}setEffect("${fieldVal(block, "EFFECT") ?? "color"}", ${decompInput(block, "VALUE", B, true)})
-`;
-      case "looks_changeeffectby":
-        return `${I}changeEffect("${fieldVal(block, "EFFECT") ?? "color"}", ${decompInput(block, "CHANGE", B, true)})
-`;
-      case "looks_gotofrontback": {
-        const fb = fieldVal(block, "FRONT_BACK") ?? "front";
-        return fb === "back" ? `${I}goToBack()
-` : `${I}goToFront()
-`;
-      }
-      case "looks_goforwardbackwardlayers": {
-        const fb = fieldVal(block, "FORWARD_BACKWARD") ?? "forward";
-        return fb === "backward" ? `${I}moveBackward(${decompInput(block, "NUM", B, true)})
-` : `${I}moveForward(${decompInput(block, "NUM", B, true)})
-`;
-      }
-      // Sound
-      case "sound_play": {
-        const menuId = inpBlockId(block, "SOUND_MENU");
-        const menu = menuId && B[menuId];
-        return `${I}play("${fieldVal(menu, "SOUND_MENU") ?? ""}")
-`;
-      }
-      case "sound_playuntildone": {
-        const menuId = inpBlockId(block, "SOUND_MENU");
-        const menu = menuId && B[menuId];
-        return `${I}playUntilDone("${fieldVal(menu, "SOUND_MENU") ?? ""}")
-`;
-      }
-      case "sound_stopallsounds":
-        return `${I}stopSounds()
-`;
-      case "sound_setvolumeto":
-        return `${I}setVolume(${decompInput(block, "VOLUME", B, true)})
-`;
-      case "sound_changevolumeby":
-        return `${I}changeVolume(${decompInput(block, "VOLUME", B, true)})
-`;
-      // Sensing
-      case "sensing_askandwait":
-        return `${I}askAndWait(${decompInput(block, "QUESTION", B, false)})
-`;
-      case "sensing_resettimer":
-        return `${I}resetTimer()
-`;
-      case "sensing_setdragmode":
-        return `${I}setDragMode("${fieldVal(block, "DRAG_MODE") ?? "draggable"}")
-`;
-      // Data – list extras
-      case "data_deletealloflist":
-        return `${I}listDeleteAll([${fieldVal(block, "LIST") ?? ""}])
-`;
-      // Motion extras
-      case "motion_setrotationstyle":
-        return `${I}setRotationStyle("${fieldVal(block, "STYLE") ?? "all around"}")
-`;
-      case "motion_glidesecstosprite": {
-        const menuId = inpBlockId(block, "TO");
-        const menu = menuId && B[menuId];
-        return `${I}glide(${decompInput(block, "SECS", B, true)}, "${fieldVal(menu, "TO") ?? "_mouse_"}")
-`;
-      }
-      // Looks extras
-      case "looks_switchbackdroptoandwait": {
-        const menuId = inpBlockId(block, "BACKDROP");
-        const menu = menuId && B[menuId];
-        return `${I}switchBackdropAndWait("${fieldVal(menu, "BACKDROP") ?? ""}")
-`;
-      }
-      // Sound effects
-      case "sound_seteffectto":
-        return `${I}setSoundEffect("${fieldVal(block, "SOUND_EFFECT") ?? "PITCH"}", ${decompInput(block, "VALUE", B, true)})
-`;
-      case "sound_changeeffectby":
-        return `${I}changeSoundEffect("${fieldVal(block, "SOUND_EFFECT") ?? "PITCH"}", ${decompInput(block, "VALUE", B, true)})
-`;
-      case "sound_cleareffects":
-        return `${I}clearSoundEffects()
-`;
-      // Events
-      case "event_broadcast": {
-        const bcastStr = decompBroadcast(block, "BROADCAST_INPUT", B);
-        const srM = bcastStr.replace(/^"|"$/g, "").match(/^__sroutine_(.+)$/);
-        if (srM) return `${I}launch ${srM[1]}()
-`;
-        return `${I}broadcast(${bcastStr})
-`;
-      }
-      case "event_broadcastandwait": {
-        const bcastStr = decompBroadcast(block, "BROADCAST_INPUT", B);
-        const srM = bcastStr.replace(/^"|"$/g, "").match(/^__sroutine_(.+)$/);
-        if (srM) return `${I}await ${srM[1]}()
-`;
-        return `${I}broadcastAndWait(${bcastStr})
-`;
-      }
-      // Data – variables
-      case "data_setvariableto": {
-        const sv = fieldVal(block, "VARIABLE") ?? "";
-        const cancelM = sv.match(/^__sroutine_(.+)_cancelled$/);
-        if (cancelM) return `${I}cancel ${cancelM[1]}
-`;
-        if (sv.startsWith("__sroutine_") || /^_scratchpiler_internal_[a-z0-9]{4}_agg_/.test(sv)) {
-          return "";
-        }
-        return `${I}set [${sv}] to ${decompInput(block, "VALUE", B, false)}
-`;
-      }
-      case "data_changevariableby": {
-        const cv = fieldVal(block, "VARIABLE") ?? "";
-        if (cv.startsWith("__sroutine_") || /^_scratchpiler_internal_[a-z0-9]{4}_agg_/.test(cv)) {
-          return "";
-        }
-        return `${I}change [${cv}] by ${decompInput(block, "VALUE", B, true)}
-`;
-      }
-      case "data_showvariable":
-        return `${I}showVariable([${fieldVal(block, "VARIABLE") ?? ""}])
-`;
-      case "data_hidevariable":
-        return `${I}hideVariable([${fieldVal(block, "VARIABLE") ?? ""}])
-`;
-      case "data_showlist":
-        return `${I}showList([${fieldVal(block, "LIST") ?? ""}])
-`;
-      case "data_hidelist":
-        return `${I}hideList([${fieldVal(block, "LIST") ?? ""}])
-`;
-      case "data_addtolist":
-        return `${I}listAdd(${decompInput(block, "ITEM", B, false)}, [${fieldVal(block, "LIST") ?? ""}])
-`;
-      case "data_deleteoflist":
-        return `${I}listDelete(${decompInput(block, "INDEX", B, true)}, [${fieldVal(block, "LIST") ?? ""}])
-`;
-      case "data_insertatlist":
-        return `${I}listInsert(${decompInput(block, "ITEM", B, false)}, ${decompInput(block, "INDEX", B, true)}, [${fieldVal(block, "LIST") ?? ""}])
-`;
-      case "data_replaceitemoflist":
-        return `${I}listReplace(${decompInput(block, "INDEX", B, true)}, [${fieldVal(block, "LIST") ?? ""}], ${decompInput(block, "ITEM", B, false)})
-`;
-      // Custom block calls
-      case "procedures_call": {
-        const proccode = block.mutation && block.mutation.proccode || "";
-        const name = proccode.split(" ")[0];
-        const argIds = JSON.parse(block.mutation && block.mutation.argumentids || "[]");
-        const argStrs = argIds.map((aid) => {
-          const inputData = block.inputs && block.inputs[aid];
-          return inputData ? decompInputRaw(inputData, B, false) : '""';
-        });
-        return `${I}${name}(${argStrs.join(", ")})
-`;
-      }
-      default:
-        return `${I}// unsupported: ${op}
-`;
-    }
-  }
-  function decompChain(startId, B, indent) {
-    const lines = [];
-    let id = startId;
-    while (id) {
-      const block = B[id];
-      if (!block) break;
-      if (block.opcode === "data_setvariableto" && /^_scratchpiler_internal_[a-z0-9]{4}_gap$/.test(fieldVal(block, "VARIABLE") ?? "")) {
-        const valStr = decompInput(block, "VALUE", B, true);
-        const phase1 = block.next ? B[block.next] : null;
-        const phase2 = phase1 && phase1.next ? B[phase1.next] : null;
-        if (valStr === "1" && phase1?.opcode === "control_repeat_until" && phase2?.opcode === "control_repeat_until") {
-          const listName = (() => {
-            const q = [inpBlockId(phase2, "SUBSTACK")];
-            const seen = /* @__PURE__ */ new Set();
-            while (q.length) {
-              const bid = q.shift();
-              if (!bid || !B[bid] || seen.has(bid)) continue;
-              seen.add(bid);
-              const b = B[bid];
-              if (b.opcode === "data_replaceitemoflist") return fieldVal(b, "LIST");
-              if (b.next) q.push(b.next);
-              const sub = inpBlockId(b, "SUBSTACK");
-              if (sub) q.push(sub);
-            }
-            return null;
-          })();
-          if (listName) {
-            const isDesc = (() => {
-              let bid = inpBlockId(phase2, "SUBSTACK");
-              while (bid && B[bid]) {
-                const b = B[bid];
-                if (b.opcode === "control_repeat_until") {
-                  let bid2 = inpBlockId(b, "SUBSTACK");
-                  while (bid2 && B[bid2]) {
-                    const b2 = B[bid2];
-                    if (b2.opcode === "control_repeat_until") {
-                      const condId = inpBlockId(b2, "CONDITION");
-                      const condB = condId && B[condId];
-                      if (condB?.opcode === "operator_or") {
-                        const op2Id = inpBlockId(condB, "OPERAND2");
-                        const op2B = op2Id && B[op2Id];
-                        if (op2B?.opcode === "operator_not") {
-                          const innerId = inpBlockId(op2B, "OPERAND");
-                          const innerB = innerId && B[innerId];
-                          return innerB?.opcode === "operator_lt";
-                        }
-                      }
-                      return false;
-                    }
-                    bid2 = b2.next || null;
-                  }
-                  return false;
-                }
-                bid = b.next || null;
-              }
-              return false;
-            })();
-            lines.push(`${indent}[${listName}].sort${isDesc ? '("desc")' : "()"}
-`);
-            id = phase2.next || null;
-            continue;
-          }
-        }
-      }
-      if (block.opcode === "data_setvariableto") {
-        const ctrName = fieldVal(block, "VARIABLE") ?? "";
-        const mCtr = ctrName.match(/^_scratchpiler_internal_([a-z0-9]{4})_pyfor_ctr$/);
-        if (mCtr && decompInput(block, "VALUE", B, true) === "1") {
-          const nextBlock = block.next && B[block.next];
-          if (nextBlock && nextBlock.opcode === "control_repeat_until") {
-            const substackIds = [];
-            let bid = inpBlockId(nextBlock, "SUBSTACK");
-            while (bid && B[bid]) {
-              substackIds.push(bid);
-              bid = B[bid].next;
-            }
-            const firstBid = substackIds[0];
-            const firstBlk = firstBid && B[firstBid];
-            const lastBid = substackIds[substackIds.length - 1];
-            const lastBlk = lastBid && B[lastBid];
-            const rand4 = mCtr[1];
-            if (firstBlk && firstBlk.opcode === "data_setvariableto") {
-              const itemVarName = fieldVal(firstBlk, "VARIABLE") ?? "";
-              const mItem = itemVarName.match(
-                new RegExp(`^_scratchpiler_internal_${rand4}_(.+)$`)
-              );
-              const hasFinalIncr = lastBlk && lastBlk.opcode === "data_changevariableby" && fieldVal(lastBlk, "VARIABLE") === ctrName;
-              if (mItem) {
-                const condBlock = B[inpBlockId(nextBlock, "CONDITION")];
-                let listName = null;
-                if (condBlock && condBlock.opcode === "operator_gt") {
-                  const op2Block = B[inpBlockId(condBlock, "OPERAND2")];
-                  if (op2Block && op2Block.opcode === "data_lengthoflist") {
-                    listName = fieldVal(op2Block, "LIST");
-                  }
-                }
-                if (listName) {
-                  const shortName = mItem[1];
-                  const bodyIds = substackIds.slice(1, hasFinalIncr ? -1 : void 0);
-                  let body = "";
-                  for (const bid2 of bodyIds) body += decompStmt(B[bid2], B, indent + "    ");
-                  lines.push(`${indent}pyfor [${shortName}] in [${listName}] {
-${body}${indent}}
-`);
-                  id = nextBlock.next || null;
-                  continue;
-                }
-              }
-            }
-          }
-        }
-      }
-      if (block.opcode === "data_setvariableto") {
-        const varName0 = fieldVal(block, "VARIABLE") ?? "";
-        const srParamMatch = varName0.match(/^__sroutine_(.+?)_(?!cancelled$|count$)(.+)$/);
-        if (srParamMatch) {
-          const rname = srParamMatch[1];
-          const paramArgs = [];
-          let scanId = id;
-          while (scanId && B[scanId]) {
-            const sb = B[scanId];
-            const sv = fieldVal(sb, "VARIABLE") ?? "";
-            const pm = sv.match(new RegExp(`^__sroutine_${rname}_(?!cancelled$|count$)(.+)$`));
-            if (sb.opcode === "data_setvariableto" && pm) {
-              paramArgs.push(decompInput(sb, "VALUE", B, false));
-              scanId = sb.next || null;
-            } else break;
-          }
-          const bcastBlock = scanId && B[scanId];
-          const isBcast = bcastBlock && (bcastBlock.opcode === "event_broadcast" || bcastBlock.opcode === "event_broadcastandwait");
-          if (isBcast) {
-            const inputBlock = inpBlock(bcastBlock, "BROADCAST_INPUT", B);
-            const msgVal = inputBlock && inputBlock.opcode === "event_broadcast_menu" ? fieldVal(inputBlock, "BROADCAST_OPTION") ?? "" : decompInput(bcastBlock, "BROADCAST_INPUT", B, false).replace(/^"|"$/g, "");
-            if (msgVal === `__sroutine_${rname}`) {
-              const kw = bcastBlock.opcode === "event_broadcastandwait" ? "await" : "launch";
-              const argsStr = paramArgs.length ? `(${paramArgs.join(", ")})` : "()";
-              lines.push(`${indent}${kw} ${rname}${argsStr}
-`);
-              id = bcastBlock.next || null;
-              continue;
-            }
-          }
-        }
-      }
-      if (block.opcode === "data_setvariableto") {
-        const iterName = fieldVal(block, "VARIABLE") ?? "";
-        const m = iterName.match(/^_scratchpiler_internal_[a-z0-9]{4}_(.+)$/);
-        if (m) {
-          const nextBlock = block.next && B[block.next];
-          if (nextBlock && nextBlock.opcode === "control_repeat_until") {
-            const condBlock = B[inpBlockId(nextBlock, "CONDITION")];
-            if (condBlock && condBlock.opcode === "operator_gt") {
-              const op1Block = B[inpBlockId(condBlock, "OPERAND1")];
-              if (op1Block && op1Block.opcode === "data_variable" && fieldVal(op1Block, "VARIABLE") === iterName) {
-                const shortName = m[1];
-                const startExpr = decompInput(block, "VALUE", B, true);
-                const endExpr = decompInput(condBlock, "OPERAND2", B, true);
-                const substackIds = [];
-                let bid = inpBlockId(nextBlock, "SUBSTACK");
-                while (bid && B[bid]) {
-                  substackIds.push(bid);
-                  bid = B[bid].next;
-                }
-                const lastBid = substackIds[substackIds.length - 1];
-                const lastBlk = lastBid && B[lastBid];
-                const hasIncr = lastBlk && lastBlk.opcode === "data_changevariableby" && fieldVal(lastBlk, "VARIABLE") === iterName;
-                const bodyIds = hasIncr ? substackIds.slice(0, -1) : substackIds;
-                let body = "";
-                for (const bid2 of bodyIds) body += decompStmt(B[bid2], B, indent + "    ");
-                lines.push(`${indent}for [${shortName}] from ${startExpr} to ${endExpr} {
-${body}${indent}}
-`);
-                id = nextBlock.next || null;
-                continue;
-              }
-            }
-          }
-        }
-      }
-      lines.push(decompStmt(block, B, indent));
-      id = block.next || null;
-    }
-    return lines.join("");
-  }
-  function decompScript(hat, B) {
-    if (hat.opcode === "procedures_definition") {
-      const protoInput = hat.inputs && hat.inputs.custom_block;
-      const protoId = protoInput ? Array.isArray(protoInput) ? protoInput[1] : protoInput.block : null;
-      const proto = protoId && B[protoId];
-      if (!proto || !proto.mutation) return null;
-      const proccode = proto.mutation.proccode || "";
-      const name = proccode.split(" ")[0];
-      const params = JSON.parse(proto.mutation.argumentnames || "[]");
-      const body2 = decompChain(hat.next, B, "    ");
-      return `define ${name}(${params.join(", ")}) {
-${body2}}`;
-    }
-    let header;
-    switch (hat.opcode) {
-      case "event_whenflagclicked":
-        header = "on flag";
-        break;
-      case "event_whenthisspriteclicked":
-        header = "on click";
-        break;
-      case "event_whenstageclicked":
-        header = "on click";
-        break;
-      case "control_start_as_clone":
-        header = "on clone";
-        break;
-      case "event_whenkeypressed":
-        header = `on key "${fieldVal(hat, "KEY_OPTION") ?? "space"}"`;
-        break;
-      case "event_whenbroadcastreceived": {
-        const bcastVal = fieldVal(hat, "BROADCAST_OPTION") ?? "";
-        const srMatch = bcastVal.match(/^__sroutine_(.+)$/);
-        if (srMatch) {
-          const rname = srMatch[1];
-          let bodyStr = decompChain(hat.next, B, "    ");
-          const bodyLines = bodyStr.split("\n").filter((l) => l.trim());
-          const firstLine = bodyLines[0] || "";
-          const secondLine = bodyLines[1] || "";
-          const lastLine = bodyLines[bodyLines.length - 1] || "";
-          const isPreamble1 = firstLine.includes(`__sroutine_${rname}_cancelled`);
-          const isPreamble2 = secondLine.includes(`__sroutine_${rname}_count`);
-          const isPostamble = lastLine.includes(`__sroutine_${rname}_count`);
-          const userLines = bodyLines.slice(
-            (isPreamble1 ? 1 : 0) + (isPreamble2 ? 1 : 0),
-            isPostamble ? bodyLines.length - 1 : bodyLines.length
-          );
-          return `scratchroutine ${rname} {
-${userLines.map((l) => l + "\n").join("")}}`;
-        }
-        header = `on receive "${bcastVal}"`;
-        break;
-      }
-      case "event_whenbackdropswitchesto":
-        header = `on backdrop "${fieldVal(hat, "BACKDROP") ?? ""}"`;
-        break;
-      case "event_whengreaterthan": {
-        const sense = (fieldVal(hat, "WHENGREATERTHANMENU") ?? "TIMER").toLowerCase();
-        const valStr = decompInput(hat, "VALUE", B, true);
-        header = `on ${sense} > ${valStr}`;
-        break;
-      }
-      default:
-        return `// unsupported hat: ${hat.opcode}`;
-    }
-    const body = decompChain(hat.next, B, "    ");
-    return `${header} {
-${body}}`;
-  }
-  function decompile2(vm, spriteName) {
-    const target = spriteName === "__stage__" ? vm.runtime.targets.find((t) => t.isStage) : vm.runtime.targets.find((t) => !t.isStage && t.sprite.name === spriteName) || vm.editingTarget;
-    if (!target) return "// Error: sprite not found\n";
-    const B = target.blocks._blocks;
-    const roots = Object.values(B).filter((b) => b.topLevel && !b.shadow).sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
-    return roots.map((r) => decompScript(r, B)).filter(Boolean).join("\n\n") + "\n";
   }
 
   // src/main.js

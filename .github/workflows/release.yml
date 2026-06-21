@@ -23,6 +23,12 @@ jobs:
 
       - run: npm run prod
 
+      - name: Generate LoC badge JSON
+        run: |
+          LOC=$(find src -name "*.js" ! -name "meta.js" | xargs wc -l | tail -1 | awk '{print $1}')
+          LOC_FMT=$(node -e "console.log(Number($LOC).toLocaleString('en-US'))")
+          printf '{"schemaVersion":1,"label":"lines of code","message":"%s","color":"blue"}\n' "$LOC_FMT" > loc.json
+
       - name: Publish to latest release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -36,4 +42,5 @@ jobs:
             --title "Scratchpiler v${VERSION}" \
             --notes $'Install via [Tampermonkey](https://www.tampermonkey.net/): download `scratchpiler.user.js` below and drag it into the dashboard, or paste the raw URL into *Install from URL*.\n\nBuilt from `'"${GITHUB_SHA}"$'`.' \
             --latest \
-            scratchpiler.user.js
+            scratchpiler.user.js \
+            loc.json

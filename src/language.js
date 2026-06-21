@@ -1,6 +1,7 @@
 import { LANG_ID } from "./constants.js";
 import { scratchIndex } from "./vm.js";
 import { currentVM, currentSpriteContext } from "./editor.js";
+import { formatSource } from "./injector.js";
 
 // DSL and completions
 

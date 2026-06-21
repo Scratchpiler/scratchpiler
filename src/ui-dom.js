@@ -1,6 +1,8 @@
 import overlayCss from "./overlay.css";
 import overlayHtml from "./overlay.html";
-import { overlayVisible, openOverlay, closeOverlay, selectSidebarSprite, searchCode, importFromLocalFile, exportToLocalFile, currentVM } from "./editor.js";
+import { overlayVisible, openOverlay, closeOverlay, selectSidebarSprite, searchCode, importFromLocalFile, exportToLocalFile, currentVM, monacoEditor, updateStatus } from "./editor.js";
+import { scratchIndex } from "./vm.js";
+import { decompile } from "./decompiler.js";
 
 // Overlay DOM
 
