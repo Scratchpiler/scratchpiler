@@ -795,6 +795,9 @@ function buildSuggestions(monaco, range, hatRange) {
     push('[var]--', CIK.Snippet, 'Variables', '[$1]--', 'Decrement variable by 1 — sugar for `change [var] by -1`');
 
     // Scratchroutines
+    push('enum {}',         CIK.Snippet,   'Enum · compile-time named constants',
+        'enum {\n\t${1:NAME} = ${2:0},\n\t$0\n}',
+        'Declare named constants — use them bare (no brackets) anywhere in expressions.\n\nExample:\n```\nenum {\n\tSTATE_IDLE = 0,\n\tSTATE_RUN  = 1,\n\tSTATE_DEAD = 2\n}\nset [state] to STATE_IDLE\nif [state] = STATE_DEAD { say("you died") }\n```\n\nValues must be number or string literals. Omit `= value` to default to 0. `enums` also works.');
     push('struct name {}',  CIK.Snippet,   'Struct · compile-time field group',
         'struct ${1:name} {\n\t${2:field1}, ${3:field2}\n}',
         'Declare a named field group — variables like `[name.field]` are auto-created on compile\n\nExample:\n```\nstruct player { x, y, hp }\n// Creates [player.x], [player.y], [player.hp] in Scratch\n```');

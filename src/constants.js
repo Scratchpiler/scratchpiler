@@ -55,4 +55,6 @@ export const KEYWORDS = [
     'scratchroutine','launch','await','cancel','isRunning','checkCancel',
     // Struct declarations and debug
     'struct','breakpoint',
+    // Enum declarations
+    'enum','enums',
 ];

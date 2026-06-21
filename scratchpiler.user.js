@@ -169,7 +169,10 @@
     "checkCancel",
     // Struct declarations and debug
     "struct",
-    "breakpoint"
+    "breakpoint",
+    // Enum declarations
+    "enum",
+    "enums"
   ];
 
   // src/inject-state.js
@@ -1323,6 +1326,13 @@
     );
     push("[var]++", CIK.Snippet, "Variables", "[$1]++", "Increment variable by 1 \u2014 sugar for `change [var] by 1`");
     push("[var]--", CIK.Snippet, "Variables", "[$1]--", "Decrement variable by 1 \u2014 sugar for `change [var] by -1`");
+    push(
+      "enum {}",
+      CIK.Snippet,
+      "Enum \xB7 compile-time named constants",
+      "enum {\n	${1:NAME} = ${2:0},\n	$0\n}",
+      'Declare named constants \u2014 use them bare (no brackets) anywhere in expressions.\n\nExample:\n```\nenum {\n	STATE_IDLE = 0,\n	STATE_RUN  = 1,\n	STATE_DEAD = 2\n}\nset [state] to STATE_IDLE\nif [state] = STATE_DEAD { say("you died") }\n```\n\nValues must be number or string literals. Omit `= value` to default to 0. `enums` also works.'
+    );
     push(
       "struct name {}",
       CIK.Snippet,
@@ -5132,6 +5142,8 @@ on flag {
           blocks.push(parseScratchroutine());
         } else if (checkV("struct")) {
           blocks.push(parseStruct());
+        } else if (checkV("enum") || checkV("enums")) {
+          blocks.push(parseEnum());
         } else if (check(TT.LBRACE)) {
           const t = peek();
           const body = parseBody();
@@ -5440,6 +5452,53 @@ on flag {
       const t = peek();
       pos++;
       return { type: "BreakpointStmt", line: t.line, col: t.col };
+    }
+    function parseEnum() {
+      const t = peek();
+      pos++;
+      const entries = [];
+      eat(TT.LBRACE, "`enum { ... }` \u2014 expected `{` to open enum body");
+      while (!check(TT.RBRACE) && !check(TT.EOF)) {
+        const nameTok = peek();
+        if (nameTok.type !== TT.IDENT) {
+          errors.push({
+            line: nameTok.line,
+            col: nameTok.col,
+            len: 1,
+            message: "`enum { name = value, ... }`: expected an identifier for the entry name"
+          });
+          pos++;
+          tryEat(TT.COMMA);
+          continue;
+        }
+        pos++;
+        const name = nameTok.value;
+        let value;
+        if (tryEat(TT.EQ)) {
+          const vTok = peek();
+          if (check(TT.NUM)) {
+            pos++;
+            value = { type: "Num", value: vTok.value, line: vTok.line, col: vTok.col };
+          } else if (check(TT.STR)) {
+            pos++;
+            value = { type: "Str", value: vTok.value, line: vTok.line, col: vTok.col };
+          } else {
+            errors.push({
+              line: vTok.line,
+              col: vTok.col,
+              len: 1,
+              message: `enum entry \`${name}\`: value must be a number or string literal`
+            });
+            value = { type: "Num", value: 0, line: vTok.line, col: vTok.col };
+          }
+        } else {
+          value = { type: "Num", value: 0, line: nameTok.line, col: nameTok.col };
+        }
+        entries.push({ name, value });
+        tryEat(TT.COMMA);
+      }
+      eat(TT.RBRACE, "`enum { ... }` \u2014 expected `}` to close enum body");
+      return { type: "EnumDecl", entries, line: t.line, col: t.col };
     }
     function parseStruct() {
       const t = peek();
@@ -6264,7 +6323,7 @@ on flag {
       if (block.type === "OrphanedBlock") {
         warn(block, "Orphaned block \u2014 no hat event to trigger it. Wrap with `on flag { }`, `on click { }`, etc.");
         lintChildren(block);
-      } else if (block.type === "StructDecl") {
+      } else if (block.type === "StructDecl" || block.type === "EnumDecl") {
       } else if (block.type !== "OnBlock" && block.type !== "DefineBlock" && block.type !== "ScratchroutineStmt") {
         warn(block, "Orphaned statement \u2014 not inside an `on` or `define` block, will never run");
         lintChildren(block);
@@ -6446,6 +6505,7 @@ on flag {
       return { name: "", block: blockId, shadow: shadowId !== void 0 ? shadowId : null };
     }
     function numInput(expr, parentId) {
+      expr = resolveEnum(expr);
       const shadowId = uid();
       const val = expr.type === "Num" ? String(expr.value) : expr.type === "Str" ? expr.value : "0";
       addBlock({
@@ -6463,6 +6523,7 @@ on flag {
       return inp(exprId !== null ? exprId : shadowId, shadowId);
     }
     function strInput(expr, parentId) {
+      expr = resolveEnum(expr);
       if (expr.type === "Hex") {
         const hexId = uid();
         addBlock({
@@ -6498,6 +6559,7 @@ on flag {
       return inp(exprId, null);
     }
     function genExpr(expr, parentId) {
+      expr = resolveEnum(expr);
       if (expr.type === "Num" || expr.type === "Str") return null;
       if (expr.type === "Hex") {
         const id = uid();
@@ -9106,6 +9168,16 @@ on flag {
           return null;
       }
     }
+    const enumConstants = /* @__PURE__ */ new Map();
+    for (const block of ast.blocks) {
+      if (block.type !== "EnumDecl") continue;
+      for (const { name, value } of block.entries) {
+        enumConstants.set(name, value);
+      }
+    }
+    function resolveEnum(expr) {
+      return expr && expr.type === "Reporter" && enumConstants.has(expr.name) ? enumConstants.get(expr.name) : expr;
+    }
     const newStructVarIds = [];
     for (const block of ast.blocks) {
       if (block.type !== "StructDecl") continue;
@@ -9132,7 +9204,7 @@ on flag {
     }
     let scriptX = 50;
     for (const block of ast.blocks) {
-      if (block.type === "StructDecl") {
+      if (block.type === "StructDecl" || block.type === "EnumDecl") {
       } else if (block.type === "OnBlock") {
         const hatId = uid();
         const hatBlock = genHat(block.hat, hatId, scriptX, spriteName === "__stage__");

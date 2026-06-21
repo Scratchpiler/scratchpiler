@@ -273,6 +273,8 @@ export function parse(tokens) {
                 blocks.push(parseScratchroutine());
             } else if (checkV('struct')) {
                 blocks.push(parseStruct());
+            } else if (checkV('enum') || checkV('enums')) {
+                blocks.push(parseEnum());
             } else if (check(TT.LBRACE)) {
                 // Bare { ... } block with no hat — parse cleanly, lint will flag it
                 const t = peek();
@@ -504,6 +506,41 @@ export function parse(tokens) {
     function parseBreakpoint() {
         const t = peek(); pos++;
         return { type: 'BreakpointStmt', line: t.line, col: t.col };
+    }
+
+    function parseEnum() {
+        const t = peek(); pos++; // consume 'enum' or 'enums'
+        const entries = [];
+        eat(TT.LBRACE, '`enum { ... }` — expected `{` to open enum body');
+        while (!check(TT.RBRACE) && !check(TT.EOF)) {
+            const nameTok = peek();
+            if (nameTok.type !== TT.IDENT) {
+                errors.push({ line: nameTok.line, col: nameTok.col, len: 1,
+                    message: '`enum { name = value, ... }`: expected an identifier for the entry name' });
+                pos++;
+                tryEat(TT.COMMA);
+                continue;
+            }
+            pos++;
+            const name = nameTok.value;
+            let value;
+            if (tryEat(TT.EQ)) {
+                const vTok = peek();
+                if (check(TT.NUM))       { pos++; value = { type: 'Num', value: vTok.value, line: vTok.line, col: vTok.col }; }
+                else if (check(TT.STR)) { pos++; value = { type: 'Str', value: vTok.value, line: vTok.line, col: vTok.col }; }
+                else {
+                    errors.push({ line: vTok.line, col: vTok.col, len: 1,
+                        message: `enum entry \`${name}\`: value must be a number or string literal` });
+                    value = { type: 'Num', value: 0, line: vTok.line, col: vTok.col };
+                }
+            } else {
+                value = { type: 'Num', value: 0, line: nameTok.line, col: nameTok.col };
+            }
+            entries.push({ name, value });
+            tryEat(TT.COMMA);
+        }
+        eat(TT.RBRACE, '`enum { ... }` — expected `}` to close enum body');
+        return { type: 'EnumDecl', entries, line: t.line, col: t.col };
     }
 
     function parseStruct() {
@@ -1028,8 +1065,8 @@ export function lint(ast) {
         if (block.type === 'OrphanedBlock') {
             warn(block, 'Orphaned block — no hat event to trigger it. Wrap with `on flag { }`, `on click { }`, etc.');
             lintChildren(block);
-        } else if (block.type === 'StructDecl') {
-            // compile-time type annotation — not executable
+        } else if (block.type === 'StructDecl' || block.type === 'EnumDecl') {
+            // compile-time declarations — not executable
         } else if (block.type !== 'OnBlock' && block.type !== 'DefineBlock' && block.type !== 'ScratchroutineStmt') {
             warn(block, 'Orphaned statement — not inside an `on` or `define` block, will never run');
             lintChildren(block);
@@ -1231,6 +1268,7 @@ function compile(ast, vm, spriteName) {
     }
 
     function numInput(expr, parentId) {
+        expr = resolveEnum(expr);
         const shadowId = uid();
         const val = expr.type === 'Num' ? String(expr.value) : expr.type === 'Str' ? expr.value : '0';
         addBlock({ id: shadowId, opcode: 'math_number', next: null, parent: parentId,
@@ -1242,6 +1280,7 @@ function compile(ast, vm, spriteName) {
     }
 
     function strInput(expr, parentId) {
+        expr = resolveEnum(expr);
         if (expr.type === 'Hex') {
             const hexId = uid();
             addBlock({ id: hexId, opcode: 'colour_picker', next: null, parent: parentId,
@@ -1266,6 +1305,7 @@ function compile(ast, vm, spriteName) {
 
     // Returns a block id if expr needs a block, else null for primitives
     function genExpr(expr, parentId) {
+        expr = resolveEnum(expr);
         if (expr.type === 'Num' || expr.type === 'Str') return null;
         if (expr.type === 'Hex') {
             const id = uid();
@@ -2946,6 +2986,23 @@ function compile(ast, vm, spriteName) {
         }
     }
 
+    // Build enum constant table from all EnumDecl nodes in the AST.
+    // These are compile-time macros: name → {type:'Num'/'Str', value} node.
+    const enumConstants = new Map();
+    for (const block of ast.blocks) {
+        if (block.type !== 'EnumDecl') continue;
+        for (const { name, value } of block.entries) {
+            enumConstants.set(name, value);
+        }
+    }
+
+    // Substitute enum constants transparently before any input helper or genExpr dispatch.
+    function resolveEnum(expr) {
+        return (expr && expr.type === 'Reporter' && enumConstants.has(expr.name))
+            ? enumConstants.get(expr.name)
+            : expr;
+    }
+
     // Pass 1: auto-create variables declared by struct name { field, ... }
     // Track newly-created IDs so we can roll back if compilation fails later.
     const newStructVarIds = [];
@@ -2972,8 +3029,8 @@ function compile(ast, vm, spriteName) {
     // Generate hat blocks
     let scriptX = 50;
     for (const block of ast.blocks) {
-        if (block.type === 'StructDecl') {
-            // handled in pass 1 above
+        if (block.type === 'StructDecl' || block.type === 'EnumDecl') {
+            // compile-time declarations — no blocks generated
         } else if (block.type === 'OnBlock') {
             const hatId = uid();
             const hatBlock = genHat(block.hat, hatId, scriptX, spriteName === '__stage__');

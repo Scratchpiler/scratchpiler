@@ -337,6 +337,95 @@ struct enemy  { x, y, hp, type }
 
 ---
 
+## Enums
+
+An `enum` is a compile-time declaration that gives names to constant values. Unlike struct fields, enum entries do not create Scratch variables — they are substituted directly into the compiled blocks as inline literals. There is no runtime cost, no monitor, and no trace of them in the project once compiled. They simply cease to exist as named things at that point, which is either elegant or unsettling depending on your perspective.
+
+```
+enum {
+    STATE_IDLE = 0,
+    STATE_WALK = 1,
+    STATE_DEAD = 2,
+    MAX_HP     = 100,
+    GAME_TITLE = "My Game"
+}
+```
+
+Enum entries are referenced **without brackets** — no `[square]`, just the bare name:
+
+```
+on flag {
+    set [state] to STATE_IDLE
+    set [hp] to MAX_HP
+    say(GAME_TITLE)
+}
+
+on receive "update" {
+    if [hp] = 0 {
+        set [state] to STATE_DEAD
+    }
+    if [state] = STATE_WALK {
+        change [x] by [speed]
+    }
+}
+```
+
+### Syntax
+
+```
+enum {
+    NAME = value,   // number or string literal
+    NAME,           // no value — defaults to 0
+    NAME = "text"   // string constant
+}
+```
+
+`enums` (plural) is accepted as an alias. Neither variant generates blocks. Both are otherwise identical.
+
+### Values
+
+Values must be **number or string literals** written directly in the declaration. Expressions, variables, and other enum names are not valid on the right-hand side — this is macro substitution, not a runtime lookup.
+
+```
+enum {
+    A = 10,         // ✓
+    B = "hello",    // ✓
+    C,              // ✓ — defaults to 0
+    D = A + 1,      // ✗ — parse error: expressions not allowed
+    E = [score]     // ✗ — parse error: variables not allowed
+}
+```
+
+### Where enum names can appear
+
+Anywhere an expression is valid: `set`, `change`, `if`, `say`, arithmetic, comparisons, list operations, function arguments, `for` ranges — all of it.
+
+```
+for [i] from 0 to MAX_HP {
+    listAdd([i], [damage])
+}
+populateList([grid], STATE_IDLE, 256, true)
+if [state] > STATE_WALK {
+    say("running or dead")
+}
+```
+
+### No namespace
+
+Enum entries live in a flat global namespace shared with reporter names and function calls. If you name an enum entry `xPos`, you will shadow the built-in reporter and deserve what happens next. Pick names that are obviously constants — `ALL_CAPS_WITH_UNDERSCORES` is the conventional choice and also the most effective way to signal that you are a person who has been burned by this before.
+
+### Multiple enum blocks
+
+Multiple `enum` blocks in the same file are allowed and merged into a single constant table. Later declarations overwrite earlier ones if names collide.
+
+```
+enum { RED = 1, GREEN = 2 }
+enum { BLUE = 3 }
+// RED, GREEN, and BLUE are all available
+```
+
+---
+
 ## Variable scope
 
 Variables are either **global** (available to all sprites) or **local** (available to one sprite). Scratchpiler searches the active sprite first, then the Stage (global). If you have a local `[score]` and a global `[score]`, the local one wins.

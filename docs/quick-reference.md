@@ -112,6 +112,32 @@ Typing `[` in the editor shows all `struct.field]` completions. Typing `[player.
 
 ---
 
+## Enums
+
+Compile-time named constants. Substituted inline — no Scratch variables, no runtime cost.
+
+```
+enum {
+    STATE_IDLE = 0,
+    STATE_WALK = 1,
+    STATE_DEAD = 2,
+    MAX_HP     = 100,
+    GREETING   = "hello"
+}
+
+set [state] to STATE_IDLE      // compiles to: set [state] to 0
+if [state] = STATE_DEAD { }    // compiles to: if [state] = 2 { }
+say(GREETING)                  // compiles to: say("hello")
+```
+
+- Values must be number or string literals — no expressions, no variables
+- Omit `= value` to default to `0`
+- `enums` (plural) is an accepted alias
+- Names are bare (no `[brackets]`) and resolve anywhere an expression is valid
+- Multiple `enum` blocks in the same file are merged; later entries win on collision
+
+---
+
 ## Lists
 
 ```
