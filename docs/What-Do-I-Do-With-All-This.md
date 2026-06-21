@@ -51,16 +51,22 @@ A guide for people who have never written code before, with a sendoff at the end
   - [Defining a custom block](#defining-a-custom-block)
   - [Custom blocks with parameters](#custom-blocks-with-parameters)
   - [Why use custom blocks](#why-use-custom-blocks)
-- [Part 10: Enums — Giving Names to Magic Numbers](#part-10-enums--giving-names-to-magic-numbers)
-- [Part 11: Structs — Groups of Related Variables](#part-11-structs--groups-of-related-variables)
-- [Part 12: Common Patterns](#part-12-common-patterns)
+- [Part 10: Scratchroutines](#part-10-scratchroutines--custom-blocks-that-can-run-in-the-background)
+  - [Defining a scratchroutine](#defining-a-scratchroutine)
+  - [Launching one](#launching-one)
+  - [Cancelling one](#cancelling-one)
+  - [Checking if it's still running](#checking-if-its-still-running)
+  - [When to use scratchroutines vs custom blocks](#when-to-use-scratchroutines-vs-custom-blocks)
+- [Part 11: Enums](#part-11-enums--giving-names-to-magic-numbers)
+- [Part 12: Structs](#part-12-structs--groups-of-related-variables)
+- [Part 13: Common Patterns](#part-13-common-patterns)
   - [Pattern 1: The game loop](#pattern-1-the-game-loop)
   - [Pattern 2: State machine](#pattern-2-state-machine)
   - [Pattern 3: Tracking a score](#pattern-3-tracking-a-score)
   - [Pattern 4: Timer-based events](#pattern-4-timer-based-events)
   - [Pattern 5: Using a list as a data store](#pattern-5-using-a-list-as-a-data-store)
   - [Pattern 6: Clones as entities](#pattern-6-clones-as-entities)
-- [Part 13: When Things Go Wrong](#part-13-when-things-go-wrong)
+- [Part 14: When Things Go Wrong](#part-14-when-things-go-wrong)
   - [Red underlines (parse errors)](#red-underlines-parse-errors)
   - ["Variable not found"](#variable-not-found-score-compile-errors)
   - ["Unknown statement"](#unknown-statement-myfunction-compile-errors)
@@ -68,15 +74,15 @@ A guide for people who have never written code before, with a sendoff at the end
   - [The sprite does nothing](#the-sprite-does-nothing-when-the-flag-is-clicked)
   - [The sprite does something insane](#the-sprite-does-something-insane)
   - ["Unreachable code"](#unreachable-code-linter-warning)
-- [Part 14: Structuring a Bigger Project](#part-14-structuring-a-bigger-project)
-- [Part 15: The Things You'll Hit Eventually](#part-15-the-things-youll-hit-eventually)
+- [Part 15: Structuring a Bigger Project](#part-15-structuring-a-bigger-project)
+- [Part 16: The Things You'll Hit Eventually](#part-16-the-things-youll-hit-eventually)
   - [Scratch variables are strings, not numbers](#scratch-variables-are-strings-not-numbers)
   - [1-based indexing](#1-based-indexing)
   - [No return values from custom blocks](#scratch-has-no-return-values-for-custom-blocks)
   - [forever inside on clone](#forever-inside-on-clone-is-the-right-pattern-for-clones)
   - [Compile replaces blocks, not variables](#compile-replaces-blocks-but-not-variables)
 - [Quick Summary](#quick-summary-of-the-whole-language)
-- [Part 16: When to Switch to a Real Programming Language](#part-16-when-to-switch-to-a-real-programming-language)
+- [Part 17: When to Switch to a Real Programming Language](#part-17-when-to-switch-to-a-real-programming-language)
   - [The signs](#the-signs)
   - [What to move to](#what-to-move-to)
   - [What Scratch gave you](#what-scratch-gave-you)
@@ -671,7 +677,79 @@ Custom blocks in Scratch run in the same script thread as the caller. They are n
 
 ---
 
-## Part 10: Enums — Giving Names to Magic Numbers
+## Part 10: Scratchroutines — Custom Blocks That Can Run in the Background
+
+Custom blocks are synchronous: the script that calls one waits for it to finish before moving on. This is usually what you want. Sometimes it isn't.
+
+Scratchroutines are Scratchpiler's answer to the question "what if I want to fire off a named task, let it run on its own, and maybe check on it later?" They compile to broadcast-based concurrent scripts, with parameter passing and lifecycle management layered on top. The blocks underneath are just broadcasts. The abstraction makes them feel like real async functions.
+
+### Defining a scratchroutine
+
+```
+scratchroutine patrol(speed) {
+    repeat until (touching("_edge_")) {
+        move([speed])
+        checkCancel()
+    }
+    bounce()
+}
+```
+
+The body compiles to an `on receive` hat block. The parameter `[speed]` is passed via a hidden global variable that Scratchpiler manages automatically. `checkCancel()` is a poll point — the routine stops itself here if someone has requested cancellation.
+
+### Launching one
+
+```
+launch patrol(4)    // fire and forget — keeps running, your script continues immediately
+await patrol(4)     // block until patrol finishes, then continue
+```
+
+`launch` is equivalent to `broadcast`. `await` is equivalent to `broadcastAndWait`. The difference matters when you care about timing.
+
+### Cancelling one
+
+```
+cancel patrol    // set the cancel flag — routine stops at its next checkCancel()
+```
+
+Cancellation is cooperative. The routine has to call `checkCancel()` inside its loop or it'll ignore the flag entirely, a trait it shares with certain people you may have met.
+
+### Checking if it's still running
+
+```
+if isRunning(patrol) {
+    say("still patrolling")
+}
+
+wait until not isRunning(patrol)
+say("finally done")
+```
+
+### When to use scratchroutines vs custom blocks
+
+Use a **custom block** when the operation is short, synchronous, and you need it finished before continuing.
+
+Use a **scratchroutine** when you want to start something and let your script keep going — multiple things running concurrently without tangling `forever` loops together.
+
+```
+on flag {
+    launch enemyPatrol(3)
+    launch ambientWobble()
+    launch countdownTimer(60)
+}
+
+on receive "game over" {
+    cancel enemyPatrol
+    cancel ambientWobble
+    cancel countdownTimer
+}
+```
+
+Each routine runs independently. Cancelling one doesn't touch the others. This is the cleanest way to build a game with multiple moving parts that need to start and stop on demand.
+
+---
+
+## Part 11: Enums — Giving Names to Magic Numbers
 
 You will quickly find yourself writing conditions like `if [state] = 2` and forgetting what `2` means a week later. Enums solve this:
 
@@ -717,7 +795,7 @@ Enum names are bare (no brackets). If a name collides with a reporter like `xPos
 
 ---
 
-## Part 11: Structs — Groups of Related Variables
+## Part 12: Structs — Groups of Related Variables
 
 If you have a player with an x position, y position, health, and speed, you could name the variables `playerX`, `playerY`, `playerHP`, `playerSpeed`. Or you could use a struct:
 
@@ -743,7 +821,7 @@ Structs don't do anything magical beyond naming. There's no object, no methods, 
 
 ---
 
-## Part 12: Common Patterns
+## Part 13: Common Patterns
 
 Real programs are built from repeating patterns. Here are the ones you'll use constantly.
 
@@ -918,7 +996,7 @@ Each clone runs its own `on clone` script. When it hits the edge or an enemy, it
 
 ---
 
-## Part 13: When Things Go Wrong
+## Part 14: When Things Go Wrong
 
 Things will go wrong. This is not a warning, it is a certainty.
 
@@ -972,7 +1050,7 @@ Yellow underlines are warnings, not errors — the code will still compile. "Unr
 
 ---
 
-## Part 14: Structuring a Bigger Project
+## Part 15: Structuring a Bigger Project
 
 Once you have more than one sprite and more than one script, keeping track of everything gets harder. Some habits that help:
 
@@ -1003,7 +1081,7 @@ on flag {
 
 ---
 
-## Part 15: The Things You'll Hit Eventually
+## Part 16: The Things You'll Hit Eventually
 
 ### Scratch variables are strings, not numbers
 
@@ -1058,7 +1136,7 @@ Build something small. Break it. Read the error message. Fix it. Build something
 
 ---
 
-## Part 16: When to Switch to a Real Programming Language
+## Part 17: When to Switch to a Real Programming Language
 
 You've made it this far. You understand variables, loops, events, lists, custom blocks. You've shipped something — maybe a little platformer, a quiz game, a physics toy that you're secretly proud of. You installed a Tampermonkey userscript and wrote code in it. You are, by any reasonable definition, a programmer now.
 
