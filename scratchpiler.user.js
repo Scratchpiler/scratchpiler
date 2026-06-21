@@ -883,6 +883,8 @@
       "pyfor": { label: "pyfor [iterator] in [list] { \u2026 }", params: [{ label: "[iterator]", documentation: "Variable to receive each item" }, { label: "[list]", documentation: "List to iterate over" }] },
       "not": { label: "not <condition>  \u2014 boolean NOT", params: [{ label: "<condition>" }] },
       "listDeleteAll": { label: "listDeleteAll([list])", params: [{ label: "[list]" }] },
+      "populateList": { label: "populateList([list], value, count | max, clearFirst)", params: [{ label: "[list]", documentation: "The list to fill. Must already exist in Scratch." }, { label: "value", documentation: "Expression to fill each slot with." }, { label: "count  |  max", documentation: "Number of items to add. Pass the literal `max` for 200,000." }, { label: "clearFirst", documentation: "true \u2014 delete all items first.  false \u2014 append on top of existing items." }] },
+      "populateArray": { label: "populateArray([list], value, count | max, clearFirst)  \u2014 alias for populateList", params: [{ label: "[list]" }, { label: "value" }, { label: "count  |  max", documentation: "Number of items to add. Pass the literal `max` for 200,000." }, { label: "clearFirst", documentation: "true \u2014 delete all items first.  false \u2014 append on top of existing items." }] },
       "setRotationStyle": { label: 'setRotationStyle("style")', params: [{ label: '"style"', documentation: `"all around" | "left-right" | "don't rotate"` }] },
       "switchBackdropAndWait": { label: 'switchBackdropAndWait("name")', params: [{ label: '"name"' }] },
       "setSoundEffect": { label: 'setSoundEffect("effect", value)', params: [{ label: '"effect"', documentation: '"PITCH" or "PAN LEFT/RIGHT"' }, { label: "value" }] },
@@ -1116,6 +1118,8 @@
     push("listInsert()", CIK.Function, "Lists", "listInsert($1, $2, [$0])");
     push("listReplace()", CIK.Function, "Lists", "listReplace($1, [$2], $0)");
     push("listDeleteAll()", CIK.Function, "Lists", "listDeleteAll([$0])");
+    push("populateList()", CIK.Function, "Lists", "populateList([$1], $2, $3, ${4|true,false|})");
+    push("populateArray()", CIK.Function, "Lists", "populateArray([$1], $2, $3, ${4|true,false|})");
     push("setRotationStyle()", CIK.Function, "Motion", 'setRotationStyle("${1|all around,left-right,don\'t rotate|}")');
     push('glide(secs, "sprite")', CIK.Function, "Motion", 'glide($1, "$0")');
     push("switchBackdropAndWait()", CIK.Function, "Looks", 'switchBackdropAndWait("$0")');
