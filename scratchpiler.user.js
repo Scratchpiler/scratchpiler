@@ -4628,8 +4628,7 @@ on flag {
           tabCompletion: "on",
           smoothScrolling: true,
           cursorSmoothCaretAnimation: "on",
-          cursorBlinking: "smooth",
-          stickyScroll: { enabled: true }
+          cursorBlinking: "smooth"
         }
       );
       monacoEditor.onDidChangeCursorPosition((e) => {

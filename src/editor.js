@@ -1258,7 +1258,6 @@ export function bootstrap() {
                 smoothScrolling: true,
                 cursorSmoothCaretAnimation: 'on',
                 cursorBlinking: 'smooth',
-                stickyScroll: { enabled: true },
             }
         );
 
