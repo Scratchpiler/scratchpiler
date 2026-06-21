@@ -970,3 +970,81 @@ You now know enough to build real things. The full reference is in the other doc
 - **wait / yield** — let time pass and other scripts breathe
 
 Build something small. Break it. Read the error message. Fix it. Build something slightly bigger. Repeat. The curve is steep only at the beginning, and you're already past the steepest part.
+
+---
+
+## Part 16: When to Switch to a Real Programming Language
+
+You've made it this far. You understand variables, loops, events, lists, custom blocks. You've shipped something — maybe a little platformer, a quiz game, a physics toy that you're secretly proud of. You installed a Tampermonkey userscript and wrote code in it. You are, by any reasonable definition, a programmer now.
+
+And at some point, probably soon if not already, Scratch is going to do something that makes you want to put your fist through the monitor. Not because you did anything wrong. Because Scratch has limits. They are real, structural limits, and no amount of Scratchpiler syntax sugar changes what runs underneath. This document is a guide to recognizing that moment, and what to do when it arrives.
+
+---
+
+### The signs
+
+**You're working around Scratch constantly, not with it.**
+
+You've got sixteen hidden variables managing state that should be a dictionary. You have a broadcast-based system for function calls that takes thirty seconds to follow mentally. You want to split your code into files, but there's only one editor. You want to import a library. You want to write a unit test. You want to use recursion and Scratch looked at you with the same expression a dog makes when you show it a card trick.
+
+These are not problems Scratchpiler can fix. They are symptoms.
+
+**You keep running into the ceiling.**
+
+No return values from custom blocks. No real data structures — just flat lists with 1-based indexing and no nesting. No file I/O. No network requests. No actual numbers — just strings that behave like numbers most of the time and surprise you the rest. A canvas that is 480 pixels wide and 360 pixels tall, and there's nothing you can do about it. A garbage-collected runtime you have no visibility into. A single-threaded web worker that freezes the tab if you leave it unattended for too long.
+
+You have hit the ceiling. This is not failure. Every tool has one.
+
+**The thing you want to build doesn't fit the medium.**
+
+Scratch is a game engine for a certain kind of game — the kind with sprites, backdrops, costumes, and sounds, clicking around in a browser. It is a remarkable piece of software for what it is. But it was not designed for the thing you are imagining now. You can feel the edges of the box. You're pushing against them.
+
+---
+
+### What to move to
+
+This depends entirely on what you want to make.
+
+**If you want to make games:** Look at [Godot](https://godotengine.org). It's free, open source, and uses a Python-like language called GDScript. It has real data structures, real 2D and 3D rendering, a physics engine, an animation system, a shader pipeline. Everything Scratch gestured at, Godot delivers. The concepts you've learned here — events, loops, variables, state machines, custom functions — transfer directly. The syntax is unfamiliar for about two weeks and then obvious.
+
+**If you want to make things for the web:** JavaScript. It's everywhere, it runs in every browser, it doesn't require installing anything beyond a text editor. The syntax will feel familiar — curly braces, parentheses, function calls. It has all the data structures Scratch couldn't give you: objects, arrays, maps, sets. You can build games with it, or interactive websites, or tools, or anything. Start with the browser console and work outward.
+
+**If you want to work with data, automation, or scripts:** Python. Clean syntax, enormous library ecosystem, the language most commonly used to teach programming in universities because it has almost no syntactic noise getting in the way of concepts. You can write a program that sorts a spreadsheet, fetches data from a website, generates images, or trains a neural network — all in the same language, often in fewer lines than you'd expect.
+
+**If you want to understand how computers actually work:** C or C++. Not for the faint of heart. You manage memory yourself. You get to see exactly how close to the metal everything runs. You will also spend three hours debugging a segmentation fault caused by writing one byte past the end of an array, and you will come out of it with a profound respect for every abstraction layer between you and bare silicon. Scratch, in that light, starts to look like an act of profound kindness.
+
+---
+
+### What Scratch gave you
+
+This is the part of the goodbye letter where we're honest about what you actually learned, because the temptation when you move on is to dismiss it.
+
+You learned to think sequentially — to decompose a problem into a list of instructions that execute in order. This is the foundation of everything.
+
+You learned the loop. The `forever` block is conceptually identical to a game loop in Godot, a `requestAnimationFrame` callback in JavaScript, or a `while(true)` in C++. The implementation is wildly different. The idea is the same.
+
+You learned the event. `on flag`, `on key`, `on receive` are Scratch's event system. Every GUI framework, every game engine, every operating system is built on the same idea: something happens, a handler runs. You know what that means now.
+
+You learned the state machine. If you've done it in Scratch — really done it, with an enum and a `forever` loop switching on `[state]` — you have implemented one of the most important patterns in software engineering. It has a name. People write academic papers about it. You did it in a Tampermonkey userscript injecting into a children's coding platform.
+
+You learned to read error messages. You learned that the computer is always right and you are always wrong and your job is to figure out how to become right. That is the whole skill. Everything else is syntax.
+
+---
+
+### What to take with you
+
+Take the habit of starting small and making it run before adding more. Take the reflex to look at the error message before assuming you understand what went wrong. Take the knowledge that a state machine and a game loop and a list and a function are not Scratch concepts — they are programming concepts, and they live in every language.
+
+Leave behind the 1-based indexing. You will not miss it.
+
+---
+
+### Parting words
+
+Scratch was designed to be a first language — to teach you the shape of programming before burying you in syntax. In that sense, it worked. You have learned the shape. The syntax of whatever you move to next will fill in around a skeleton you already understand.
+
+Scratchpiler was a Tampermonkey userscript that compiled a made-up language into Scratch block trees and injected them into a running browser session. It was, by any objective measure, excessive. But it was also a text editor, and a compiler, and a language server, and a debugger, and a documentation suite, all in one file that fits in a browser extension. You wrote code in it. Real code, with real structure, solving real problems.
+
+That's the part that follows you out the door.
+
+Go build something.
