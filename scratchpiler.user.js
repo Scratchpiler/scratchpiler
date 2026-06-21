@@ -4780,11 +4780,6 @@ on flag {
       );
     });
   }
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bootstrap);
-  } else {
-    bootstrap();
-  }
 
   // src/compiler.js
   var TT = {
