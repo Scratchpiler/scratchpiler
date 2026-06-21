@@ -5017,6 +5017,8 @@ on flag {
     yield: "yield()",
     // New v1.0 blocks
     listDeleteAll: "listDeleteAll([list])",
+    populateList: "populateList([list], value, count | max, clearFirst)",
+    populateArray: "populateArray([list], value, count | max, clearFirst)  \u2014 alias for populateList",
     setRotationStyle: `setRotationStyle("all around" | "left-right" | "don't rotate")`,
     switchBackdropAndWait: 'switchBackdropAndWait("name")',
     setSoundEffect: 'setSoundEffect("PITCH" | "PAN LEFT/RIGHT", value)',
@@ -6001,6 +6003,31 @@ on flag {
         eat(TT.RPAREN);
         return { type: "ListDeleteAllStmt", listName, line: ln, col: cl };
       }
+      if (v === "populateList" || v === "populateArray") {
+        eat(TT.LPAREN);
+        const listName = eat(TT.VAR).value;
+        eat(TT.COMMA);
+        const valueExpr = parseExpr();
+        eat(TT.COMMA);
+        let countExpr;
+        if (check(TT.IDENT) && peek().value === "max") {
+          pos++;
+          countExpr = { type: "Num", value: 2e5, line: ln, col: cl };
+        } else {
+          countExpr = parseExpr();
+        }
+        eat(TT.COMMA);
+        let clearFirst;
+        if (check(TT.IDENT) && peek().value === "true") {
+          pos++;
+          clearFirst = { type: "Num", value: 1, line: ln, col: cl };
+        } else if (check(TT.IDENT) && peek().value === "false") {
+          pos++;
+          clearFirst = { type: "Num", value: 0, line: ln, col: cl };
+        } else clearFirst = parseExpr();
+        eat(TT.RPAREN);
+        return { type: "PopulateListStmt", listName, valueExpr, countExpr, clearFirst, line: ln, col: cl };
+      }
       if (v === "checkCancel") {
         args0(ln, cl);
         return { type: "CheckCancelStmt", line: ln, col: cl };
@@ -6293,7 +6320,9 @@ on flag {
       "listReplace",
       "listDeleteAll",
       "showList",
-      "hideList"
+      "hideList",
+      "populateList",
+      "populateArray"
     ]);
     const VAR_BUILTINS = /* @__PURE__ */ new Set(["showVariable", "hideVariable"]);
     function checkStmt(stmt) {
@@ -6332,6 +6361,17 @@ on flag {
             err(stmt, `\`pyfor \u2026 in [${stmt.listName}]\`: [${stmt.listName}] is not defined \u2014 create a list in Scratch first`);
           }
           for (const s of stmt.body || []) checkStmt(s);
+          break;
+        }
+        case "PopulateListStmt": {
+          if (varNames.has(stmt.listName)) {
+            err(stmt, `\`populateList\` expects a list \u2014 [${stmt.listName}] is a variable`);
+          } else if (!listNames.has(stmt.listName)) {
+            err(stmt, `\`populateList\`: [${stmt.listName}] is not defined \u2014 create a list in Scratch first`);
+          }
+          checkExpr(stmt.valueExpr);
+          checkExpr(stmt.countExpr);
+          checkExpr(stmt.clearFirst);
           break;
         }
         case "IfStmt":
@@ -7140,6 +7180,11 @@ on flag {
           bpIds.forEach((id) => {
             if (id) ids.push(id);
           });
+        } else if (stmt.type === "PopulateListStmt") {
+          const populateIds = genPopulateListStmt(stmt);
+          populateIds.forEach((id) => {
+            if (id) ids.push(id);
+          });
         } else {
           const id = genStmt(stmt, null);
           if (id) ids.push(id);
@@ -7608,6 +7653,81 @@ on flag {
       const bcastStmt = isAwait ? { type: "BroadcastWaitStmt", msg: { type: "Str", value: bcastName, line: ln, col: cl }, line: ln, col: cl } : { type: "BroadcastStmt", msg: { type: "Str", value: bcastName, line: ln, col: cl }, line: ln, col: cl };
       const bcastBlockId = genStmt(bcastStmt, null);
       if (bcastBlockId) ids.push(bcastBlockId);
+      return ids;
+    }
+    function genPopulateListStmt(node) {
+      const v = resolveVar(node.listName);
+      if (!v) {
+        errors.push({
+          line: node.line || 1,
+          col: node.col || 1,
+          len: node.listName.length,
+          message: `List not found: ${node.listName}. Create it in Scratch first.`
+        });
+        return [];
+      }
+      const ids = [];
+      const isLiteralFalse = node.clearFirst.type === "Num" && Number(node.clearFirst.value) === 0;
+      if (!isLiteralFalse) {
+        const clearId = uid();
+        addBlock({
+          id: clearId,
+          opcode: "data_deletealloflist",
+          next: null,
+          parent: null,
+          inputs: {},
+          fields: { LIST: { name: "LIST", value: v.name, id: v.id } },
+          shadow: false,
+          topLevel: false
+        });
+        const isLiteralTrue = node.clearFirst.type === "Num" && Number(node.clearFirst.value) !== 0;
+        if (isLiteralTrue) {
+          ids.push(clearId);
+        } else {
+          const ifId = uid();
+          addBlock({
+            id: ifId,
+            opcode: "control_if",
+            next: null,
+            parent: null,
+            inputs: {
+              CONDITION: boolInput(node.clearFirst, ifId),
+              SUBSTACK: inp(clearId, null)
+            },
+            fields: {},
+            shadow: false,
+            topLevel: false
+          });
+          blocks[clearId].parent = ifId;
+          ids.push(ifId);
+        }
+      }
+      const repeatId = uid();
+      const addId = uid();
+      addBlock({
+        id: addId,
+        opcode: "data_addtolist",
+        next: null,
+        parent: repeatId,
+        inputs: { ITEM: strInput(node.valueExpr, addId) },
+        fields: { LIST: { name: "LIST", value: v.name, id: v.id } },
+        shadow: false,
+        topLevel: false
+      });
+      addBlock({
+        id: repeatId,
+        opcode: "control_repeat",
+        next: null,
+        parent: null,
+        inputs: {
+          TIMES: numInput(node.countExpr, repeatId),
+          SUBSTACK: inp(addId, null)
+        },
+        fields: {},
+        shadow: false,
+        topLevel: false
+      });
+      ids.push(repeatId);
       return ids;
     }
     function genBreakpointStmt(node) {
