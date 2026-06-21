@@ -1,5 +1,6 @@
 import { LANG_ID } from "./constants.js";
 import { scratchIndex } from "./vm.js";
+import { currentVM, currentSpriteContext } from "./editor.js";
 
 // DSL and completions
 

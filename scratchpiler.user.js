@@ -2374,7 +2374,7 @@
   // src/editor.js
   var monacoEditor2 = null;
   var overlayVisible = false;
-  var currentVM2 = null;
+  var currentVM = null;
   var applySettingsFn = null;
   var currentActiveTab = "explorer";
   var sidebarExpanded2 = true;
@@ -2405,24 +2405,24 @@
       );
       listEl.appendChild(el);
     }
-    if (currentSpriteContext2) {
-      const activeItem = listEl.querySelector(`[data-sprite="${currentSpriteContext2}"]`);
+    if (currentSpriteContext) {
+      const activeItem = listEl.querySelector(`[data-sprite="${currentSpriteContext}"]`);
       if (activeItem) activeItem.classList.add("active");
     }
   }
   function selectSidebarSprite(spriteName) {
     if (!spriteName) return;
-    const oldSprite = currentSpriteContext2;
+    const oldSprite = currentSpriteContext;
     if (oldSprite && oldSprite !== spriteName) {
       saveToLocalStorage(oldSprite);
     }
-    currentSpriteContext2 = spriteName;
-    if (currentVM2) {
-      const stage = currentVM2.runtime.targets.find((t) => t.isStage);
-      const target = spriteName === "__stage__" ? stage : currentVM2.runtime.targets.find((t) => !t.isStage && t.sprite.name === spriteName);
+    currentSpriteContext = spriteName;
+    if (currentVM) {
+      const stage = currentVM.runtime.targets.find((t) => t.isStage);
+      const target = spriteName === "__stage__" ? stage : currentVM.runtime.targets.find((t) => !t.isStage && t.sprite.name === spriteName);
       if (target) {
         try {
-          currentVM2.setEditingTarget(target.id);
+          currentVM.setEditingTarget(target.id);
         } catch (_) {
         }
       }
@@ -2452,7 +2452,7 @@
       const label = isStage ? "Stage.sp" : `${name}.sp`;
       const icon = isStage ? "\u25A3" : "\u25FB";
       const tab = document.createElement("div");
-      tab.className = "sp-tab" + (name === currentSpriteContext2 ? " sp-tab-active" : "");
+      tab.className = "sp-tab" + (name === currentSpriteContext ? " sp-tab-active" : "");
       tab.dataset.sprite = name;
       tab.innerHTML = `<span class="sp-tab-icon">${icon}</span><span class="sp-tab-name">${label}</span>`;
       const closeBtn = document.createElement("button");
@@ -2476,12 +2476,12 @@
     const idx = openTabSprites.indexOf(name);
     if (idx < 0) return;
     openTabSprites.splice(idx, 1);
-    if (currentSpriteContext2 === name) {
+    if (currentSpriteContext === name) {
       const next = openTabSprites[idx] ?? openTabSprites[idx - 1] ?? null;
       if (next) {
         selectSidebarSprite(next);
       } else {
-        currentSpriteContext2 = null;
+        currentSpriteContext = null;
         if (monacoEditor2) monacoEditor2.setValue("");
         renderTabs();
       }
@@ -2657,29 +2657,29 @@
       }
       injectedBlockIds2.clear();
       updateStatus2(`\u2713 Cleared ${cleared} cached entries`);
-      if (currentSpriteContext2) loadFromLocalStorage(currentSpriteContext2);
+      if (currentSpriteContext) loadFromLocalStorage(currentSpriteContext);
     });
     document.getElementById("sp-fix-reindex").addEventListener("click", () => {
-      if (!currentVM2) {
+      if (!currentVM) {
         updateStatus2("Error: VM not available");
         return;
       }
-      reindex(currentVM2);
+      reindex(currentVM);
       renderSidebarSprites();
-      if (currentSpriteContext2) {
-        selectSidebarSprite(currentSpriteContext2);
+      if (currentSpriteContext) {
+        selectSidebarSprite(currentSpriteContext);
       }
       updateStatus2("\u2713 Re-indexed all sprites & variables");
     });
     document.getElementById("sp-fix-reset-all").addEventListener("click", () => {
-      if (!currentVM2) {
+      if (!currentVM) {
         updateStatus2("Error: VM not available");
         return;
       }
       if (!confirm("Reset all Scratchpiler changes?\n\nThis will:\n\u2022 Remove all injected blocks from every sprite\n\u2022 Clear all cached SDSL code\n\u2022 Re-index the project\n\nThe project will return to its last-saved state.")) return;
       let removedCount = 0;
       for (const [spriteName, ids] of injectedBlockIds2.entries()) {
-        const target = spriteName === "__stage__" ? currentVM2.runtime.targets.find((t) => t.isStage) : currentVM2.runtime.targets.find((t) => !t.isStage && t.sprite.name === spriteName);
+        const target = spriteName === "__stage__" ? currentVM.runtime.targets.find((t) => t.isStage) : currentVM.runtime.targets.find((t) => !t.isStage && t.sprite.name === spriteName);
         if (target) {
           for (const id of ids) {
             try {
@@ -2702,13 +2702,13 @@
       } catch {
       }
       try {
-        currentVM2.setEditingTarget(currentVM2.editingTarget.id);
+        currentVM.setEditingTarget(currentVM.editingTarget.id);
       } catch {
       }
-      reindex(currentVM2);
+      reindex(currentVM);
       renderSidebarSprites();
-      if (currentSpriteContext2) {
-        selectSidebarSprite(currentSpriteContext2);
+      if (currentSpriteContext) {
+        selectSidebarSprite(currentSpriteContext);
       } else {
         if (monacoEditor2) monacoEditor2.setValue("");
       }
@@ -2820,7 +2820,7 @@
           text: replaceVal,
           forceMoveMarkers: true
         }]);
-        saveToLocalStorage(currentSpriteContext2);
+        saveToLocalStorage(currentSpriteContext);
         runSearch();
       } else {
         const model = monacoEditor2.getModel();
@@ -2846,7 +2846,7 @@
     for (const s of scratchIndex2.sprites) {
       replacedCount += replaceInSprite(s.name, searchVal, replaceVal);
     }
-    loadFromLocalStorage(currentSpriteContext2);
+    loadFromLocalStorage(currentSpriteContext);
     updateStatus2(`Replaced ${replacedCount} occurrence(s) across all sprites.`);
     runSearch();
   }
@@ -2968,7 +2968,7 @@
     const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const name = currentSpriteContext2 === "__stage__" ? "Stage" : currentSpriteContext2 || "project";
+    const name = currentSpriteContext === "__stage__" ? "Stage" : currentSpriteContext || "project";
     a.download = `${name}.sp`;
     a.href = url;
     a.click();
@@ -3026,10 +3026,10 @@ on flag {
     overlay.style.display = "flex";
     overlayVisible = true;
     renderSidebarSprites();
-    if (!currentSpriteContext2) {
-      currentSpriteContext2 = "__stage__";
+    if (!currentSpriteContext) {
+      currentSpriteContext = "__stage__";
     }
-    selectSidebarSprite(currentSpriteContext2);
+    selectSidebarSprite(currentSpriteContext);
     const trigger = document.getElementById("scratchpiler-trigger");
     if (trigger) trigger.style.display = "none";
     if (monacoEditor2) {
@@ -3038,7 +3038,7 @@ on flag {
     }
   }
   function closeOverlay() {
-    saveToLocalStorage(currentSpriteContext2);
+    saveToLocalStorage(currentSpriteContext);
     document.getElementById("scratchpiler-overlay").style.display = "none";
     overlayVisible = false;
     const trigger = document.getElementById("scratchpiler-trigger");
@@ -3101,7 +3101,7 @@ on flag {
   var saveTimer = null;
   var lintTimer = null;
   var injectedBlockIds2 = /* @__PURE__ */ new Map();
-  var currentSpriteContext2 = null;
+  var currentSpriteContext = null;
   function saveToLocalStorage(spriteName) {
     if (!monacoEditor2) return;
     const key = spriteName ? `scratchpiler-content-${spriteName}` : LS_KEY;
@@ -3120,9 +3120,9 @@ on flag {
       if (v !== null && v.trim() !== "") {
         monacoEditor2.setValue(v);
       } else {
-        if (currentVM2) {
+        if (currentVM) {
           try {
-            const code = decompile2(currentVM2, spriteName);
+            const code = decompile2(currentVM, spriteName);
             monacoEditor2.setValue(code);
             updateStatus2(`Decompiled "${spriteName === "__stage__" ? "Stage" : spriteName}"`);
           } catch (e) {
@@ -3206,13 +3206,13 @@ on flag {
     };
   }
   function doCreateVariable(name, isGlobal, isList) {
-    if (!currentVM2) {
+    if (!currentVM) {
       updateStatus2("Error: VM not available");
       return;
     }
     const spriteName = getActiveSpriteNameFromDropdown();
-    const stage = currentVM2.runtime.targets.find((t) => t.isStage);
-    const target = isGlobal || spriteName === "__stage__" ? stage : currentVM2.runtime.targets.find((t) => !t.isStage && t.sprite.name === spriteName);
+    const stage = currentVM.runtime.targets.find((t) => t.isStage);
+    const target = isGlobal || spriteName === "__stage__" ? stage : currentVM.runtime.targets.find((t) => !t.isStage && t.sprite.name === spriteName);
     if (!target) {
       updateStatus2("Error: target not found");
       return;
@@ -3224,7 +3224,7 @@ on flag {
       return;
     }
     target.createVariable(uid(), name, varType);
-    reindex(currentVM2);
+    reindex(currentVM);
     const scope = isGlobal || spriteName === "__stage__" ? "global" : "local";
     updateStatus2(`Created ${scope} ${isList ? "list" : "variable"} "${name}"`);
   }
@@ -3341,14 +3341,14 @@ on flag {
       }
     });
     document.getElementById("scratchpiler-import-btn").addEventListener("click", () => {
-      if (!currentVM2) {
+      if (!currentVM) {
         updateStatus2("Error: VM not available");
         return;
       }
       const spriteName = getActiveSpriteNameFromDropdown();
       updateStatus2("Importing...");
       try {
-        const code = decompile2(currentVM2, spriteName);
+        const code = decompile2(currentVM, spriteName);
         monacoEditor2.setValue(code);
         monacoEditor2.setScrollPosition({ scrollTop: 0 });
         updateStatus2(`Imported from "${spriteName}"`);
@@ -3396,9 +3396,9 @@ on flag {
         clearTimeout(lintTimer);
         const saveDelay = isFinite(spSettings.autosave) ? spSettings.autosave : 1e3;
         if (saveDelay === 0) {
-          saveToLocalStorage(currentSpriteContext2);
+          saveToLocalStorage(currentSpriteContext);
         } else {
-          saveTimer = setTimeout(() => saveToLocalStorage(currentSpriteContext2), saveDelay);
+          saveTimer = setTimeout(() => saveToLocalStorage(currentSpriteContext), saveDelay);
         }
         lintTimer = setTimeout(() => {
           const src = monacoEditor2.getValue();
@@ -3447,7 +3447,7 @@ on flag {
         }, 350);
       });
       document.getElementById("scratchpiler-compile-btn").addEventListener("click", () => {
-        if (!currentVM2) {
+        if (!currentVM) {
           updateStatus2("Error: VM not available");
           return;
         }
@@ -3456,7 +3456,7 @@ on flag {
         updateStatus2("Compiling...");
         let result;
         try {
-          result = compileSource(source, currentVM2, spriteName);
+          result = compileSource(source, currentVM, spriteName);
         } catch (e) {
           updateStatus2("Compile error: " + e.message);
           logToOutput("Compile error: " + e.message, "error");
@@ -3483,7 +3483,7 @@ on flag {
           flashCompileBtn(false);
           return;
         }
-        injectBlocks(result.blocks, currentVM2, spriteName);
+        injectBlocks(result.blocks, currentVM, spriteName);
         flashCompileBtn(true);
         const blockCount = Object.keys(result.blocks).length;
         const label = spriteName === "__stage__" ? "Stage" : spriteName;
@@ -3499,7 +3499,7 @@ on flag {
       });
       acquireVM(
         (vm) => {
-          currentVM2 = vm;
+          currentVM = vm;
           updateStatusBarVM("ok");
           reindex(vm);
           vm.on("targetsUpdate", () => {
@@ -3516,9 +3516,9 @@ on flag {
             injectedBlockIds2.clear();
             reindex(vm);
           });
-          if (overlayVisible && currentSpriteContext2) {
+          if (overlayVisible && currentSpriteContext) {
             renderSidebarSprites();
-            selectSidebarSprite(currentSpriteContext2);
+            selectSidebarSprite(currentSpriteContext);
           }
         },
         () => {

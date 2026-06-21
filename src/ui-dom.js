@@ -1,6 +1,6 @@
 import overlayCss from "./overlay.css";
 import overlayHtml from "./overlay.html";
-import { overlayVisible, openOverlay, closeOverlay, selectSidebarSprite, searchCode, importFromLocalFile, exportToLocalFile } from "./editor.js";
+import { overlayVisible, openOverlay, closeOverlay, selectSidebarSprite, searchCode, importFromLocalFile, exportToLocalFile, currentVM } from "./editor.js";
 
 // Overlay DOM
 
