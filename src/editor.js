@@ -1,4 +1,5 @@
 import { LANG_ID, LS_KEY, LS_INJ_KEY } from "./constants.js";
+import { injectedBlockIds } from "./inject-state.js";
 import { acquireVM, scratchIndex, reindex } from "./vm.js";
 import { loadMonaco } from "./monaco.js";
 import { registerLanguage } from "./language.js";
@@ -834,34 +835,6 @@ const spSettings = {
 
 let saveTimer = null;
 let lintTimer = null;
-const injectedBlockIds = new Map(); // spriteName → Set<id> (top-level hat block IDs only)
-
-/** Persist the current in-memory injectedBlockIds entry for a sprite to localStorage. */
-function persistInjectedIds(spriteName) {
-    const ids = injectedBlockIds.get(spriteName);
-    try {
-        if (ids && ids.size > 0) {
-            localStorage.setItem(`${LS_INJ_KEY}-${spriteName}`, JSON.stringify([...ids]));
-        } else {
-            localStorage.removeItem(`${LS_INJ_KEY}-${spriteName}`);
-        }
-    } catch (_) {}
-}
-
-/**
- * Restore injectedBlockIds for a sprite from localStorage (if not already loaded).
- * Called before each injection so cleanup works correctly after a page reload.
- */
-function restoreInjectedIds(spriteName) {
-    if (injectedBlockIds.has(spriteName)) return; // already loaded
-    try {
-        const raw = localStorage.getItem(`${LS_INJ_KEY}-${spriteName}`);
-        if (raw) {
-            injectedBlockIds.set(spriteName, new Set(JSON.parse(raw)));
-        }
-    } catch (_) {}
-}
-
 export let currentSpriteContext = null; // track current sprite for per-sprite save/load
 
 function saveToLocalStorage(spriteName) {

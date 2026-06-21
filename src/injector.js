@@ -1,5 +1,5 @@
-import { LS_INJ_KEY } from "./constants.js";
 import { updateStatus } from "./editor.js";
+import { injectedBlockIds, persistInjectedIds, restoreInjectedIds } from "./inject-state.js";
 
 // [L3] Source Formatter
 
