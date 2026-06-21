@@ -1,5 +1,16 @@
 # scratchpiler
 
+<p align="center">
+  <img src="resources/Scratchpiler.png" alt="Scratchpiler" width="180" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/Scratchpiler/scratchpiler/actions/workflows/release.yml"><img src="https://github.com/Scratchpiler/scratchpiler/actions/workflows/release.yml/badge.svg" alt="Release Userscript" /></a>
+  <a href="https://github.com/Scratchpiler/scratchpiler/releases/latest"><img src="https://img.shields.io/github/v/release/Scratchpiler/scratchpiler?label=latest" alt="Latest Release" /></a>
+  <img src="https://img.shields.io/badge/source-7%2C400%20LoC-blue" alt="Lines of Code" />
+  <img src="https://img.shields.io/badge/license-ISC-lightgrey" alt="License: ISC" />
+</p>
+
 A text-based DSL that compiles directly into Scratch's block VM. Because sometimes you want to write a platformer without playing Tetris with puzzle pieces, or because you've finally realized that dragging colorful plastic shapes with a mouse is a slow descent into developer madness.
 
 ---
