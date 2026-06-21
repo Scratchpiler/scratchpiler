@@ -14,7 +14,7 @@ export let currentVM      = null;
 
 let applySettingsFn = null;
 let currentActiveTab = 'explorer';
-let sidebarExpanded = true;
+export let sidebarExpanded = true;
 let debugPollInterval = null;
 
 function renderSidebarSprites() {

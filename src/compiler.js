@@ -1,3 +1,4 @@
+import { KEYWORDS } from "./constants.js";
 import { scratchIndex } from "./vm.js";
 
 // [L] DSL Compiler
@@ -2865,8 +2866,13 @@ function compile(ast, vm, spriteName) {
         if (!stage) continue;
         for (const field of block.fields) {
             const varName = `${block.name}.${field}`;
-            const exists = Object.values(stage.variables).some(v => v.name === varName);
-            if (!exists) stage.createVariable(uid(), varName, '');
+            try {
+                const exists = Object.values(stage.variables).some(v => v.name === varName);
+                if (!exists) stage.createVariable(uid(), varName, '');
+            } catch (e) {
+                errors.push({ line: block.line || 1, col: block.col || 1, len: 6,
+                    message: `struct ${block.name}: failed to create variable "${varName}" — ${e.message}` });
+            }
         }
     }
 

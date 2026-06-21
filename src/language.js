@@ -1,63 +1,7 @@
-import { LANG_ID } from "./constants.js";
+import { LANG_ID, KEYWORDS } from "./constants.js";
 import { scratchIndex } from "./vm.js";
 import { currentVM, currentSpriteContext } from "./editor.js";
 import { formatSource } from "./injector.js";
-
-// DSL and completions
-
-const KEYWORDS = [
-    // Control flow
-    'on','if','else','forever','repeat','until','while','for','from','wait','define','pyfor','in',
-    // Operators
-    'and','or','not','mod',
-    // Hat events
-    'flag','click','clone','receive','backdrop',
-    // Variable ops (keep space-form)
-    'set','change','to','by',
-    // Motion
-    'move','turnRight','turnLeft','goTo','glide','bounce',
-    'setX','setY','changeX','changeY','setRotationStyle',
-    // Looks
-    'say','sayFor','think','thinkFor',
-    'switchCostume','switchBackdrop','switchBackdropAndWait','nextCostume','nextBackdrop',
-    'setSize','changeSize','show','hide','clearEffects',
-    // Sound
-    'play','playUntilDone','stopSounds',
-    'setSoundEffect','changeSoundEffect','clearSoundEffects',
-    // Events
-    'broadcast','broadcastAndWait',
-    // Control statements
-    'stopAll','stopThis','stopOtherScripts','createClone','deleteClone',
-    // Data
-    'showVariable','hideVariable','showList','hideList',
-    'listAdd','listDelete','listInsert','listReplace','listDeleteAll',
-    // Sensing
-    'setDragMode',
-    // Reporters
-    'xPos','yPos','direction','costumeNum','costumeName',
-    'timer','mouseDown','mouseX','mouseY','loudness','answer',
-    'volume','username','daysSince2000',
-    // Sensing (expression context)
-    'touching','key',
-    // Motion extras (v1.0)
-    'setDirection','turnTo','pointTowards','goToFront','goToBack','moveForward','moveBackward',
-    // Looks extras (v1.0)
-    'setEffect','changeEffect',
-    // Sound extras (v1.0)
-    'setVolume','changeVolume',
-    // Sensing extras (v1.0)
-    'askAndWait','resetTimer',
-    // Ergonomic aliases
-    'print','println','step','forward','left','right',
-    'append','push','pop','remove','insert','replace','clear',
-    'front','back','clone','stopMe','ask','send','sendAndWait',
-    // else-if alias
-    'elif',
-    // Scratchroutines
-    'scratchroutine','launch','await','cancel','isRunning','checkCancel',
-    // Struct declarations and debug
-    'struct','breakpoint',
-];
 
 export function registerLanguage(monaco) {
     monaco.languages.register({ id: LANG_ID });
