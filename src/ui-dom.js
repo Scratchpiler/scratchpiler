@@ -1,5 +1,6 @@
 import overlayCss from "./overlay.css";
 import overlayHtml from "./overlay.html";
+import { overlayVisible, openOverlay, closeOverlay, selectSidebarSprite, searchCode, importFromLocalFile, exportToLocalFile } from "./editor.js";
 
 // Overlay DOM
 
@@ -30,7 +31,7 @@ export function buildTriggerButton() {
 
 // [SN] Search Nowhere
 
-let searchNowhereOpen = false;
+export let searchNowhereOpen = false;
 let snActiveTab = 'all';
 let snFocusIdx = -1;
 
@@ -372,7 +373,7 @@ export function flashCompileBtn(ok) {
 }
 
 // Sprite picker (Ctrl+P)
-let spPickerOpen     = false;
+export let spPickerOpen     = false;
 let spPickerFocusIdx = -1;
 
 export function openSpritePicker() {

@@ -1821,7 +1821,7 @@
     btn.addEventListener("click", openOverlay);
     document.body.appendChild(btn);
   }
-  var searchNowhereOpen2 = false;
+  var searchNowhereOpen = false;
   var snActiveTab = "all";
   var snFocusIdx = -1;
   var SN_VOID_RESULTS = [
@@ -1932,11 +1932,11 @@
     });
   }
   function openSearchNowhere() {
-    if (searchNowhereOpen2) return;
+    if (searchNowhereOpen) return;
     const backdrop = document.getElementById("sp-sn-backdrop");
     if (!backdrop) return;
     backdrop.style.display = "flex";
-    searchNowhereOpen2 = true;
+    searchNowhereOpen = true;
     snActiveTab = "all";
     snFocusIdx = -1;
     document.querySelectorAll(".sp-sn-tab").forEach((t) => t.classList.toggle("sp-sn-active", t.dataset.tab === "all"));
@@ -1950,7 +1950,7 @@
   function closeSearchNowhere() {
     const backdrop = document.getElementById("sp-sn-backdrop");
     if (backdrop) backdrop.style.display = "none";
-    searchNowhereOpen2 = false;
+    searchNowhereOpen = false;
   }
   function snEscHtml(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -2141,14 +2141,14 @@
     btn.classList.add(ok ? "sp-flash-ok" : "sp-flash-err");
     btn.addEventListener("animationend", () => btn.classList.remove("sp-flash-ok", "sp-flash-err"), { once: true });
   }
-  var spPickerOpen2 = false;
+  var spPickerOpen = false;
   var spPickerFocusIdx = -1;
   function openSpritePicker() {
-    if (spPickerOpen2) return;
+    if (spPickerOpen) return;
     const backdrop = document.getElementById("sp-picker-backdrop");
     if (!backdrop) return;
     backdrop.style.display = "flex";
-    spPickerOpen2 = true;
+    spPickerOpen = true;
     spPickerFocusIdx = -1;
     const input = document.getElementById("sp-picker-input");
     if (input) {
@@ -2160,7 +2160,7 @@
   function closeSpritePicker() {
     const backdrop = document.getElementById("sp-picker-backdrop");
     if (backdrop) backdrop.style.display = "none";
-    spPickerOpen2 = false;
+    spPickerOpen = false;
   }
   function spPickerRender(query) {
     const list = document.getElementById("sp-picker-list");
@@ -2373,7 +2373,7 @@
 
   // src/editor.js
   var monacoEditor2 = null;
-  var overlayVisible2 = false;
+  var overlayVisible = false;
   var currentVM2 = null;
   var applySettingsFn = null;
   var currentActiveTab = "explorer";
@@ -2387,7 +2387,7 @@
       el.className = "sp-list-item";
       el.dataset.sprite = spriteName;
       el.innerHTML = `${iconSvg}<span class="sp-item-name">${labelText}</span>`;
-      el.addEventListener("click", () => selectSidebarSprite2(spriteName));
+      el.addEventListener("click", () => selectSidebarSprite(spriteName));
       el.addEventListener("contextmenu", (e) => showSpriteContextMenu(e, spriteName));
       return el;
     }
@@ -2410,7 +2410,7 @@
       if (activeItem) activeItem.classList.add("active");
     }
   }
-  function selectSidebarSprite2(spriteName) {
+  function selectSidebarSprite(spriteName) {
     if (!spriteName) return;
     const oldSprite = currentSpriteContext2;
     if (oldSprite && oldSprite !== spriteName) {
@@ -2464,7 +2464,7 @@
         closeSpriteTab(name);
       });
       tab.appendChild(closeBtn);
-      tab.addEventListener("click", () => selectSidebarSprite2(name));
+      tab.addEventListener("click", () => selectSidebarSprite(name));
       bar.appendChild(tab);
     }
   }
@@ -2479,7 +2479,7 @@
     if (currentSpriteContext2 === name) {
       const next = openTabSprites[idx] ?? openTabSprites[idx - 1] ?? null;
       if (next) {
-        selectSidebarSprite2(next);
+        selectSidebarSprite(next);
       } else {
         currentSpriteContext2 = null;
         if (monacoEditor2) monacoEditor2.setValue("");
@@ -2667,7 +2667,7 @@
       reindex(currentVM2);
       renderSidebarSprites();
       if (currentSpriteContext2) {
-        selectSidebarSprite2(currentSpriteContext2);
+        selectSidebarSprite(currentSpriteContext2);
       }
       updateStatus2("\u2713 Re-indexed all sprites & variables");
     });
@@ -2708,7 +2708,7 @@
       reindex(currentVM2);
       renderSidebarSprites();
       if (currentSpriteContext2) {
-        selectSidebarSprite2(currentSpriteContext2);
+        selectSidebarSprite(currentSpriteContext2);
       } else {
         if (monacoEditor2) monacoEditor2.setValue("");
       }
@@ -2752,10 +2752,10 @@
     }
     const matches = [];
     const stageCode = localStorage.getItem("scratchpiler-content-__stage__") || "";
-    searchCode2(stageCode, "__stage__", query, matches);
+    searchCode(stageCode, "__stage__", query, matches);
     for (const s of scratchIndex2.sprites) {
       const code = localStorage.getItem(`scratchpiler-content-${s.name}`) || "";
-      searchCode2(code, s.name, query, matches);
+      searchCode(code, s.name, query, matches);
     }
     if (matches.length === 0) {
       resultsEl.innerHTML = '<div class="sp-search-no-results">No results found</div>';
@@ -2777,7 +2777,7 @@
         item.innerHTML = `<span class="sp-search-line-num">${m.line}:</span> <span class="sp-search-line-text"></span>`;
         item.querySelector(".sp-search-line-text").textContent = m.text;
         item.addEventListener("click", () => {
-          selectSidebarSprite2(m.spriteName);
+          selectSidebarSprite(m.spriteName);
           if (monacoEditor2) {
             monacoEditor2.setPosition({ lineNumber: m.line, column: 1 });
             monacoEditor2.revealLineInCenter(m.line);
@@ -2788,7 +2788,7 @@
       }
     }
   }
-  function searchCode2(code, spriteName, query, matches) {
+  function searchCode(code, spriteName, query, matches) {
     const lines = code.split("\n");
     const lowerQuery = query.toLowerCase();
     for (let i = 0; i < lines.length; i++) {
@@ -2944,7 +2944,7 @@
     lintOrphanedChk.addEventListener("change", applySettings);
     return applySettings;
   }
-  function importFromLocalFile2() {
+  function importFromLocalFile() {
     const inp = document.createElement("input");
     inp.type = "file";
     inp.accept = ".sp,.sdsl,.txt";
@@ -2962,7 +2962,7 @@
     };
     inp.click();
   }
-  function exportToLocalFile2() {
+  function exportToLocalFile() {
     if (!monacoEditor2) return;
     const code = monacoEditor2.getValue();
     const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
@@ -3021,15 +3021,15 @@ on flag {
   function populateSpriteDropdown() {
     renderSidebarSprites();
   }
-  function openOverlay2() {
+  function openOverlay() {
     const overlay = document.getElementById("scratchpiler-overlay");
     overlay.style.display = "flex";
-    overlayVisible2 = true;
+    overlayVisible = true;
     renderSidebarSprites();
     if (!currentSpriteContext2) {
       currentSpriteContext2 = "__stage__";
     }
-    selectSidebarSprite2(currentSpriteContext2);
+    selectSidebarSprite(currentSpriteContext2);
     const trigger = document.getElementById("scratchpiler-trigger");
     if (trigger) trigger.style.display = "none";
     if (monacoEditor2) {
@@ -3037,16 +3037,16 @@ on flag {
       monacoEditor2.focus();
     }
   }
-  function closeOverlay2() {
+  function closeOverlay() {
     saveToLocalStorage(currentSpriteContext2);
     document.getElementById("scratchpiler-overlay").style.display = "none";
-    overlayVisible2 = false;
+    overlayVisible = false;
     const trigger = document.getElementById("scratchpiler-trigger");
     if (trigger) trigger.style.display = "";
   }
   function toggleOverlay() {
-    if (overlayVisible2) closeOverlay2();
-    else openOverlay2();
+    if (overlayVisible) closeOverlay();
+    else openOverlay();
   }
   function registerHotkeys() {
     document.addEventListener("keydown", (e) => {
@@ -3062,15 +3062,15 @@ on flag {
         e.preventDefault();
         e.stopPropagation();
         closeSearchNowhere();
-      } else if (e.key === "Escape" && overlayVisible2) {
+      } else if (e.key === "Escape" && overlayVisible) {
         e.preventDefault();
         e.stopPropagation();
-        closeOverlay2();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key === "Enter" || e.key === "s") && overlayVisible2) {
+        closeOverlay();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === "Enter" || e.key === "s") && overlayVisible) {
         e.preventDefault();
         e.stopPropagation();
         document.getElementById("scratchpiler-compile-btn").click();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === "p" && overlayVisible2) {
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "p" && overlayVisible) {
         e.preventDefault();
         e.stopPropagation();
         if (spPickerOpen) closeSpritePicker();
@@ -3233,14 +3233,14 @@ on flag {
     buildTriggerButton();
     buildSearchNowhereDOM();
     registerHotkeys();
-    document.getElementById("scratchpiler-close-btn").addEventListener("click", closeOverlay2);
+    document.getElementById("scratchpiler-close-btn").addEventListener("click", closeOverlay);
     document.getElementById("sp-menu-file").addEventListener("click", () => {
       openMenu("sp-menu-file", [
         { label: "Import from active sprite", action: () => document.getElementById("scratchpiler-import-btn").click() },
         { label: "Compile & Inject (Ctrl+Enter)", action: () => document.getElementById("scratchpiler-compile-btn").click() },
         "-",
-        { label: "Open .sp file...", action: () => importFromLocalFile2() },
-        { label: "Save as .sp file...", action: () => exportToLocalFile2() },
+        { label: "Open .sp file...", action: () => importFromLocalFile() },
+        { label: "Save as .sp file...", action: () => exportToLocalFile() },
         "-",
         { label: "Clear Editor", action: () => {
           if (confirm("Clear all editor content?")) monacoEditor2.setValue("");
@@ -3504,7 +3504,7 @@ on flag {
           reindex(vm);
           vm.on("targetsUpdate", () => {
             reindex(vm);
-            if (overlayVisible2) populateSpriteDropdown();
+            if (overlayVisible) populateSpriteDropdown();
           });
           vm.runtime.on("PROJECT_LOADED", () => {
             const injectedKeys = [];
@@ -3516,9 +3516,9 @@ on flag {
             injectedBlockIds2.clear();
             reindex(vm);
           });
-          if (overlayVisible2 && currentSpriteContext2) {
+          if (overlayVisible && currentSpriteContext2) {
             renderSidebarSprites();
-            selectSidebarSprite2(currentSpriteContext2);
+            selectSidebarSprite(currentSpriteContext2);
           }
         },
         () => {

@@ -2,13 +2,13 @@ import { LANG_ID, LS_KEY, LS_INJ_KEY } from "./constants.js";
 import { acquireVM, scratchIndex, reindex } from "./vm.js";
 import { loadMonaco } from "./monaco.js";
 import { registerLanguage } from "./language.js";
-import { buildOverlayDOM, buildTriggerButton, buildSearchNowhereDOM, setupSpritePicker, logToOutput, flashCompileBtn, openSpritePicker, closeSpritePicker, showSpriteContextMenu, closeSpriteContextMenu, setupOutputPanel, setupSidebarResize, openSearchNowhere, closeSearchNowhere, } from "./ui-dom.js";
+import { buildOverlayDOM, buildTriggerButton, buildSearchNowhereDOM, setupSpritePicker, spPickerOpen, searchNowhereOpen, logToOutput, flashCompileBtn, openSpritePicker, closeSpritePicker, showSpriteContextMenu, closeSpriteContextMenu, setupOutputPanel, setupSidebarResize, openSearchNowhere, closeSearchNowhere, } from "./ui-dom.js";
 import { compileSource, decompile, tokenize, parse, lint, typeCheckDiagnostics, injectBlocks } from "./main.js";
 
 // [I] Editor Lifecycle
 
 export let monacoEditor  = null;
-let overlayVisible = false;
+export let overlayVisible = false;
 export let currentVM      = null;
 
 let applySettingsFn = null;
@@ -49,7 +49,7 @@ function renderSidebarSprites() {
     }
 }
 
-function selectSidebarSprite(spriteName) {
+export function selectSidebarSprite(spriteName) {
     if (!spriteName) return;
     const oldSprite = currentSpriteContext;
     if (oldSprite && oldSprite !== spriteName) {
@@ -480,7 +480,7 @@ function runSearch() {
     }
 }
 
-function searchCode(code, spriteName, query, matches) {
+export function searchCode(code, spriteName, query, matches) {
     const lines = code.split('\n');
     const lowerQuery = query.toLowerCase();
     for (let i = 0; i < lines.length; i++) {
@@ -655,7 +655,7 @@ function setupSettings() {
     return applySettings;
 }
 
-function importFromLocalFile() {
+export function importFromLocalFile() {
     const inp = document.createElement('input');
     inp.type = 'file';
     inp.accept = '.sp,.sdsl,.txt';
@@ -674,7 +674,7 @@ function importFromLocalFile() {
     inp.click();
 }
 
-function exportToLocalFile() {
+export function exportToLocalFile() {
     if (!monacoEditor) return;
     const code = monacoEditor.getValue();
     const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
@@ -708,7 +708,7 @@ function populateSpriteDropdown() {
     renderSidebarSprites();
 }
 
-function openOverlay() {
+export function openOverlay() {
     const overlay = document.getElementById('scratchpiler-overlay');
     overlay.style.display = 'flex';
     overlayVisible = true;
@@ -722,7 +722,7 @@ function openOverlay() {
     if (monacoEditor) { monacoEditor.layout(); monacoEditor.focus(); }
 }
 
-function closeOverlay() {
+export function closeOverlay() {
     saveToLocalStorage(currentSpriteContext);
     document.getElementById('scratchpiler-overlay').style.display = 'none';
     overlayVisible = false;
