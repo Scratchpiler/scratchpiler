@@ -14,6 +14,9 @@
             flex-shrink: 0; height: 42px; padding: 0 12px;
             box-sizing: border-box;
         }
+        #scratchpiler-logo {
+            width: 20px; height: 20px; object-fit: contain; flex-shrink: 0;
+        }
         #scratchpiler-wordmark {
             display: flex; align-items: center; gap: 8px;
             padding-right: 14px; flex-shrink: 0;

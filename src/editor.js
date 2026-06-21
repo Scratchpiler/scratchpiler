@@ -973,7 +973,7 @@ function doDeleteVariable(varId) {
         delete target.variables[varId];
     }
     reindex(currentVM);
-    updateSpriteDetails(getActiveSpriteNameFromDropdown());
+    updateSpriteDetails(currentSpriteContext);
     updateStatus(`Deleted "${varName}"`);
 }
 
@@ -1010,7 +1010,7 @@ function openRenameDialog(v) {
             }
         }
         reindex(currentVM);
-        updateSpriteDetails(getActiveSpriteNameFromDropdown());
+        updateSpriteDetails(currentSpriteContext);
         updateStatus(`Renamed "${oldName}" → "${newName}"`);
     };
 }
@@ -1103,7 +1103,7 @@ function showCreateDialog(title, onConfirm) {
 
 function doCreateVariable(name, isGlobal, isList) {
     if (!currentVM) { updateStatus('Error: VM not available'); return; }
-    const spriteName = getActiveSpriteNameFromDropdown();
+    const spriteName = currentSpriteContext;
     const stage = currentVM.runtime.targets.find(t => t.isStage);
     const target = (isGlobal || spriteName === '__stage__')
         ? stage
@@ -1251,7 +1251,7 @@ export function bootstrap() {
 
     document.getElementById('scratchpiler-import-btn').addEventListener('click', () => {
         if (!currentVM) { updateStatus('Error: VM not available'); return; }
-        const spriteName = getActiveSpriteNameFromDropdown();
+        const spriteName = currentSpriteContext;
         updateStatus('Importing...');
         try {
             const code = decompile(currentVM, spriteName);
@@ -1320,7 +1320,7 @@ export function bootstrap() {
                     const toks = tokenize(src);
                     const { ast, errors } = parse(toks);
                     const model = monacoEditor.getModel();
-                    const sn = getActiveSpriteNameFromDropdown();
+                    const sn = currentSpriteContext;
                     const rawLint = lint(ast);
 
                     const lintWarnings = rawLint.filter(w => {
@@ -1363,7 +1363,7 @@ export function bootstrap() {
         // Compile & Inject button
         document.getElementById('scratchpiler-compile-btn').addEventListener('click', () => {
             if (!currentVM) { updateStatus('Error: VM not available'); return; }
-            const spriteName = getActiveSpriteNameFromDropdown();
+            const spriteName = currentSpriteContext;
             const source = monacoEditor.getValue();
             updateStatus('Compiling...');
 
