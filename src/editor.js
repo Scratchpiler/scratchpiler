@@ -2,7 +2,7 @@ import { LANG_ID, LS_KEY, LS_INJ_KEY } from "./constants.js";
 import { acquireVM, scratchIndex, reindex } from "./vm.js";
 import { loadMonaco } from "./monaco.js";
 import { registerLanguage } from "./language.js";
-import { buildOverlayDOM, logToOutput, flashCompileBtn, openSpritePicker, closeSpritePicker, showSpriteContextMenu, closeSpriteContextMenu, setupOutputPanel, setupSidebarResize, openSearchNowhere, closeSearchNowhere, } from "./ui-dom.js";
+import { buildOverlayDOM, buildTriggerButton, buildSearchNowhereDOM, setupSpritePicker, logToOutput, flashCompileBtn, openSpritePicker, closeSpritePicker, showSpriteContextMenu, closeSpriteContextMenu, setupOutputPanel, setupSidebarResize, openSearchNowhere, closeSearchNowhere, } from "./ui-dom.js";
 import { compileSource, decompile, tokenize, parse, lint, typeCheckDiagnostics, injectBlocks } from "./main.js";
 
 // [I] Editor Lifecycle

@@ -1813,6 +1813,14 @@
     overlay.innerHTML = overlay_default2;
     document.body.appendChild(overlay);
   }
+  function buildTriggerButton() {
+    const btn = document.createElement("button");
+    btn.id = "scratchpiler-trigger";
+    btn.title = "Open Scratchpiler (Alt+M)";
+    btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4.5l5.5 5-5.5 5" stroke="#ff8c00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 14.5h3.5" stroke="#ff8c00" stroke-width="2" stroke-linecap="round"/></svg>Open Scratchpiler`;
+    btn.addEventListener("click", openOverlay);
+    document.body.appendChild(btn);
+  }
   var searchNowhereOpen2 = false;
   var snActiveTab = "all";
   var snFocusIdx = -1;
@@ -1847,6 +1855,81 @@
         if (overlayVisible) closeOverlay();
       } }
     ];
+  }
+  function buildSearchNowhereDOM() {
+    const backdrop = document.createElement("div");
+    backdrop.id = "sp-sn-backdrop";
+    backdrop.style.display = "none";
+    backdrop.innerHTML = `
+        <div id="sp-sn-modal" role="dialog" aria-modal="true" aria-label="Search Nowhere">
+            <div id="sp-sn-header">
+                <svg id="sp-sn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input id="sp-sn-input" autocomplete="off" spellcheck="false" placeholder="Search Nowhere\u2026" />
+                <span id="sp-sn-hint">\u21E7\u21E7 \xB7 Esc</span>
+            </div>
+            <div id="sp-sn-tabs">
+                <button class="sp-sn-tab sp-sn-active" data-tab="all">All</button>
+                <button class="sp-sn-tab" data-tab="sprites">Sprites</button>
+                <button class="sp-sn-tab" data-tab="blocks">Blocks</button>
+                <button class="sp-sn-tab" data-tab="actions">Actions</button>
+                <button class="sp-sn-tab sp-sn-tab-void" data-tab="void">The Void</button>
+            </div>
+            <div id="sp-sn-results"></div>
+            <div id="sp-sn-footer">
+                <span id="sp-sn-status">Type to search nowhere</span>
+                <span id="sp-sn-tip">\u2191\u2193 navigate  \xB7  Enter select  \xB7  Tab switch tab  \xB7  Esc close</span>
+            </div>
+        </div>
+    `;
+    backdrop.addEventListener("mousedown", (e) => {
+      if (e.target === backdrop) closeSearchNowhere();
+    });
+    const input = backdrop.querySelector("#sp-sn-input");
+    input.addEventListener("input", () => {
+      snFocusIdx = -1;
+      snRenderResults();
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        closeSearchNowhere();
+        return;
+      }
+      const items = document.querySelectorAll("#sp-sn-results .sp-sn-result");
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        snFocusIdx = Math.min(snFocusIdx + 1, items.length - 1);
+        snUpdateFocus(items);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        snFocusIdx = Math.max(snFocusIdx - 1, -1);
+        snUpdateFocus(items);
+      } else if (e.key === "Enter") {
+        if (snFocusIdx >= 0 && items[snFocusIdx]) items[snFocusIdx].click();
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+        const tabs = ["all", "sprites", "blocks", "actions", "void"];
+        snSwitchTab(tabs[(tabs.indexOf(snActiveTab) + 1) % tabs.length]);
+      }
+    });
+    backdrop.querySelectorAll(".sp-sn-tab").forEach(
+      (tab) => tab.addEventListener("click", () => {
+        snSwitchTab(tab.dataset.tab);
+        input.focus();
+      })
+    );
+    document.body.appendChild(backdrop);
+  }
+  function snSwitchTab(tabId) {
+    snActiveTab = tabId;
+    snFocusIdx = -1;
+    document.querySelectorAll(".sp-sn-tab").forEach((t) => t.classList.toggle("sp-sn-active", t.dataset.tab === tabId));
+    snRenderResults();
+  }
+  function snUpdateFocus(items) {
+    items.forEach((r, i) => {
+      r.classList.toggle("sp-sn-focused", i === snFocusIdx);
+      if (i === snFocusIdx) r.scrollIntoView({ block: "nearest" });
+    });
   }
   function openSearchNowhere() {
     if (searchNowhereOpen2) return;
@@ -2114,6 +2197,44 @@
         setTimeout(() => selectSidebarSprite(s.name), overlayVisible ? 0 : 150);
       });
       list.appendChild(el);
+    });
+  }
+  function spPickerMoveFocus(delta) {
+    const items = Array.from(document.querySelectorAll("#sp-picker-list .sp-picker-item"));
+    spPickerFocusIdx = Math.max(-1, Math.min(items.length - 1, spPickerFocusIdx + delta));
+    items.forEach((el, i) => {
+      el.classList.toggle("sp-picker-focused", i === spPickerFocusIdx);
+      if (i === spPickerFocusIdx) el.scrollIntoView({ block: "nearest" });
+    });
+  }
+  function setupSpritePicker() {
+    const backdrop = document.getElementById("sp-picker-backdrop");
+    const input = document.getElementById("sp-picker-input");
+    if (!backdrop || !input) return;
+    backdrop.addEventListener("mousedown", (e) => {
+      if (e.target === backdrop) closeSpritePicker();
+    });
+    input.addEventListener("input", () => spPickerRender(input.value.trim()));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        closeSpritePicker();
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        spPickerMoveFocus(1);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        spPickerMoveFocus(-1);
+        return;
+      }
+      if (e.key === "Enter") {
+        const items = document.querySelectorAll("#sp-picker-list .sp-picker-item");
+        const target = spPickerFocusIdx >= 0 ? items[spPickerFocusIdx] : items[0];
+        if (target) target.click();
+      }
     });
   }
   function showSpriteContextMenu(e, spriteName) {

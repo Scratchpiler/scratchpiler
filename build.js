@@ -25,7 +25,8 @@ async function build() {
         banner: { js: banner },
         loader: { '.css': 'text', '.html': 'text' },
         sourcemap: isWatch ? 'inline' : false,
-        minify: isProd,
+        minifyWhitespace: isProd,
+        minifySyntax: isProd,
     });
 
     if (isWatch) {
