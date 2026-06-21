@@ -8957,6 +8957,7 @@ on flag {
           return null;
       }
     }
+    const newStructVarIds = [];
     for (const block of ast.blocks) {
       if (block.type !== "StructDecl") continue;
       const stage = vm.runtime.targets.find((t) => t.isStage);
@@ -8965,7 +8966,11 @@ on flag {
         const varName = `${block.name}.${field}`;
         try {
           const exists = Object.values(stage.variables).some((v) => v.name === varName);
-          if (!exists) stage.createVariable(uid(), varName, "");
+          if (!exists) {
+            const varId = uid();
+            stage.createVariable(varId, varName, "");
+            newStructVarIds.push({ stage, id: varId });
+          }
         } catch (e) {
           errors.push({
             line: block.line || 1,
@@ -9065,6 +9070,15 @@ on flag {
       if (bodyFirst) {
         blocks[defId].next = bodyFirst;
         blocks[bodyFirst].parent = defId;
+      }
+    }
+    if (errors.length > 0) {
+      for (const { stage, id } of newStructVarIds) {
+        try {
+          if (typeof stage.deleteVariable === "function") stage.deleteVariable(id);
+          else delete stage.variables[id];
+        } catch (_) {
+        }
       }
     }
     return { blocks, errors };
