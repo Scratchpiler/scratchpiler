@@ -95,6 +95,50 @@ clear([myList])                       // listDeleteAll alias — nuke the whole 
 
 The argument order for the aliases is `([list], ...)` — list first, then the arguments. This is the opposite of the canonical `listAdd(item, [list])` convention, which puts the list last. This asymmetry is historical and regrettable. The aliases fix it.
 
+### Bulk population
+
+`populateList` fills a list with repeated copies of a value. It is the fastest way to pre-allocate a list to a known size without writing a loop yourself and pretending that counts as programming.
+
+```
+populateList([myList], value, count, clearFirst)
+populateArray([myList], value, count, clearFirst)   // exact alias, pick whichever makes you feel better
+```
+
+| Argument | Type | Description |
+|---|---|---|
+| `[list]` | list variable | The list to fill. Must already exist in Scratch. |
+| `value` | any expression | The value to put in each slot. Can be a literal, variable, or expression. |
+| `count` | number or `max` | How many items to add. Pass `max` to fill 200,000 slots — the practical ceiling of Scratch's list implementation, after which performance degrades into a philosophical problem. |
+| `clearFirst` | `true` / `false` | Whether to delete all existing items before filling. Pass `true` to replace the list entirely. Pass `false` to append on top of whatever is already there. A runtime expression also works; it compiles to a `control_if` wrapping the delete. |
+
+```
+// Pre-allocate a 100-slot list of zeros (clearing whatever was there before)
+populateList([scores], 0, 100, true)
+
+// Append 50 "?" placeholders without disturbing existing data
+populateList([board], "?", 50, false)
+
+// Fill to Scratch's hard limit (200,000 items) — you asked for this
+populateList([buffer], 0, max, true)
+
+// Dynamic value — each slot gets the current value of [seed] at fill time
+// (all slots get the same value; this is a repeat loop, not a mapping function)
+populateList([grid], [seed], 256, true)
+```
+
+**What it compiles to** (with `clearFirst = true`):
+
+```
+delete all of [myList]
+repeat 100 {
+    add 0 to [myList]
+}
+```
+
+The `clearFirst = false` variant omits the `delete all` block entirely. No branch is generated — false is resolved at compile time.
+
+**`max`** is the literal identifier `max`, not a string and not a function call. Writing `"max"` will add the string `"max"` to your list 200,000 times, which is technically correct behavior and also terrible.
+
 ### Showing and hiding
 
 ```

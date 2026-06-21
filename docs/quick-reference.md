@@ -144,6 +144,12 @@ remove([list], index)    // listDelete
 insert([list], index, item)    // listInsert
 replace([list], index, item)   // listReplace
 clear([list])            // listDeleteAll
+
+// Bulk population
+populateList([list], value, count, clearFirst)   // fill with repeated value
+populateArray([list], value, count, clearFirst)  // alias — identical behavior
+// count: any number, or the literal `max` (compiles to 200,000 — Scratch's effective ceiling)
+// clearFirst: true/false literal, or a runtime expression
 ```
 
 ---
