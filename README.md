@@ -97,6 +97,26 @@ Blocks are injected into the selected sprite. Variables must already exist in Sc
 
 ---
 
+## Source Architecture
+
+The original 7,200-line monolith of despair has been shattered into beautifully decoupled modules. Because staring at a single file until your eyes bleed is no way to live.
+
+| Module | Purpose |
+|---|---|
+| `main.js` | The puppet master. Orchestrates the chaos by importing everything and tying the loose ends. |
+| `compiler.js` | Parses your beautiful text into AST, runs the typechecker and linter, and finally spits out raw Scratch blocks. |
+| `decompiler.js` | Performs unholy necromancy to pull blocks out of the Scratch VM and stitch them back into readable Scratchpiler text. |
+| `injector.js` | Shoves the compiled AST directly into the VM's memory. It asks no questions and takes no prisoners. |
+| `editor.js` | Handles the Monaco instance, state persistence, project indexing, and the overall lifecycle of the overlay. |
+| `ui-dom.js` | Manipulates the DOM. Creates buttons, sidebars, context menus, and other UI atrocities so you don't have to interact with Scratch's default interface. |
+| `language.js` | Tells Monaco how to highlight our DSL without crying. |
+| `monaco.js` | Injects the VS Code editor into a kid's block-coding website. |
+| `vm.js` | Acquires and wraps the internal Scratch VM object so we can violate its APIs. |
+| `constants.js` | Constants. Because magic strings are for cowards. |
+| `overlay.css` / `.html` | The injected styles and layout, cleanly extracted so we don't have to look at giant template strings anymore. |
+
+---
+
 ## Documentation
 
 **New? Start here:** [docs/getting-started.md](docs/getting-started.md) — a step-by-step tutorial from zero to a working program.

@@ -1,0 +1,39 @@
+name: Release Userscript
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run prod
+
+      - name: Publish to latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+
+          # Wipe the existing rolling release so the tag can move to HEAD
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+
+          gh release create latest \
+            --title "Scratchpiler v${VERSION}" \
+            --notes $'Install via [Tampermonkey](https://www.tampermonkey.net/): download `scratchpiler.user.js` below and drag it into the dashboard, or paste the raw URL into *Install from URL*.\n\nBuilt from `'"${GITHUB_SHA}"$'`.' \
+            --latest \
+            scratchpiler.user.js

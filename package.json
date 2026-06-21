@@ -1,0 +1,31 @@
+{
+  "name": "scratchpiler",
+  "version": "1.0.0",
+  "description": "A text-based DSL that compiles directly into Scratch's block VM. Because sometimes you want to write a platformer without playing Tetris with puzzle pieces, or because you've finally realized that dragging colorful plastic shapes with a mouse is a slow descent into developer madness.",
+  "main": "scratchpiler.user.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "node build.js",
+    "dev": "node build.js --watch",
+    "prod": "node build.js --prod"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/Scratchpiler/scratchpiler.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Scratchpiler/scratchpiler/issues"
+  },
+  "homepage": "https://github.com/Scratchpiler/scratchpiler#readme",
+  "devDependencies": {
+    "esbuild": "^0.28.1"
+  }
+}
