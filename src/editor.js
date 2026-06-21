@@ -886,6 +886,41 @@ export function updateStatus(text) {
     el.textContent = prefix + text;
 }
 
+// Shift+Compile hidden minifier — renames all variable/list names to 8-char random strings
+function minifyBlocks(blocks, vm, spriteName) {
+    const CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const randName = () => Array.from({ length: 8 }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join('');
+
+    const nameMap = new Map();
+    for (const block of Object.values(blocks)) {
+        for (const key of ['VARIABLE', 'LIST']) {
+            const f = block.fields?.[key];
+            if (f && !nameMap.has(f.value)) nameMap.set(f.value, randName());
+        }
+    }
+
+    for (const block of Object.values(blocks)) {
+        for (const key of ['VARIABLE', 'LIST']) {
+            const f = block.fields?.[key];
+            if (f && nameMap.has(f.value)) f.value = nameMap.get(f.value);
+        }
+    }
+
+    const stage = vm.runtime.targets.find(t => t.isStage);
+    const sprite = spriteName !== '__stage__'
+        ? vm.runtime.targets.find(t => t.sprite?.name === spriteName)
+        : null;
+
+    for (const [realName, obfName] of nameMap) {
+        for (const target of [sprite, stage].filter(Boolean)) {
+            const vmVar = Object.values(target.variables).find(v => v.name === realName);
+            if (vmVar) vmVar.name = obfName;
+        }
+    }
+
+    return nameMap.size;
+}
+
 // [K2] Menu + Variable Creation
 
 let activeMenu = null;
@@ -1333,11 +1368,12 @@ export function bootstrap() {
         });
 
         // Compile & Inject button
-        document.getElementById('scratchpiler-compile-btn').addEventListener('click', () => {
+        document.getElementById('scratchpiler-compile-btn').addEventListener('click', (e) => {
             if (!currentVM) { updateStatus('Error: VM not available'); return; }
             const spriteName = currentSpriteContext;
             const source = monacoEditor.getValue();
-            updateStatus('Compiling...');
+            const minify = e.shiftKey;
+            updateStatus(minify ? 'Compiling (minify)...' : 'Compiling...');
 
             let result;
             try { result = compileSource(source, currentVM, spriteName); }
@@ -1365,6 +1401,11 @@ export function bootstrap() {
                 result.errors.forEach(er => logToOutput(`Line ${er.line}:${er.col} — ${er.message}`, 'error'));
                 flashCompileBtn(false);
                 return;
+            }
+
+            if (minify) {
+                const renamed = minifyBlocks(result.blocks, currentVM, spriteName);
+                logToOutput(`Minified: ${renamed} variable(s) renamed to gibberish 🙈`, 'ok');
             }
 
             injectBlocks(result.blocks, currentVM, spriteName);

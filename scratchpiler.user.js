@@ -4238,6 +4238,32 @@ on flag {
     else if (/^(injected|imported|index:|created)/i.test(text)) prefix = "\u2713 ";
     el.textContent = prefix + text;
   }
+  function minifyBlocks(blocks, vm, spriteName) {
+    const CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const randName = () => Array.from({ length: 8 }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join("");
+    const nameMap = /* @__PURE__ */ new Map();
+    for (const block of Object.values(blocks)) {
+      for (const key of ["VARIABLE", "LIST"]) {
+        const f = block.fields?.[key];
+        if (f && !nameMap.has(f.value)) nameMap.set(f.value, randName());
+      }
+    }
+    for (const block of Object.values(blocks)) {
+      for (const key of ["VARIABLE", "LIST"]) {
+        const f = block.fields?.[key];
+        if (f && nameMap.has(f.value)) f.value = nameMap.get(f.value);
+      }
+    }
+    const stage = vm.runtime.targets.find((t) => t.isStage);
+    const sprite = spriteName !== "__stage__" ? vm.runtime.targets.find((t) => t.sprite?.name === spriteName) : null;
+    for (const [realName, obfName] of nameMap) {
+      for (const target of [sprite, stage].filter(Boolean)) {
+        const vmVar = Object.values(target.variables).find((v) => v.name === realName);
+        if (vmVar) vmVar.name = obfName;
+      }
+    }
+    return nameMap.size;
+  }
   var activeMenu = null;
   var activeContextMenu = null;
   var dialogCallback = null;
@@ -4697,33 +4723,34 @@ on flag {
           }
         }, 350);
       });
-      document.getElementById("scratchpiler-compile-btn").addEventListener("click", () => {
+      document.getElementById("scratchpiler-compile-btn").addEventListener("click", (e) => {
         if (!currentVM) {
           updateStatus("Error: VM not available");
           return;
         }
         const spriteName = currentSpriteContext;
         const source = monacoEditor.getValue();
-        updateStatus("Compiling...");
+        const minify = e.shiftKey;
+        updateStatus(minify ? "Compiling (minify)..." : "Compiling...");
         let result;
         try {
           result = compileSource(source, currentVM, spriteName);
-        } catch (e) {
-          updateStatus("Compile error: " + e.message);
-          logToOutput("Compile error: " + e.message, "error");
+        } catch (e2) {
+          updateStatus("Compile error: " + e2.message);
+          logToOutput("Compile error: " + e2.message, "error");
           flashCompileBtn(false);
-          console.error("[scratchpiler] compile exception", e);
+          console.error("[scratchpiler] compile exception", e2);
           return;
         }
         monaco2.editor.setModelMarkers(
           monacoEditor.getModel(),
           LANG_ID,
-          result.errors.map((e) => ({
-            startLineNumber: e.line,
-            startColumn: e.col,
-            endLineNumber: e.line,
-            endColumn: e.col + (e.len || 1),
-            message: e.message,
+          result.errors.map((e2) => ({
+            startLineNumber: e2.line,
+            startColumn: e2.col,
+            endLineNumber: e2.line,
+            endColumn: e2.col + (e2.len || 1),
+            message: e2.message,
             severity: monaco2.MarkerSeverity.Error
           }))
         );
@@ -4733,6 +4760,10 @@ on flag {
           result.errors.forEach((er) => logToOutput(`Line ${er.line}:${er.col} \u2014 ${er.message}`, "error"));
           flashCompileBtn(false);
           return;
+        }
+        if (minify) {
+          const renamed = minifyBlocks(result.blocks, currentVM, spriteName);
+          logToOutput(`Minified: ${renamed} variable(s) renamed to gibberish \u{1F648}`, "ok");
         }
         injectBlocks(result.blocks, currentVM, spriteName);
         flashCompileBtn(true);
