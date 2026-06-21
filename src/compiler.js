@@ -268,6 +268,8 @@ export function parse(tokens) {
                 blocks.push(parseHatBlock());
             } else if (checkV('scratchroutine')) {
                 blocks.push(parseScratchroutine());
+            } else if (checkV('struct')) {
+                blocks.push(parseStruct());
             } else if (check(TT.LBRACE)) {
                 // Bare { ... } block with no hat — parse cleanly, lint will flag it
                 const t = peek();
@@ -344,6 +346,7 @@ export function parse(tokens) {
         if (v === 'launch')        return parseLaunchAwait('launch');
         if (v === 'await')         return parseLaunchAwait('await');
         if (v === 'cancel')        return parseCancel();
+        if (v === 'breakpoint')    return parseBreakpoint();
 
         return parseSimpleStatement();
     }
@@ -493,6 +496,30 @@ export function parse(tokens) {
         }
         const name = nameTok.type === TT.IDENT ? (pos++, nameTok.value) : '_err_';
         return { type: 'CancelStmt', name, line: t.line, col: t.col };
+    }
+
+    function parseBreakpoint() {
+        const t = peek(); pos++;
+        return { type: 'BreakpointStmt', line: t.line, col: t.col };
+    }
+
+    function parseStruct() {
+        const t = peek(); pos++; // consume 'struct'
+        const nameTok = peek();
+        if (nameTok.type !== TT.IDENT) {
+            errors.push({ line: t.line, col: t.col, len: 6,
+                message: '`struct name { fields }`: expected a name after `struct`' });
+        }
+        const name = nameTok.type === TT.IDENT ? (pos++, nameTok.value) : '_err_';
+        const fields = [];
+        eat(TT.LBRACE, '`struct` declaration — expected `{` after the struct name');
+        while (!check(TT.RBRACE) && !check(TT.EOF)) {
+            const fTok = peek();
+            if (fTok.type === TT.IDENT) { fields.push(fTok.value); pos++; }
+            tryEat(TT.COMMA);
+        }
+        eat(TT.RBRACE, '`struct` declaration — expected `}` to close field list');
+        return { type: 'StructDecl', name, fields, line: t.line, col: t.col };
     }
 
     function parseSimpleStatement() {
@@ -977,6 +1004,8 @@ export function lint(ast) {
         if (block.type === 'OrphanedBlock') {
             warn(block, 'Orphaned block — no hat event to trigger it. Wrap with `on flag { }`, `on click { }`, etc.');
             lintChildren(block);
+        } else if (block.type === 'StructDecl') {
+            // compile-time type annotation — not executable
         } else if (block.type !== 'OnBlock' && block.type !== 'DefineBlock' && block.type !== 'ScratchroutineStmt') {
             warn(block, 'Orphaned statement — not inside an `on` or `define` block, will never run');
             lintChildren(block);
@@ -1114,7 +1143,7 @@ export function typeCheckDiagnostics(ast, spriteName) {
 
 // --- Code Generator ---
 
-function uid() {
+export function uid() {
     return Math.random().toString(36).slice(2, 10) +
            Math.random().toString(36).slice(2, 10);
 }
@@ -1617,6 +1646,9 @@ function compile(ast, vm, spriteName) {
             } else if (stmt.type === 'LaunchStmt' || stmt.type === 'AwaitStmt') {
                 const launchIds = genLaunchOrAwaitStmt(stmt);
                 launchIds.forEach(id => { if (id) ids.push(id); });
+            } else if (stmt.type === 'BreakpointStmt') {
+                const bpIds = genBreakpointStmt(stmt);
+                bpIds.forEach(id => { if (id) ids.push(id); });
             } else {
                 const id = genStmt(stmt, null);
                 if (id) ids.push(id);
@@ -2117,6 +2149,59 @@ function compile(ast, vm, spriteName) {
         if (bcastBlockId) ids.push(bcastBlockId);
 
         return ids;
+    }
+
+    function genBreakpointStmt(node) {
+        const stage = vm.runtime.targets.find(t => t.isStage);
+        if (!stage) {
+            errors.push({ line: node.line||1, col: node.col||1, len: 10,
+                message: '`breakpoint`: VM stage not available' });
+            return [];
+        }
+        function ensureDbgVar(varName) {
+            let v = Object.values(stage.variables).find(v => v.name === varName && v.type === '');
+            if (!v) { const vid = uid(); stage.createVariable(vid, varName, ''); v = stage.variables[vid]; }
+            return { id: v.id, name: v.name };
+        }
+        const atV     = ensureDbgVar('__dbg_at__');
+        const resumeV = ensureDbgVar('__dbg_resume__');
+
+        const setAtId = uid();
+        addBlock({ id: setAtId, opcode: 'data_setvariableto', next: null, parent: null,
+            inputs: { VALUE: strInput({ type: 'Num', value: 1 }, setAtId) },
+            fields: { VARIABLE: { name: 'VARIABLE', value: atV.name, id: atV.id } },
+            shadow: false, topLevel: false });
+
+        const setResId = uid();
+        addBlock({ id: setResId, opcode: 'data_setvariableto', next: null, parent: null,
+            inputs: { VALUE: strInput({ type: 'Num', value: 0 }, setResId) },
+            fields: { VARIABLE: { name: 'VARIABLE', value: resumeV.name, id: resumeV.id } },
+            shadow: false, topLevel: false });
+
+        const waitId   = uid();
+        const resVarId = uid();
+        addBlock({ id: resVarId, opcode: 'data_variable', next: null, parent: waitId,
+            inputs: {}, fields: { VARIABLE: { name: 'VARIABLE', value: resumeV.name, id: resumeV.id } },
+            shadow: false, topLevel: false });
+        const oneId = uid();
+        addBlock({ id: oneId, opcode: 'math_number', next: null, parent: waitId,
+            inputs: {}, fields: { NUM: { name: 'NUM', value: '1' } },
+            shadow: true, topLevel: false });
+        const eqId = uid();
+        addBlock({ id: eqId, opcode: 'operator_equals', next: null, parent: waitId,
+            inputs: { OPERAND1: inp(resVarId, oneId), OPERAND2: inp(oneId, oneId) },
+            fields: {}, shadow: false, topLevel: false });
+        addBlock({ id: waitId, opcode: 'control_wait_until', next: null, parent: null,
+            inputs: { CONDITION: inp(eqId, null) },
+            fields: {}, shadow: false, topLevel: false });
+
+        const clearAtId = uid();
+        addBlock({ id: clearAtId, opcode: 'data_setvariableto', next: null, parent: null,
+            inputs: { VALUE: strInput({ type: 'Num', value: 0 }, clearAtId) },
+            fields: { VARIABLE: { name: 'VARIABLE', value: atV.name, id: atV.id } },
+            shadow: false, topLevel: false });
+
+        return [setAtId, setResId, waitId, clearAtId];
     }
 
     function genBody(stmts, parentId) {
@@ -2773,10 +2858,24 @@ function compile(ast, vm, spriteName) {
         }
     }
 
+    // Pass 1: auto-create variables declared by struct name { field, ... }
+    for (const block of ast.blocks) {
+        if (block.type !== 'StructDecl') continue;
+        const stage = vm.runtime.targets.find(t => t.isStage);
+        if (!stage) continue;
+        for (const field of block.fields) {
+            const varName = `${block.name}.${field}`;
+            const exists = Object.values(stage.variables).some(v => v.name === varName);
+            if (!exists) stage.createVariable(uid(), varName, '');
+        }
+    }
+
     // Generate hat blocks
     let scriptX = 50;
     for (const block of ast.blocks) {
-        if (block.type === 'OnBlock') {
+        if (block.type === 'StructDecl') {
+            // handled in pass 1 above
+        } else if (block.type === 'OnBlock') {
             const hatId = uid();
             const hatBlock = genHat(block.hat, hatId, scriptX, spriteName === '__stage__');
             if (!hatBlock) { scriptX += 400; continue; }

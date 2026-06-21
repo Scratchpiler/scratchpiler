@@ -427,7 +427,10 @@
     "await",
     "cancel",
     "isRunning",
-    "checkCancel"
+    "checkCancel",
+    // Struct declarations and debug
+    "struct",
+    "breakpoint"
   ];
   function registerLanguage(monaco2) {
     monaco2.languages.register({ id: LANG_ID });
@@ -510,6 +513,33 @@
           endColumn: word.endColumn
         };
         const linePrefix = model.getLineContent(position.lineNumber).substring(0, word.startColumn - 1);
+        if (linePrefix.endsWith(".") && /\[([^\].]+)\.$/.test(linePrefix)) {
+          const match = linePrefix.match(/\[([^\].]+)\.$/);
+          const prefix = match ? match[1] : "";
+          if (prefix) {
+            const src = model.getValue();
+            const structDefs = {};
+            const structRe = /\bstruct\s+(\w+)\s*\{([^}]*)\}/g;
+            let sm;
+            while ((sm = structRe.exec(src)) !== null) {
+              const fields2 = sm[2].split(/[\s,]+/).filter((f) => f.length > 0);
+              structDefs[sm[1]] = fields2;
+            }
+            const fields = structDefs[prefix];
+            if (fields && fields.length > 0) {
+              const CIKf = monaco2.languages.CompletionItemKind;
+              return {
+                suggestions: fields.map((f) => ({
+                  label: `${prefix}.${f}]`,
+                  kind: CIKf.Field,
+                  detail: `Struct field \xB7 ${prefix}`,
+                  insertText: f + "]",
+                  range
+                }))
+              };
+            }
+          }
+        }
         if (linePrefix.endsWith(".") && /\[[^\]]+\]\.$/.test(linePrefix)) {
           const dotRange = { ...range, startColumn: word.startColumn };
           const CIKd = monaco2.languages.CompletionItemKind;
@@ -1241,6 +1271,20 @@
     push("[var]++", CIK.Snippet, "Variables", "[$1]++", "Increment variable by 1 \u2014 sugar for `change [var] by 1`");
     push("[var]--", CIK.Snippet, "Variables", "[$1]--", "Decrement variable by 1 \u2014 sugar for `change [var] by -1`");
     push(
+      "struct name {}",
+      CIK.Snippet,
+      "Struct \xB7 compile-time field group",
+      "struct ${1:name} {\n	${2:field1}, ${3:field2}\n}",
+      "Declare a named field group \u2014 variables like `[name.field]` are auto-created on compile\n\nExample:\n```\nstruct player { x, y, hp }\n// Creates [player.x], [player.y], [player.hp] in Scratch\n```"
+    );
+    push(
+      "breakpoint",
+      CIK.Keyword,
+      "Debug \xB7 pause execution",
+      "breakpoint",
+      "Pause execution here and show the debug bar in scratchpiler \u2014 click Resume to continue"
+    );
+    push(
       "scratchroutine",
       CIK.Keyword,
       "Scratchroutines",
@@ -1815,8 +1859,44 @@
         .sp-ctx-sep { height: 1px; background: #002e5a; margin: 3px 0; }
 
         /* Clickable detail items */
-        .sp-detail-item { cursor: pointer; }
+        .sp-detail-item { cursor: pointer; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .sp-detail-item:hover { background: #002447; color: #e8f4ff; }
+
+        /* Variable/list item row with action button */
+        .sp-detail-item-row {
+            display: flex; align-items: center;
+            padding: 0; margin: 0;
+        }
+        .sp-detail-item-row .sp-detail-item { padding: 4px 4px 4px 26px; }
+        .sp-detail-action-btn {
+            flex-shrink: 0; width: 22px; height: 22px; margin-right: 4px;
+            background: none; border: none; color: #3a5276; cursor: pointer;
+            border-radius: 3px; font-size: 13px; line-height: 1;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.1s, background 0.1s, color 0.1s;
+        }
+        .sp-detail-item-row:hover .sp-detail-action-btn { opacity: 1; }
+        .sp-detail-action-btn:hover { background: #002e5a; color: #e8f4ff; }
+
+        /* Floating context menu (fixed-position) */
+        .sp-context-menu {
+            position: fixed !important;
+            top: auto; left: auto;
+        }
+
+        /* Debug bar */
+        #sp-debug-bar {
+            background: #0d001a; border-top: 2px solid #9b59b6;
+            padding: 7px 14px; display: flex; align-items: center; gap: 12px;
+            flex-shrink: 0; font-size: 12px;
+        }
+        #sp-debug-label { color: #c39bd3; font-family: ui-monospace, 'SF Mono', Consolas, monospace; }
+        #sp-debug-resume-btn {
+            background: #6c3483; border: 1px solid #9b59b6; border-radius: 4px;
+            color: #e8daef; font-family: inherit; font-size: 11px;
+            padding: 4px 12px; cursor: pointer; transition: background 0.1s;
+        }
+        #sp-debug-resume-btn:hover { background: #8e44ad; }
 
         /* ===== Sprite Tab Bar ===== */
         #sp-tab-bar {
@@ -1893,7 +1973,7 @@
 `;
 
   // src/overlay.html
-  var overlay_default2 = '\n        <div id="scratchpiler-header">\n            <div id="scratchpiler-wordmark">\n                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">\n                    <path d="M3.5 4l4.5 4-4.5 4" stroke="#ff8c00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>\n                    <path d="M10 12h3.5" stroke="#ff8c00" stroke-width="1.8" stroke-linecap="round"/>\n                </svg>\n                Scratchpiler\n            </div>\n            <div id="scratchpiler-menubar">\n                <button class="sp-menu-btn" id="sp-menu-file">File</button>\n                <button class="sp-menu-btn" id="sp-menu-edit">Edit</button>\n                <button class="sp-menu-btn" id="sp-menu-variables">Variables</button>\n                <button class="sp-menu-btn" id="sp-menu-lists">Lists</button>\n                <button class="sp-menu-btn" id="sp-menu-help">Help</button>\n            </div>\n            <div id="scratchpiler-header-center">\n                <span id="scratchpiler-status">&mdash;</span>\n            </div>\n            <div id="scratchpiler-header-actions">\n                <button id="scratchpiler-compile-btn">Compile &amp; Inject</button>\n                <button id="scratchpiler-close-btn" title="Close (Escape)">\u2715</button>\n\n                <!-- Hidden compat buttons -->\n                <button id="scratchpiler-import-btn" style="display:none"></button>\n                <button id="scratchpiler-format-btn" style="display:none"></button>\n            </div>\n        </div>\n        <div id="scratchpiler-workspace">\n            <div id="scratchpiler-activitybar">\n                <button class="sp-activity-btn sp-active" id="sp-activity-explorer" title="Explorer">\n                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4H4v16h16v-12l-4-4z"/><path d="M16 4v4h4"/></svg>\n                </button>\n                <button class="sp-activity-btn" id="sp-activity-search" title="Search">\n                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>\n                </button>\n                <button class="sp-activity-btn" id="sp-activity-settings" title="Settings">\n                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>\n                </button>\n                <button class="sp-activity-btn" id="sp-activity-fixes" title="Fixes">\n                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>\n                </button>\n            </div>\n            <div id="scratchpiler-sidebar">\n                <div id="scratchpiler-sidebar-title">Explorer</div>\n                <div id="scratchpiler-sidebar-content">\n                    <!-- Explorer Panel -->\n                    <div class="sp-sidebar-panel active" id="sp-panel-explorer">\n                        <!-- Sprites Accordion -->\n                        <div class="sp-accordion">\n                            <div class="sp-accordion-header active" id="sp-acc-sprites-header">\n                                <span class="sp-chevron">\u25BC</span> Sprites\n                            </div>\n                            <div class="sp-accordion-content active" id="sp-acc-sprites-content">\n                                <div class="sp-sidebar-list" id="scratchpiler-sprites-list"></div>\n                            </div>\n                        </div>\n                        <!-- Sprite Details Accordion -->\n                        <div class="sp-accordion">\n                            <div class="sp-accordion-header active" id="sp-acc-details-header">\n                                <span class="sp-chevron">\u25BC</span> Sprite Details: <span id="scratchpiler-detail-spritename">-</span>\n                            </div>\n                            <div class="sp-accordion-content active" id="sp-acc-details-content">\n                                <!-- Costumes sub-accordion -->\n                                <div class="sp-sub-accordion">\n                                    <div class="sp-sub-accordion-header active" id="sp-subacc-costumes-header">\u25BC Costumes</div>\n                                    <div class="sp-sub-accordion-content active" id="sp-subacc-costumes-content"></div>\n                                </div>\n                                <!-- Sounds sub-accordion -->\n                                <div class="sp-sub-accordion">\n                                    <div class="sp-sub-accordion-header active" id="sp-subacc-sounds-header">\u25BC Sounds</div>\n                                    <div class="sp-sub-accordion-content active" id="sp-subacc-sounds-content"></div>\n                                </div>\n                                <!-- Variables sub-accordion -->\n                                <div class="sp-sub-accordion">\n                                    <div class="sp-sub-accordion-header active" id="sp-subacc-variables-header">\u25BC Local Variables</div>\n                                    <div class="sp-sub-accordion-content active" id="sp-subacc-variables-content"></div>\n                                </div>\n                                <!-- Custom Blocks sub-accordion -->\n                                <div class="sp-sub-accordion">\n                                    <div class="sp-sub-accordion-header active" id="sp-subacc-customblocks-header">\u25BC Custom Blocks</div>\n                                    <div class="sp-sub-accordion-content active" id="sp-subacc-customblocks-content"></div>\n                                </div>\n                            </div>\n                        </div>\n                    </div>\n\n                    <!-- Search Panel -->\n                    <div class="sp-sidebar-panel" id="sp-panel-search">\n                        <div class="sp-search-container">\n                            <input type="text" id="scratchpiler-search-input" placeholder="Search..." autocomplete="off" />\n                            <input type="text" id="scratchpiler-replace-input" placeholder="Replace" autocomplete="off" />\n                            <div class="sp-search-actions">\n                                <button id="scratchpiler-search-btn" title="Search">Find</button>\n                                <button id="scratchpiler-replace-btn" title="Replace Current">Replace</button>\n                                <button id="scratchpiler-replace-all-btn" title="Replace All">All</button>\n                            </div>\n                        </div>\n                        <div id="scratchpiler-search-results"></div>\n                    </div>\n\n                    <!-- Settings Panel -->\n                    <div class="sp-sidebar-panel" id="sp-panel-settings">\n                        <div class="sp-settings-group">\n                            <label for="sp-setting-theme">Editor Theme</label>\n                            <select id="sp-setting-theme">\n                                <option value="scratchpiler-dark">Scratchpiler Dark</option>\n                                <option value="vs-dark">VS Code Dark</option>\n                                <option value="hc-black">High Contrast Black</option>\n                                <option value="vs">VS Code Light</option>\n                            </select>\n                        </div>\n                        <div class="sp-settings-group">\n                            <label for="sp-setting-fontsize">Font Size</label>\n                            <select id="sp-setting-fontsize">\n                                <option value="12">12px</option>\n                                <option value="13">13px</option>\n                                <option value="14">14px</option>\n                                <option value="15">15px</option>\n                                <option value="16">16px</option>\n                                <option value="18">18px</option>\n                                <option value="20">20px</option>\n                            </select>\n                        </div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-wrap" />\n                            <label for="sp-setting-wrap">Line Wrap</label>\n                        </div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-minimap" />\n                            <label for="sp-setting-minimap">Show Minimap</label>\n                        </div>\n                        <div class="sp-settings-group">\n                            <label for="sp-setting-tabsize">Tab Size</label>\n                            <select id="sp-setting-tabsize">\n                                <option value="2">2 spaces</option>\n                                <option value="4">4 spaces</option>\n                                <option value="8">8 spaces</option>\n                            </select>\n                        </div>\n                        <div class="sp-settings-group">\n                            <label for="sp-setting-autosave">Auto-save Delay</label>\n                            <select id="sp-setting-autosave">\n                                <option value="0">Instant</option>\n                                <option value="500">500 ms</option>\n                                <option value="1000">1 second</option>\n                                <option value="2000">2 seconds</option>\n                            </select>\n                        </div>\n                        <div style="font-size:11px; color:#6b8db5; margin-top:4px; margin-bottom:2px;">Lint Rules</div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-lint-typecheck" />\n                            <label for="sp-setting-lint-typecheck">Type checking (list vs variable)</label>\n                        </div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-lint-unreachable" />\n                            <label for="sp-setting-lint-unreachable">Unreachable code</label>\n                        </div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-lint-orphaned" />\n                            <label for="sp-setting-lint-orphaned">Orphaned blocks</label>\n                        </div>\n                    </div>\n\n                    <!-- Fixes Panel -->\n                    <div class="sp-sidebar-panel" id="sp-panel-fixes">\n                        <div style="font-size:11px; color:#6b8db5; margin-bottom:4px;">Maintenance & recovery actions</div>\n\n                        <button class="sp-fix-action" id="sp-fix-clear-cache">\n                            <div class="sp-fix-action-icon">\n                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>\n                            </div>\n                            <div class="sp-fix-action-text">\n                                <span class="sp-fix-action-title">Clear Local Code Cache</span>\n                                <span class="sp-fix-action-desc">Purge all cached SDSL code from localStorage. The editor will decompile fresh from the VM on next sprite switch.</span>\n                            </div>\n                        </button>\n\n                        <button class="sp-fix-action" id="sp-fix-reindex">\n                            <div class="sp-fix-action-icon">\n                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>\n                            </div>\n                            <div class="sp-fix-action-text">\n                                <span class="sp-fix-action-title">Invalidate &amp; Re-Index</span>\n                                <span class="sp-fix-action-desc">Re-scan all VM targets to rebuild the sprite index, variables, and custom blocks. Fixes stale sidebar data.</span>\n                            </div>\n                        </button>\n\n                        <button class="sp-fix-action destructive" id="sp-fix-reset-all">\n                            <div class="sp-fix-action-icon">\n                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>\n                            </div>\n                            <div class="sp-fix-action-text">\n                                <span class="sp-fix-action-title">Reset All Changes</span>\n                                <span class="sp-fix-action-desc">Remove all Scratchpiler-injected blocks and clear cached code. Restores sprites to their last-saved project state.</span>\n                            </div>\n                        </button>\n                    </div>\n                </div>\n            </div>\n            <div id="sp-sidebar-resize" title="Drag to resize"></div>\n            <div id="scratchpiler-editor-pane">\n                <div id="sp-tab-bar"></div>\n                <div id="scratchpiler-editor-container"></div>\n                <div id="sp-output-panel">\n                    <div id="sp-output-header" title="Toggle Output panel">\n                        <span id="sp-output-header-title">Output</span>\n                        <button class="sp-out-hdr-btn" id="sp-output-clear-btn" title="Clear output">Clear</button>\n                        <button class="sp-out-hdr-btn" id="sp-output-toggle-btn" title="Expand / Collapse">\u25B8</button>\n                    </div>\n                    <div id="sp-output-log"></div>\n                </div>\n            </div>\n        </div>\n        <div id="sp-status-bar">\n            <div class="sp-sb-group sp-sb-left">\n                <span class="sp-sb-item" id="sp-sb-vm-status">\n                    <span class="sp-sb-dot sp-sb-dot-pending" id="sp-sb-vm-dot"></span>\n                    <span id="sp-sb-vm-text">Acquiring VM</span>\n                </span>\n                <span class="sp-sb-vsep">\u2502</span>\n                <span class="sp-sb-item" id="sp-sb-sprite-name">&mdash;</span>\n                <span class="sp-sb-vsep">\u2502</span>\n                <span class="sp-sb-item sp-sb-clickable" id="sp-sb-problems" title="Toggle Output panel">\n                    <span id="sp-sb-err-count" class="sp-sb-zero">0 errors</span>\n                    <span id="sp-sb-warn-count" class="sp-sb-zero">0 warnings</span>\n                </span>\n            </div>\n            <div class="sp-sb-group sp-sb-right">\n                <span class="sp-sb-item sp-sb-mono" id="sp-sb-cursor">Ln 1, Col 1</span>\n            </div>\n        </div>\n        <div id="sp-picker-backdrop" style="display:none">\n            <div id="sp-picker-modal" role="dialog" aria-label="Go to Sprite">\n                <input id="sp-picker-input" autocomplete="off" spellcheck="false" placeholder="Go to sprite\u2026" />\n                <div id="sp-picker-list"></div>\n                <div id="sp-picker-footer">\u2191\u2193 navigate \xB7 Enter select \xB7 Esc close</div>\n            </div>\n        </div>\n        <div id="scratchpiler-dialog" style="display:none">\n            <div id="scratchpiler-dialog-box">\n                <div id="scratchpiler-dialog-title"></div>\n                <input id="scratchpiler-dialog-input" type="text" autocomplete="off" spellcheck="false" />\n                <div id="scratchpiler-dialog-actions">\n                    <button class="sp-dialog-btn" id="scratchpiler-dialog-cancel">Cancel</button>\n                    <button class="sp-dialog-btn sp-primary" id="scratchpiler-dialog-ok">Create</button>\n                </div>\n            </div>\n        </div>\n    ';
+  var overlay_default2 = '\n        <div id="scratchpiler-header">\n            <div id="scratchpiler-wordmark">\n                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">\n                    <path d="M3.5 4l4.5 4-4.5 4" stroke="#ff8c00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>\n                    <path d="M10 12h3.5" stroke="#ff8c00" stroke-width="1.8" stroke-linecap="round"/>\n                </svg>\n                Scratchpiler\n            </div>\n            <div id="scratchpiler-menubar">\n                <button class="sp-menu-btn" id="sp-menu-file">File</button>\n                <button class="sp-menu-btn" id="sp-menu-edit">Edit</button>\n                <button class="sp-menu-btn" id="sp-menu-variables">Variables</button>\n                <button class="sp-menu-btn" id="sp-menu-lists">Lists</button>\n                <button class="sp-menu-btn" id="sp-menu-help">Help</button>\n            </div>\n            <div id="scratchpiler-header-center">\n                <span id="scratchpiler-status">&mdash;</span>\n            </div>\n            <div id="scratchpiler-header-actions">\n                <button id="scratchpiler-compile-btn">Compile &amp; Inject</button>\n                <button id="scratchpiler-close-btn" title="Close (Escape)">\u2715</button>\n\n                <!-- Hidden compat buttons -->\n                <button id="scratchpiler-import-btn" style="display:none"></button>\n                <button id="scratchpiler-format-btn" style="display:none"></button>\n            </div>\n        </div>\n        <div id="scratchpiler-workspace">\n            <div id="scratchpiler-activitybar">\n                <button class="sp-activity-btn sp-active" id="sp-activity-explorer" title="Explorer">\n                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4H4v16h16v-12l-4-4z"/><path d="M16 4v4h4"/></svg>\n                </button>\n                <button class="sp-activity-btn" id="sp-activity-search" title="Search">\n                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>\n                </button>\n                <button class="sp-activity-btn" id="sp-activity-settings" title="Settings">\n                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>\n                </button>\n                <button class="sp-activity-btn" id="sp-activity-fixes" title="Fixes">\n                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>\n                </button>\n            </div>\n            <div id="scratchpiler-sidebar">\n                <div id="scratchpiler-sidebar-title">Explorer</div>\n                <div id="scratchpiler-sidebar-content">\n                    <!-- Explorer Panel -->\n                    <div class="sp-sidebar-panel active" id="sp-panel-explorer">\n                        <!-- Sprites Accordion -->\n                        <div class="sp-accordion">\n                            <div class="sp-accordion-header active" id="sp-acc-sprites-header">\n                                <span class="sp-chevron">\u25BC</span> Sprites\n                            </div>\n                            <div class="sp-accordion-content active" id="sp-acc-sprites-content">\n                                <div class="sp-sidebar-list" id="scratchpiler-sprites-list"></div>\n                            </div>\n                        </div>\n                        <!-- Sprite Details Accordion -->\n                        <div class="sp-accordion">\n                            <div class="sp-accordion-header active" id="sp-acc-details-header">\n                                <span class="sp-chevron">\u25BC</span> Sprite Details: <span id="scratchpiler-detail-spritename">-</span>\n                            </div>\n                            <div class="sp-accordion-content active" id="sp-acc-details-content">\n                                <!-- Costumes sub-accordion -->\n                                <div class="sp-sub-accordion">\n                                    <div class="sp-sub-accordion-header active" id="sp-subacc-costumes-header">\u25BC Costumes</div>\n                                    <div class="sp-sub-accordion-content active" id="sp-subacc-costumes-content"></div>\n                                </div>\n                                <!-- Sounds sub-accordion -->\n                                <div class="sp-sub-accordion">\n                                    <div class="sp-sub-accordion-header active" id="sp-subacc-sounds-header">\u25BC Sounds</div>\n                                    <div class="sp-sub-accordion-content active" id="sp-subacc-sounds-content"></div>\n                                </div>\n                                <!-- Variables sub-accordion -->\n                                <div class="sp-sub-accordion">\n                                    <div class="sp-sub-accordion-header active" id="sp-subacc-variables-header">\u25BC Local Variables</div>\n                                    <div class="sp-sub-accordion-content active" id="sp-subacc-variables-content"></div>\n                                </div>\n                                <!-- Custom Blocks sub-accordion -->\n                                <div class="sp-sub-accordion">\n                                    <div class="sp-sub-accordion-header active" id="sp-subacc-customblocks-header">\u25BC Custom Blocks</div>\n                                    <div class="sp-sub-accordion-content active" id="sp-subacc-customblocks-content"></div>\n                                </div>\n                            </div>\n                        </div>\n                    </div>\n\n                    <!-- Search Panel -->\n                    <div class="sp-sidebar-panel" id="sp-panel-search">\n                        <div class="sp-search-container">\n                            <input type="text" id="scratchpiler-search-input" placeholder="Search..." autocomplete="off" />\n                            <input type="text" id="scratchpiler-replace-input" placeholder="Replace" autocomplete="off" />\n                            <div class="sp-search-actions">\n                                <button id="scratchpiler-search-btn" title="Search">Find</button>\n                                <button id="scratchpiler-replace-btn" title="Replace Current">Replace</button>\n                                <button id="scratchpiler-replace-all-btn" title="Replace All">All</button>\n                            </div>\n                        </div>\n                        <div id="scratchpiler-search-results"></div>\n                    </div>\n\n                    <!-- Settings Panel -->\n                    <div class="sp-sidebar-panel" id="sp-panel-settings">\n                        <div class="sp-settings-group">\n                            <label for="sp-setting-theme">Editor Theme</label>\n                            <select id="sp-setting-theme">\n                                <option value="scratchpiler-dark">Scratchpiler Dark</option>\n                                <option value="vs-dark">VS Code Dark</option>\n                                <option value="hc-black">High Contrast Black</option>\n                                <option value="vs">VS Code Light</option>\n                            </select>\n                        </div>\n                        <div class="sp-settings-group">\n                            <label for="sp-setting-fontsize">Font Size</label>\n                            <select id="sp-setting-fontsize">\n                                <option value="12">12px</option>\n                                <option value="13">13px</option>\n                                <option value="14">14px</option>\n                                <option value="15">15px</option>\n                                <option value="16">16px</option>\n                                <option value="18">18px</option>\n                                <option value="20">20px</option>\n                            </select>\n                        </div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-wrap" />\n                            <label for="sp-setting-wrap">Line Wrap</label>\n                        </div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-minimap" />\n                            <label for="sp-setting-minimap">Show Minimap</label>\n                        </div>\n                        <div class="sp-settings-group">\n                            <label for="sp-setting-tabsize">Tab Size</label>\n                            <select id="sp-setting-tabsize">\n                                <option value="2">2 spaces</option>\n                                <option value="4">4 spaces</option>\n                                <option value="8">8 spaces</option>\n                            </select>\n                        </div>\n                        <div class="sp-settings-group">\n                            <label for="sp-setting-autosave">Auto-save Delay</label>\n                            <select id="sp-setting-autosave">\n                                <option value="0">Instant</option>\n                                <option value="500">500 ms</option>\n                                <option value="1000">1 second</option>\n                                <option value="2000">2 seconds</option>\n                            </select>\n                        </div>\n                        <div style="font-size:11px; color:#6b8db5; margin-top:4px; margin-bottom:2px;">Lint Rules</div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-lint-typecheck" />\n                            <label for="sp-setting-lint-typecheck">Type checking (list vs variable)</label>\n                        </div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-lint-unreachable" />\n                            <label for="sp-setting-lint-unreachable">Unreachable code</label>\n                        </div>\n                        <div class="sp-settings-group checkbox">\n                            <input type="checkbox" id="sp-setting-lint-orphaned" />\n                            <label for="sp-setting-lint-orphaned">Orphaned blocks</label>\n                        </div>\n                    </div>\n\n                    <!-- Fixes Panel -->\n                    <div class="sp-sidebar-panel" id="sp-panel-fixes">\n                        <div style="font-size:11px; color:#6b8db5; margin-bottom:4px;">Maintenance & recovery actions</div>\n\n                        <button class="sp-fix-action" id="sp-fix-clear-cache">\n                            <div class="sp-fix-action-icon">\n                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>\n                            </div>\n                            <div class="sp-fix-action-text">\n                                <span class="sp-fix-action-title">Clear Local Code Cache</span>\n                                <span class="sp-fix-action-desc">Purge all cached SDSL code from localStorage. The editor will decompile fresh from the VM on next sprite switch.</span>\n                            </div>\n                        </button>\n\n                        <button class="sp-fix-action" id="sp-fix-reindex">\n                            <div class="sp-fix-action-icon">\n                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>\n                            </div>\n                            <div class="sp-fix-action-text">\n                                <span class="sp-fix-action-title">Invalidate &amp; Re-Index</span>\n                                <span class="sp-fix-action-desc">Re-scan all VM targets to rebuild the sprite index, variables, and custom blocks. Fixes stale sidebar data.</span>\n                            </div>\n                        </button>\n\n                        <button class="sp-fix-action destructive" id="sp-fix-reset-all">\n                            <div class="sp-fix-action-icon">\n                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>\n                            </div>\n                            <div class="sp-fix-action-text">\n                                <span class="sp-fix-action-title">Reset All Changes</span>\n                                <span class="sp-fix-action-desc">Remove all Scratchpiler-injected blocks and clear cached code. Restores sprites to their last-saved project state.</span>\n                            </div>\n                        </button>\n                    </div>\n                </div>\n            </div>\n            <div id="sp-sidebar-resize" title="Drag to resize"></div>\n            <div id="scratchpiler-editor-pane">\n                <div id="sp-tab-bar"></div>\n                <div id="scratchpiler-editor-container"></div>\n                <div id="sp-output-panel">\n                    <div id="sp-output-header" title="Toggle Output panel">\n                        <span id="sp-output-header-title">Output</span>\n                        <button class="sp-out-hdr-btn" id="sp-output-clear-btn" title="Clear output">Clear</button>\n                        <button class="sp-out-hdr-btn" id="sp-output-toggle-btn" title="Expand / Collapse">\u25B8</button>\n                    </div>\n                    <div id="sp-output-log"></div>\n                </div>\n            </div>\n        </div>\n        <div id="sp-debug-bar" style="display:none">\n            <span id="sp-debug-label">&#9646;&#9646; Paused at breakpoint</span>\n            <button id="sp-debug-resume-btn">Resume &#9654;</button>\n        </div>\n        <div id="sp-status-bar">\n            <div class="sp-sb-group sp-sb-left">\n                <span class="sp-sb-item" id="sp-sb-vm-status">\n                    <span class="sp-sb-dot sp-sb-dot-pending" id="sp-sb-vm-dot"></span>\n                    <span id="sp-sb-vm-text">Acquiring VM</span>\n                </span>\n                <span class="sp-sb-vsep">\u2502</span>\n                <span class="sp-sb-item" id="sp-sb-sprite-name">&mdash;</span>\n                <span class="sp-sb-vsep">\u2502</span>\n                <span class="sp-sb-item sp-sb-clickable" id="sp-sb-problems" title="Toggle Output panel">\n                    <span id="sp-sb-err-count" class="sp-sb-zero">0 errors</span>\n                    <span id="sp-sb-warn-count" class="sp-sb-zero">0 warnings</span>\n                </span>\n            </div>\n            <div class="sp-sb-group sp-sb-right">\n                <span class="sp-sb-item sp-sb-mono" id="sp-sb-cursor">Ln 1, Col 1</span>\n            </div>\n        </div>\n        <div id="sp-picker-backdrop" style="display:none">\n            <div id="sp-picker-modal" role="dialog" aria-label="Go to Sprite">\n                <input id="sp-picker-input" autocomplete="off" spellcheck="false" placeholder="Go to sprite\u2026" />\n                <div id="sp-picker-list"></div>\n                <div id="sp-picker-footer">\u2191\u2193 navigate \xB7 Enter select \xB7 Esc close</div>\n            </div>\n        </div>\n        <div id="scratchpiler-dialog" style="display:none">\n            <div id="scratchpiler-dialog-box">\n                <div id="scratchpiler-dialog-title"></div>\n                <input id="scratchpiler-dialog-input" type="text" autocomplete="off" spellcheck="false" />\n                <div id="scratchpiler-dialog-actions">\n                    <button class="sp-dialog-btn" id="scratchpiler-dialog-cancel">Cancel</button>\n                    <button class="sp-dialog-btn sp-primary" id="scratchpiler-dialog-ok">Create</button>\n                </div>\n            </div>\n        </div>\n    ';
 
   // src/decompiler.js
   function fieldVal(block, name) {
@@ -3276,6 +3356,7 @@ ${body}}`;
   var applySettingsFn = null;
   var currentActiveTab = "explorer";
   var sidebarExpanded2 = true;
+  var debugPollInterval = null;
   function renderSidebarSprites() {
     const listEl = document.getElementById("scratchpiler-sprites-list");
     if (!listEl) return;
@@ -3476,7 +3557,37 @@ ${body}}`;
     } else {
       for (const v of vars) {
         const snippet = `[${v.name}]`;
-        varsContent.appendChild(makeDetailItem(`${v.name} (${v.type})`, snippet, `Insert: ${snippet}`));
+        const row = document.createElement("div");
+        row.className = "sp-detail-item-row";
+        const lbl = document.createElement("div");
+        lbl.className = "sp-detail-item";
+        lbl.textContent = `${v.name} (${v.type})`;
+        lbl.title = `Insert: ${snippet}`;
+        lbl.addEventListener("click", () => {
+          if (monacoEditor) {
+            monacoEditor.trigger("sidebar", "type", { text: snippet });
+            monacoEditor.focus();
+          }
+        });
+        const actBtn = document.createElement("button");
+        actBtn.className = "sp-detail-action-btn";
+        actBtn.textContent = "\u22EE";
+        actBtn.title = "Variable actions";
+        actBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const rect = actBtn.getBoundingClientRect();
+          const menuItems = [
+            { label: "Rename\u2026", action: () => openRenameDialog(v) },
+            { label: "Delete", danger: true, action: () => doDeleteVariable(v.id) }
+          ];
+          if (v.type === "list") {
+            menuItems.splice(1, 0, { label: "Initialize from CSV\u2026", action: () => openInitListDialog(v) });
+          }
+          showContextMenu(menuItems, rect.left, rect.bottom + 2);
+        });
+        row.appendChild(lbl);
+        row.appendChild(actBtn);
+        varsContent.appendChild(row);
       }
     }
     if (cbContent) {
@@ -3946,6 +4057,28 @@ on flag {
     if (overlayVisible) closeOverlay();
     else openOverlay();
   }
+  function startDebugPoll(vm) {
+    if (debugPollInterval) return;
+    debugPollInterval = setInterval(() => {
+      const bar = document.getElementById("sp-debug-bar");
+      if (!bar) return;
+      if (!overlayVisible) {
+        bar.style.display = "none";
+        return;
+      }
+      const stage = vm.runtime.targets.find((t) => t.isStage);
+      if (!stage) return;
+      const atV = Object.values(stage.variables).find((v) => v.name === "__dbg_at__");
+      bar.style.display = atV && atV.value == 1 ? "flex" : "none";
+    }, 100);
+  }
+  function resumeDebugger() {
+    if (!currentVM) return;
+    const stage = currentVM.runtime.targets.find((t) => t.isStage);
+    if (!stage) return;
+    const resumeV = Object.values(stage.variables).find((v) => v.name === "__dbg_resume__");
+    if (resumeV) resumeV.value = 1;
+  }
   function registerHotkeys() {
     document.addEventListener("keydown", (e) => {
       if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyM") {
@@ -4044,7 +4177,153 @@ on flag {
     el.textContent = prefix + text;
   }
   var activeMenu = null;
+  var activeContextMenu = null;
   var dialogCallback = null;
+  function showContextMenu(items, x, y) {
+    if (activeContextMenu && activeContextMenu.parentNode) activeContextMenu.remove();
+    const overlay = document.getElementById("scratchpiler-overlay");
+    if (!overlay) return;
+    const dropdown = document.createElement("div");
+    dropdown.className = "sp-dropdown sp-context-menu";
+    dropdown.style.left = x + "px";
+    dropdown.style.top = y + "px";
+    for (const item of items) {
+      if (item === "-") {
+        const sep = document.createElement("div");
+        sep.className = "sp-dropdown-sep";
+        dropdown.appendChild(sep);
+      } else {
+        const el = document.createElement("button");
+        el.className = "sp-dropdown-item";
+        el.textContent = item.label;
+        if (item.danger) el.style.color = "#ff7070";
+        el.addEventListener("click", () => {
+          closeContextMenu();
+          item.action();
+        });
+        dropdown.appendChild(el);
+      }
+    }
+    overlay.appendChild(dropdown);
+    activeContextMenu = dropdown;
+    setTimeout(() => {
+      const onOutside = (e) => {
+        if (!dropdown.contains(e.target)) {
+          closeContextMenu();
+          document.removeEventListener("mousedown", onOutside);
+        }
+      };
+      document.addEventListener("mousedown", onOutside);
+    }, 0);
+  }
+  function closeContextMenu() {
+    if (activeContextMenu && activeContextMenu.parentNode) activeContextMenu.remove();
+    activeContextMenu = null;
+  }
+  function doDeleteVariable(varId) {
+    if (!currentVM) {
+      updateStatus("Error: VM not available");
+      return;
+    }
+    let target = null;
+    for (const t of currentVM.runtime.targets) {
+      if (t.variables[varId]) {
+        target = t;
+        break;
+      }
+    }
+    if (!target || !target.variables[varId]) {
+      updateStatus("Error: variable not found");
+      return;
+    }
+    const varName = target.variables[varId].name;
+    if (typeof target.deleteVariable === "function") {
+      target.deleteVariable(varId);
+    } else {
+      delete target.variables[varId];
+    }
+    reindex(currentVM);
+    updateSpriteDetails(getActiveSpriteNameFromDropdown());
+    updateStatus(`Deleted "${varName}"`);
+  }
+  function openRenameDialog(v) {
+    const dialog = document.getElementById("scratchpiler-dialog");
+    if (!dialog) return;
+    document.getElementById("scratchpiler-dialog-title").textContent = `Rename "${v.name}"`;
+    const okBtn = document.getElementById("scratchpiler-dialog-ok");
+    if (okBtn) okBtn.textContent = "Rename";
+    const input = document.getElementById("scratchpiler-dialog-input");
+    input.value = v.name;
+    dialog.style.display = "flex";
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
+    dialogCallback = (newName) => {
+      dialog.style.display = "none";
+      dialogCallback = null;
+      if (okBtn) okBtn.textContent = "Create";
+      if (!newName || !newName.trim()) return;
+      newName = newName.trim();
+      if (!currentVM) {
+        updateStatus("Error: VM not available");
+        return;
+      }
+      let target = null;
+      for (const t of currentVM.runtime.targets) {
+        if (t.variables[v.id]) {
+          target = t;
+          break;
+        }
+      }
+      if (!target) {
+        updateStatus("Error: variable not found");
+        return;
+      }
+      const oldName = target.variables[v.id].name;
+      target.variables[v.id].name = newName;
+      for (const t of currentVM.runtime.targets) {
+        for (const block of Object.values(t.blocks._blocks || {})) {
+          for (const field of Object.values(block.fields || {})) {
+            if (field.id === v.id) field.value = newName;
+          }
+        }
+      }
+      reindex(currentVM);
+      updateSpriteDetails(getActiveSpriteNameFromDropdown());
+      updateStatus(`Renamed "${oldName}" \u2192 "${newName}"`);
+    };
+  }
+  function openInitListDialog(v) {
+    const dialog = document.getElementById("scratchpiler-dialog");
+    if (!dialog) return;
+    document.getElementById("scratchpiler-dialog-title").textContent = `Initialize [${v.name}] (comma-separated)`;
+    const okBtn = document.getElementById("scratchpiler-dialog-ok");
+    if (okBtn) okBtn.textContent = "Set";
+    const input = document.getElementById("scratchpiler-dialog-input");
+    input.value = "";
+    input.placeholder = "e.g. 1, 2, 3";
+    dialog.style.display = "flex";
+    setTimeout(() => input.focus(), 0);
+    dialogCallback = (csv) => {
+      dialog.style.display = "none";
+      dialogCallback = null;
+      if (okBtn) okBtn.textContent = "Create";
+      input.placeholder = "";
+      if (!currentVM) return;
+      let target = null;
+      for (const t of currentVM.runtime.targets) {
+        if (t.variables[v.id]) {
+          target = t;
+          break;
+        }
+      }
+      if (!target) return;
+      const items = (csv || "").split(",").map((s) => s.trim()).filter((s) => s !== "");
+      target.variables[v.id].value = items;
+      updateStatus(`Initialized [${v.name}] with ${items.length} item(s)`);
+    };
+  }
   function openMenu(btnId, items) {
     closeMenu();
     const btn = document.getElementById(btnId);
@@ -4132,6 +4411,7 @@ on flag {
     buildSearchNowhereDOM();
     registerHotkeys();
     document.getElementById("scratchpiler-close-btn").addEventListener("click", closeOverlay);
+    document.getElementById("sp-debug-resume-btn").addEventListener("click", resumeDebugger);
     document.getElementById("sp-menu-file").addEventListener("click", () => {
       openMenu("sp-menu-file", [
         { label: "Import from active sprite", action: () => document.getElementById("scratchpiler-import-btn").click() },
@@ -4201,13 +4481,25 @@ on flag {
     document.getElementById("sp-menu-variables").addEventListener("click", () => {
       openMenu("sp-menu-variables", [
         { label: "New global variable\u2026", action: () => showCreateDialog("New Global Variable", (n) => doCreateVariable(n, true, false)) },
-        { label: "New local variable\u2026", action: () => showCreateDialog("New Local Variable", (n) => doCreateVariable(n, false, false)) }
+        { label: "New local variable\u2026", action: () => showCreateDialog("New Local Variable", (n) => doCreateVariable(n, false, false)) },
+        "-",
+        { label: "Rename / Delete\u2026", action: () => {
+          const actExplorer = document.getElementById("sp-activity-explorer");
+          if (actExplorer) actExplorer.click();
+          updateStatus("Right-click a variable in the sidebar to rename or delete it");
+        } }
       ]);
     });
     document.getElementById("sp-menu-lists").addEventListener("click", () => {
       openMenu("sp-menu-lists", [
         { label: "New global list\u2026", action: () => showCreateDialog("New Global List", (n) => doCreateVariable(n, true, true)) },
-        { label: "New local list\u2026", action: () => showCreateDialog("New Local List", (n) => doCreateVariable(n, false, true)) }
+        { label: "New local list\u2026", action: () => showCreateDialog("New Local List", (n) => doCreateVariable(n, false, true)) },
+        "-",
+        { label: "Rename / Delete / Initialize\u2026", action: () => {
+          const actExplorer = document.getElementById("sp-activity-explorer");
+          if (actExplorer) actExplorer.click();
+          updateStatus("Click \u22EE on a list in the sidebar to rename, delete, or initialize it");
+        } }
       ]);
     });
     document.getElementById("sp-menu-help").addEventListener("click", () => {
@@ -4400,6 +4692,7 @@ on flag {
           currentVM = vm;
           updateStatusBarVM("ok");
           reindex(vm);
+          startDebugPoll(vm);
           vm.on("targetsUpdate", () => {
             reindex(vm);
             if (overlayVisible) populateSpriteDropdown();
@@ -4744,6 +5037,8 @@ on flag {
           blocks.push(parseHatBlock());
         } else if (checkV("scratchroutine")) {
           blocks.push(parseScratchroutine());
+        } else if (checkV("struct")) {
+          blocks.push(parseStruct());
         } else if (check(TT.LBRACE)) {
           const t = peek();
           const body = parseBody();
@@ -4854,6 +5149,7 @@ on flag {
       if (v === "launch") return parseLaunchAwait("launch");
       if (v === "await") return parseLaunchAwait("await");
       if (v === "cancel") return parseCancel();
+      if (v === "breakpoint") return parseBreakpoint();
       return parseSimpleStatement();
     }
     function parseIf() {
@@ -5046,6 +5342,37 @@ on flag {
       }
       const name = nameTok.type === TT.IDENT ? (pos++, nameTok.value) : "_err_";
       return { type: "CancelStmt", name, line: t.line, col: t.col };
+    }
+    function parseBreakpoint() {
+      const t = peek();
+      pos++;
+      return { type: "BreakpointStmt", line: t.line, col: t.col };
+    }
+    function parseStruct() {
+      const t = peek();
+      pos++;
+      const nameTok = peek();
+      if (nameTok.type !== TT.IDENT) {
+        errors.push({
+          line: t.line,
+          col: t.col,
+          len: 6,
+          message: "`struct name { fields }`: expected a name after `struct`"
+        });
+      }
+      const name = nameTok.type === TT.IDENT ? (pos++, nameTok.value) : "_err_";
+      const fields = [];
+      eat(TT.LBRACE, "`struct` declaration \u2014 expected `{` after the struct name");
+      while (!check(TT.RBRACE) && !check(TT.EOF)) {
+        const fTok = peek();
+        if (fTok.type === TT.IDENT) {
+          fields.push(fTok.value);
+          pos++;
+        }
+        tryEat(TT.COMMA);
+      }
+      eat(TT.RBRACE, "`struct` declaration \u2014 expected `}` to close field list");
+      return { type: "StructDecl", name, fields, line: t.line, col: t.col };
     }
     function parseSimpleStatement() {
       const t = peek();
@@ -5819,6 +6146,7 @@ on flag {
       if (block.type === "OrphanedBlock") {
         warn(block, "Orphaned block \u2014 no hat event to trigger it. Wrap with `on flag { }`, `on click { }`, etc.");
         lintChildren(block);
+      } else if (block.type === "StructDecl") {
       } else if (block.type !== "OnBlock" && block.type !== "DefineBlock" && block.type !== "ScratchroutineStmt") {
         warn(block, "Orphaned statement \u2014 not inside an `on` or `define` block, will never run");
         lintChildren(block);
@@ -5946,7 +6274,7 @@ on flag {
     }
     return items;
   }
-  function uid2() {
+  function uid() {
     return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
   }
   function compile(ast, vm, spriteName) {
@@ -5977,7 +6305,7 @@ on flag {
         const v = Object.values(stage.variables).find((v2) => v2.name === name && v2.type === "broadcast_msg");
         if (v) return v.id;
       }
-      return uid2();
+      return uid();
     }
     function addBlock(b) {
       blocks[b.id] = b;
@@ -5987,7 +6315,7 @@ on flag {
       return { name: "", block: blockId, shadow: shadowId !== void 0 ? shadowId : null };
     }
     function numInput(expr, parentId) {
-      const shadowId = uid2();
+      const shadowId = uid();
       const val = expr.type === "Num" ? String(expr.value) : expr.type === "Str" ? expr.value : "0";
       addBlock({
         id: shadowId,
@@ -6005,7 +6333,7 @@ on flag {
     }
     function strInput(expr, parentId) {
       if (expr.type === "Hex") {
-        const hexId = uid2();
+        const hexId = uid();
         addBlock({
           id: hexId,
           opcode: "colour_picker",
@@ -6018,7 +6346,7 @@ on flag {
         });
         return inp(hexId, hexId);
       }
-      const shadowId = uid2();
+      const shadowId = uid();
       const val = expr.type === "Str" ? expr.value : expr.type === "Num" ? String(expr.value) : "";
       addBlock({
         id: shadowId,
@@ -6041,7 +6369,7 @@ on flag {
     function genExpr(expr, parentId) {
       if (expr.type === "Num" || expr.type === "Str") return null;
       if (expr.type === "Hex") {
-        const id = uid2();
+        const id = uid();
         addBlock({
           id,
           opcode: "colour_picker",
@@ -6065,7 +6393,7 @@ on flag {
           });
           return null;
         }
-        const id = uid2();
+        const id = uid();
         addBlock({
           id,
           opcode: "data_variable",
@@ -6079,8 +6407,8 @@ on flag {
         return id;
       }
       if (expr.type === "UnaryOp" && expr.op === "-") {
-        const id = uid2();
-        const zeroId = uid2();
+        const id = uid();
+        const zeroId = uid();
         addBlock({
           id: zeroId,
           opcode: "math_number",
@@ -6105,7 +6433,7 @@ on flag {
         return id;
       }
       if (expr.type === "UnaryOp" && expr.op === "not") {
-        const id = uid2();
+        const id = uid();
         const inner = boolInput(expr.operand, id);
         addBlock({
           id,
@@ -6134,7 +6462,7 @@ on flag {
       return null;
     }
     function genMemberCall(expr, parentId) {
-      const id = uid2();
+      const id = uid();
       const obj = expr.object;
       const m = expr.method;
       const v = resolveVar(obj.name);
@@ -6224,7 +6552,7 @@ on flag {
     }
     function genBinOp(expr, parentId) {
       const op = expr.op;
-      const id = uid2();
+      const id = uid();
       if (op === "or") {
         addBlock({
           id,
@@ -6339,7 +6667,7 @@ on flag {
       return id;
     }
     function genReporter(expr, parentId) {
-      const id = uid2();
+      const id = uid();
       const name = expr.name;
       const reporterMap = {
         "xPos": "motion_xposition",
@@ -6369,11 +6697,11 @@ on flag {
     function genCallExpr(expr, parentId) {
       const name = expr.name;
       const args = expr.args;
-      const id = uid2();
+      const id = uid();
       if (name === "touching") {
         const arg = args[0] && (args[0].type === "Str" ? args[0].value : null);
         const targetName = arg === "edge" ? "_edge_" : arg === "mouse" ? "_mouse_" : arg || "_edge_";
-        const menuId = uid2();
+        const menuId = uid();
         addBlock({
           id: menuId,
           opcode: "sensing_touchingobjectmenu",
@@ -6398,7 +6726,7 @@ on flag {
       }
       if (name === "key") {
         const keyName = args[0] && args[0].type === "Str" ? args[0].value : "space";
-        const menuId = uid2();
+        const menuId = uid();
         addBlock({
           id: menuId,
           opcode: "sensing_keyoptions",
@@ -6566,7 +6894,7 @@ on flag {
       };
       if (name in SENSING_OF_MAP) {
         const spriteTgt = args[0] && args[0].type === "Str" ? args[0].value : "";
-        const menuId = uid2();
+        const menuId = uid();
         addBlock({
           id: menuId,
           opcode: "sensing_of_object_menu",
@@ -6643,8 +6971,8 @@ on flag {
           });
           return null;
         }
-        const zeroId = uid2();
-        const varId = uid2();
+        const zeroId = uid();
+        const varId = uid();
         addBlock({
           id: zeroId,
           opcode: "math_number",
@@ -6680,7 +7008,7 @@ on flag {
       return null;
     }
     function menuBlock(opcode, fieldName, fieldValue, parentId) {
-      const id = uid2();
+      const id = uid();
       addBlock({
         id,
         opcode,
@@ -6718,6 +7046,11 @@ on flag {
         } else if (stmt.type === "LaunchStmt" || stmt.type === "AwaitStmt") {
           const launchIds = genLaunchOrAwaitStmt(stmt);
           launchIds.forEach((id) => {
+            if (id) ids.push(id);
+          });
+        } else if (stmt.type === "BreakpointStmt") {
+          const bpIds = genBreakpointStmt(stmt);
+          bpIds.forEach((id) => {
             if (id) ids.push(id);
           });
         } else {
@@ -6769,7 +7102,7 @@ on flag {
       const names = { gap: pfx + "gap", i: pfx + "i", j: pfx + "j", tmp: pfx + "tmp" };
       for (const nm of Object.values(names)) {
         if (!Object.values(activeTarget.variables).find((v) => v.name === nm))
-          activeTarget.createVariable(uid2(), nm, "");
+          activeTarget.createVariable(uid(), nm, "");
       }
       const ln = node.line, cl = node.col;
       const Lnode = { type: "Var", name: listVarName, line: ln, col: cl };
@@ -6834,11 +7167,11 @@ on flag {
       if (existing) {
         iterVarId = existing.id;
       } else {
-        iterVarId = uid2();
+        iterVarId = uid();
         activeTarget.createVariable(iterVarId, internalName, "");
       }
       forScope[node.varName] = { id: iterVarId, name: internalName, type: "" };
-      const setId = uid2();
+      const setId = uid();
       addBlock({
         id: setId,
         opcode: "data_setvariableto",
@@ -6849,8 +7182,8 @@ on flag {
         shadow: false,
         topLevel: false
       });
-      const loopId = uid2();
-      const gtId = uid2();
+      const loopId = uid();
+      const gtId = uid();
       const iterVarExpr = { type: "Var", name: node.varName, line: node.line, col: node.col };
       addBlock({
         id: gtId,
@@ -6865,8 +7198,8 @@ on flag {
         shadow: false,
         topLevel: false
       });
-      const incrId = uid2();
-      const oneShadId = uid2();
+      const incrId = uid();
+      const oneShadId = uid();
       addBlock({
         id: oneShadId,
         opcode: "math_number",
@@ -6943,7 +7276,7 @@ on flag {
       if (existingCtr) {
         ctrVarId = existingCtr.id;
       } else {
-        ctrVarId = uid2();
+        ctrVarId = uid();
         activeTarget.createVariable(ctrVarId, ctrInternalName, "");
       }
       let itemVarId;
@@ -6951,7 +7284,7 @@ on flag {
       if (existingItem) {
         itemVarId = existingItem.id;
       } else {
-        itemVarId = uid2();
+        itemVarId = uid();
         activeTarget.createVariable(itemVarId, itemInternalName, "");
       }
       const CTR_KEY = ctrInternalName;
@@ -6981,7 +7314,7 @@ on flag {
     function ensureVar(activeTarget, name) {
       const existing = Object.values(activeTarget.variables).find((v) => v.name === name);
       if (existing) return { id: existing.id, name: existing.name, type: "" };
-      const id = uid2();
+      const id = uid();
       activeTarget.createVariable(id, name, "");
       return { id, name, type: "" };
     }
@@ -7090,16 +7423,16 @@ on flag {
       if (!stage) return null;
       const existing = Object.values(stage.variables).find((v) => v.name === name && v.type === "");
       if (existing) return { id: existing.id, name: existing.name, type: "" };
-      const id = uid2();
+      const id = uid();
       stage.createVariable(id, name, "");
       return { id, name, type: "" };
     }
     function ensureBroadcast(name) {
       const stage = vm.runtime.targets.find((t) => t.isStage);
-      if (!stage) return uid2();
+      if (!stage) return uid();
       const existing = Object.values(stage.variables).find((v) => v.name === name && v.type === "broadcast_msg");
       if (existing) return existing.id;
-      const id = uid2();
+      const id = uid();
       stage.createVariable(id, name, "broadcast_msg");
       return id;
     }
@@ -7131,7 +7464,7 @@ on flag {
       }
       currentRoutineName = rname;
       const bcastId = ensureBroadcast(bcastName);
-      const hatId = uid2();
+      const hatId = uid();
       addBlock({
         id: hatId,
         opcode: "event_whenbroadcastreceived",
@@ -7190,13 +7523,114 @@ on flag {
       if (bcastBlockId) ids.push(bcastBlockId);
       return ids;
     }
+    function genBreakpointStmt(node) {
+      const stage = vm.runtime.targets.find((t) => t.isStage);
+      if (!stage) {
+        errors.push({
+          line: node.line || 1,
+          col: node.col || 1,
+          len: 10,
+          message: "`breakpoint`: VM stage not available"
+        });
+        return [];
+      }
+      function ensureDbgVar(varName) {
+        let v = Object.values(stage.variables).find((v2) => v2.name === varName && v2.type === "");
+        if (!v) {
+          const vid = uid();
+          stage.createVariable(vid, varName, "");
+          v = stage.variables[vid];
+        }
+        return { id: v.id, name: v.name };
+      }
+      const atV = ensureDbgVar("__dbg_at__");
+      const resumeV = ensureDbgVar("__dbg_resume__");
+      const setAtId = uid();
+      addBlock({
+        id: setAtId,
+        opcode: "data_setvariableto",
+        next: null,
+        parent: null,
+        inputs: { VALUE: strInput({ type: "Num", value: 1 }, setAtId) },
+        fields: { VARIABLE: { name: "VARIABLE", value: atV.name, id: atV.id } },
+        shadow: false,
+        topLevel: false
+      });
+      const setResId = uid();
+      addBlock({
+        id: setResId,
+        opcode: "data_setvariableto",
+        next: null,
+        parent: null,
+        inputs: { VALUE: strInput({ type: "Num", value: 0 }, setResId) },
+        fields: { VARIABLE: { name: "VARIABLE", value: resumeV.name, id: resumeV.id } },
+        shadow: false,
+        topLevel: false
+      });
+      const waitId = uid();
+      const resVarId = uid();
+      addBlock({
+        id: resVarId,
+        opcode: "data_variable",
+        next: null,
+        parent: waitId,
+        inputs: {},
+        fields: { VARIABLE: { name: "VARIABLE", value: resumeV.name, id: resumeV.id } },
+        shadow: false,
+        topLevel: false
+      });
+      const oneId = uid();
+      addBlock({
+        id: oneId,
+        opcode: "math_number",
+        next: null,
+        parent: waitId,
+        inputs: {},
+        fields: { NUM: { name: "NUM", value: "1" } },
+        shadow: true,
+        topLevel: false
+      });
+      const eqId = uid();
+      addBlock({
+        id: eqId,
+        opcode: "operator_equals",
+        next: null,
+        parent: waitId,
+        inputs: { OPERAND1: inp(resVarId, oneId), OPERAND2: inp(oneId, oneId) },
+        fields: {},
+        shadow: false,
+        topLevel: false
+      });
+      addBlock({
+        id: waitId,
+        opcode: "control_wait_until",
+        next: null,
+        parent: null,
+        inputs: { CONDITION: inp(eqId, null) },
+        fields: {},
+        shadow: false,
+        topLevel: false
+      });
+      const clearAtId = uid();
+      addBlock({
+        id: clearAtId,
+        opcode: "data_setvariableto",
+        next: null,
+        parent: null,
+        inputs: { VALUE: strInput({ type: "Num", value: 0 }, clearAtId) },
+        fields: { VARIABLE: { name: "VARIABLE", value: atV.name, id: atV.id } },
+        shadow: false,
+        topLevel: false
+      });
+      return [setAtId, setResId, waitId, clearAtId];
+    }
     function genBody(stmts, parentId) {
       const [first] = genStmts(stmts, parentId);
       return first;
     }
     function genStmt(node, parentId) {
       if (!node) return null;
-      const id = uid2();
+      const id = uid();
       switch (node.type) {
         // Control
         case "IfStmt": {
@@ -7383,7 +7817,7 @@ on flag {
             errors.push({ line: node.line || 1, col: node.col || 1, len: 11, message: `checkCancel: cancel flag not found` });
             return null;
           }
-          const flagVarId = uid2();
+          const flagVarId = uid();
           addBlock({
             id: flagVarId,
             opcode: "data_variable",
@@ -7394,7 +7828,7 @@ on flag {
             shadow: false,
             topLevel: false
           });
-          const oneId = uid2();
+          const oneId = uid();
           addBlock({
             id: oneId,
             opcode: "math_number",
@@ -7405,7 +7839,7 @@ on flag {
             shadow: true,
             topLevel: false
           });
-          const eqId = uid2();
+          const eqId = uid();
           addBlock({
             id: eqId,
             opcode: "operator_equals",
@@ -7416,7 +7850,7 @@ on flag {
             shadow: false,
             topLevel: false
           });
-          const stopId = uid2();
+          const stopId = uid();
           addBlock({
             id: stopId,
             opcode: "control_stop",
@@ -7911,7 +8345,7 @@ on flag {
         case "BroadcastStmt": {
           const msgName = node.msg.type === "Str" ? node.msg.value : "";
           const msgId = resolveBroadcast(msgName);
-          const shadowId = uid2();
+          const shadowId = uid();
           addBlock({
             id: shadowId,
             opcode: "event_broadcast_menu",
@@ -7937,7 +8371,7 @@ on flag {
         case "BroadcastWaitStmt": {
           const msgName = node.msg.type === "Str" ? node.msg.value : "";
           const msgId = resolveBroadcast(msgName);
-          const shadowId = uid2();
+          const shadowId = uid();
           addBlock({
             id: shadowId,
             opcode: "event_broadcast_menu",
@@ -8415,7 +8849,7 @@ on flag {
                 if (node.args[i]) {
                   inputs[argId] = strInput(node.args[i], id);
                 } else {
-                  const emptyId = uid2();
+                  const emptyId = uid();
                   addBlock({
                     id: emptyId,
                     opcode: "text",
@@ -8461,10 +8895,21 @@ on flag {
           return null;
       }
     }
+    for (const block of ast.blocks) {
+      if (block.type !== "StructDecl") continue;
+      const stage = vm.runtime.targets.find((t) => t.isStage);
+      if (!stage) continue;
+      for (const field of block.fields) {
+        const varName = `${block.name}.${field}`;
+        const exists = Object.values(stage.variables).some((v) => v.name === varName);
+        if (!exists) stage.createVariable(uid(), varName, "");
+      }
+    }
     let scriptX = 50;
     for (const block of ast.blocks) {
-      if (block.type === "OnBlock") {
-        const hatId = uid2();
+      if (block.type === "StructDecl") {
+      } else if (block.type === "OnBlock") {
+        const hatId = uid();
         const hatBlock = genHat(block.hat, hatId, scriptX, spriteName === "__stage__");
         if (!hatBlock) {
           scriptX += 400;
@@ -8494,14 +8939,14 @@ on flag {
       }
     }
     function genDefineBlock(node, scriptX2) {
-      const defId = uid2();
-      const protoId = uid2();
+      const defId = uid();
+      const protoId = uid();
       const argNames = node.params;
-      const argIds = argNames.map(() => uid2());
+      const argIds = argNames.map(() => uid());
       const proccode = node.name + (argNames.length > 0 ? " " + argNames.map(() => "%s").join(" ") : "");
       const argInputs = {};
       argIds.forEach((argId, i) => {
-        const reporterId = uid2();
+        const reporterId = uid();
         blocks[reporterId] = {
           id: reporterId,
           opcode: "argument_reporter_string_number",
@@ -8570,7 +9015,7 @@ on flag {
         return { ...base, opcode: "event_whenbackdropswitchesto", fields: { BACKDROP: { name: "BACKDROP", value: hat.backdrop || "" } } };
       case "greaterThan": {
         const blocks_local = {};
-        const shadowId = uid2();
+        const shadowId = uid();
         blocks_local[shadowId] = {
           id: shadowId,
           opcode: "math_number",

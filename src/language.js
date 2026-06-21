@@ -55,6 +55,8 @@ const KEYWORDS = [
     'elif',
     // Scratchroutines
     'scratchroutine','launch','await','cancel','isRunning','checkCancel',
+    // Struct declarations and debug
+    'struct','breakpoint',
 ];
 
 export function registerLanguage(monaco) {
@@ -117,6 +119,35 @@ export function registerLanguage(monaco) {
                 endColumn:       word.endColumn,
             };
             const linePrefix = model.getLineContent(position.lineNumber).substring(0, word.startColumn - 1);
+
+            // Struct field completions inside [name. (unclosed bracket before dot)
+            if (linePrefix.endsWith('.') && /\[([^\].]+)\.$/.test(linePrefix)) {
+                const match = linePrefix.match(/\[([^\].]+)\.$/);
+                const prefix = match ? match[1] : '';
+                if (prefix) {
+                    const src = model.getValue();
+                    const structDefs = {};
+                    const structRe = /\bstruct\s+(\w+)\s*\{([^}]*)\}/g;
+                    let sm;
+                    while ((sm = structRe.exec(src)) !== null) {
+                        const fields = sm[2].split(/[\s,]+/).filter(f => f.length > 0);
+                        structDefs[sm[1]] = fields;
+                    }
+                    const fields = structDefs[prefix];
+                    if (fields && fields.length > 0) {
+                        const CIKf = monaco.languages.CompletionItemKind;
+                        return {
+                            suggestions: fields.map(f => ({
+                                label: `${prefix}.${f}]`,
+                                kind: CIKf.Field,
+                                detail: `Struct field · ${prefix}`,
+                                insertText: f + ']',
+                                range,
+                            }))
+                        };
+                    }
+                }
+            }
 
             // Dot-method completions after [varname].
             if (linePrefix.endsWith('.') && /\[[^\]]+\]\.$/.test(linePrefix)) {
@@ -786,6 +817,12 @@ function buildSuggestions(monaco, range, hatRange) {
     push('[var]--', CIK.Snippet, 'Variables', '[$1]--', 'Decrement variable by 1 — sugar for `change [var] by -1`');
 
     // Scratchroutines
+    push('struct name {}',  CIK.Snippet,   'Struct · compile-time field group',
+        'struct ${1:name} {\n\t${2:field1}, ${3:field2}\n}',
+        'Declare a named field group — variables like `[name.field]` are auto-created on compile\n\nExample:\n```\nstruct player { x, y, hp }\n// Creates [player.x], [player.y], [player.hp] in Scratch\n```');
+    push('breakpoint',      CIK.Keyword,   'Debug · pause execution', 'breakpoint',
+        'Pause execution here and show the debug bar in scratchpiler — click Resume to continue');
+
     push('scratchroutine',  CIK.Keyword,   'Scratchroutines', 'scratchroutine ${1:name}($2) {\n    $0\n}',
          'Define a named concurrent task (compiles to broadcast-based pseudo-coroutine)');
     push('launch',          CIK.Keyword,   'Scratchroutines', 'launch ${1:name}($0)',

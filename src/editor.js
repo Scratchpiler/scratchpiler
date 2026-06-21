@@ -3,7 +3,7 @@ import { acquireVM, scratchIndex, reindex } from "./vm.js";
 import { loadMonaco } from "./monaco.js";
 import { registerLanguage } from "./language.js";
 import { buildOverlayDOM, buildTriggerButton, buildSearchNowhereDOM, setupSpritePicker, spPickerOpen, searchNowhereOpen, logToOutput, flashCompileBtn, openSpritePicker, closeSpritePicker, showSpriteContextMenu, closeSpriteContextMenu, setupOutputPanel, setupSidebarResize, openSearchNowhere, closeSearchNowhere, } from "./ui-dom.js";
-import { compileSource, decompile, tokenize, parse, lint, typeCheckDiagnostics, injectBlocks } from "./main.js";
+import { compileSource, decompile, tokenize, parse, lint, typeCheckDiagnostics, injectBlocks, uid } from "./main.js";
 
 // [I] Editor Lifecycle
 
@@ -14,6 +14,7 @@ export let currentVM      = null;
 let applySettingsFn = null;
 let currentActiveTab = 'explorer';
 let sidebarExpanded = true;
+let debugPollInterval = null;
 
 function renderSidebarSprites() {
     const listEl = document.getElementById('scratchpiler-sprites-list');
@@ -237,7 +238,37 @@ function updateSpriteDetails(spriteName) {
     } else {
         for (const v of vars) {
             const snippet = `[${v.name}]`;
-            varsContent.appendChild(makeDetailItem(`${v.name} (${v.type})`, snippet, `Insert: ${snippet}`));
+            const row = document.createElement('div');
+            row.className = 'sp-detail-item-row';
+
+            const lbl = document.createElement('div');
+            lbl.className = 'sp-detail-item';
+            lbl.textContent = `${v.name} (${v.type})`;
+            lbl.title = `Insert: ${snippet}`;
+            lbl.addEventListener('click', () => {
+                if (monacoEditor) { monacoEditor.trigger('sidebar', 'type', { text: snippet }); monacoEditor.focus(); }
+            });
+
+            const actBtn = document.createElement('button');
+            actBtn.className = 'sp-detail-action-btn';
+            actBtn.textContent = '⋮';
+            actBtn.title = 'Variable actions';
+            actBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                const rect = actBtn.getBoundingClientRect();
+                const menuItems = [
+                    { label: 'Rename…', action: () => openRenameDialog(v) },
+                    { label: 'Delete', danger: true, action: () => doDeleteVariable(v.id) },
+                ];
+                if (v.type === 'list') {
+                    menuItems.splice(1, 0, { label: 'Initialize from CSV…', action: () => openInitListDialog(v) });
+                }
+                showContextMenu(menuItems, rect.left, rect.bottom + 2);
+            });
+
+            row.appendChild(lbl);
+            row.appendChild(actBtn);
+            varsContent.appendChild(row);
         }
     }
 
@@ -734,6 +765,27 @@ function toggleOverlay() {
     if (overlayVisible) closeOverlay(); else openOverlay();
 }
 
+function startDebugPoll(vm) {
+    if (debugPollInterval) return;
+    debugPollInterval = setInterval(() => {
+        const bar = document.getElementById('sp-debug-bar');
+        if (!bar) return;
+        if (!overlayVisible) { bar.style.display = 'none'; return; }
+        const stage = vm.runtime.targets.find(t => t.isStage);
+        if (!stage) return;
+        const atV = Object.values(stage.variables).find(v => v.name === '__dbg_at__');
+        bar.style.display = (atV && atV.value == 1) ? 'flex' : 'none';
+    }, 100);
+}
+
+function resumeDebugger() {
+    if (!currentVM) return;
+    const stage = currentVM.runtime.targets.find(t => t.isStage);
+    if (!stage) return;
+    const resumeV = Object.values(stage.variables).find(v => v.name === '__dbg_resume__');
+    if (resumeV) resumeV.value = 1;
+}
+
 // [J] Hotkeys
 
 function registerHotkeys() {
@@ -864,7 +916,132 @@ export function updateStatus(text) {
 // [K2] Menu + Variable Creation
 
 let activeMenu = null;
+let activeContextMenu = null;
 let dialogCallback = null;
+
+function showContextMenu(items, x, y) {
+    if (activeContextMenu && activeContextMenu.parentNode) activeContextMenu.remove();
+    const overlay = document.getElementById('scratchpiler-overlay');
+    if (!overlay) return;
+    const dropdown = document.createElement('div');
+    dropdown.className = 'sp-dropdown sp-context-menu';
+    dropdown.style.left = x + 'px';
+    dropdown.style.top  = y + 'px';
+    for (const item of items) {
+        if (item === '-') {
+            const sep = document.createElement('div');
+            sep.className = 'sp-dropdown-sep';
+            dropdown.appendChild(sep);
+        } else {
+            const el = document.createElement('button');
+            el.className = 'sp-dropdown-item';
+            el.textContent = item.label;
+            if (item.danger) el.style.color = '#ff7070';
+            el.addEventListener('click', () => { closeContextMenu(); item.action(); });
+            dropdown.appendChild(el);
+        }
+    }
+    overlay.appendChild(dropdown);
+    activeContextMenu = dropdown;
+    setTimeout(() => {
+        const onOutside = e => {
+            if (!dropdown.contains(e.target)) {
+                closeContextMenu();
+                document.removeEventListener('mousedown', onOutside);
+            }
+        };
+        document.addEventListener('mousedown', onOutside);
+    }, 0);
+}
+
+function closeContextMenu() {
+    if (activeContextMenu && activeContextMenu.parentNode) activeContextMenu.remove();
+    activeContextMenu = null;
+}
+
+function doDeleteVariable(varId) {
+    if (!currentVM) { updateStatus('Error: VM not available'); return; }
+    let target = null;
+    for (const t of currentVM.runtime.targets) {
+        if (t.variables[varId]) { target = t; break; }
+    }
+    if (!target || !target.variables[varId]) { updateStatus('Error: variable not found'); return; }
+    const varName = target.variables[varId].name;
+    if (typeof target.deleteVariable === 'function') {
+        target.deleteVariable(varId);
+    } else {
+        delete target.variables[varId];
+    }
+    reindex(currentVM);
+    updateSpriteDetails(getActiveSpriteNameFromDropdown());
+    updateStatus(`Deleted "${varName}"`);
+}
+
+function openRenameDialog(v) {
+    const dialog = document.getElementById('scratchpiler-dialog');
+    if (!dialog) return;
+    document.getElementById('scratchpiler-dialog-title').textContent = `Rename "${v.name}"`;
+    const okBtn = document.getElementById('scratchpiler-dialog-ok');
+    if (okBtn) okBtn.textContent = 'Rename';
+    const input = document.getElementById('scratchpiler-dialog-input');
+    input.value = v.name;
+    dialog.style.display = 'flex';
+    setTimeout(() => { input.focus(); input.select(); }, 0);
+    dialogCallback = newName => {
+        dialog.style.display = 'none';
+        dialogCallback = null;
+        if (okBtn) okBtn.textContent = 'Create';
+        if (!newName || !newName.trim()) return;
+        newName = newName.trim();
+        if (!currentVM) { updateStatus('Error: VM not available'); return; }
+        let target = null;
+        for (const t of currentVM.runtime.targets) {
+            if (t.variables[v.id]) { target = t; break; }
+        }
+        if (!target) { updateStatus('Error: variable not found'); return; }
+        const oldName = target.variables[v.id].name;
+        target.variables[v.id].name = newName;
+        // Update all block field references
+        for (const t of currentVM.runtime.targets) {
+            for (const block of Object.values(t.blocks._blocks || {})) {
+                for (const field of Object.values(block.fields || {})) {
+                    if (field.id === v.id) field.value = newName;
+                }
+            }
+        }
+        reindex(currentVM);
+        updateSpriteDetails(getActiveSpriteNameFromDropdown());
+        updateStatus(`Renamed "${oldName}" → "${newName}"`);
+    };
+}
+
+function openInitListDialog(v) {
+    const dialog = document.getElementById('scratchpiler-dialog');
+    if (!dialog) return;
+    document.getElementById('scratchpiler-dialog-title').textContent = `Initialize [${v.name}] (comma-separated)`;
+    const okBtn = document.getElementById('scratchpiler-dialog-ok');
+    if (okBtn) okBtn.textContent = 'Set';
+    const input = document.getElementById('scratchpiler-dialog-input');
+    input.value = '';
+    input.placeholder = 'e.g. 1, 2, 3';
+    dialog.style.display = 'flex';
+    setTimeout(() => input.focus(), 0);
+    dialogCallback = csv => {
+        dialog.style.display = 'none';
+        dialogCallback = null;
+        if (okBtn) okBtn.textContent = 'Create';
+        input.placeholder = '';
+        if (!currentVM) return;
+        let target = null;
+        for (const t of currentVM.runtime.targets) {
+            if (t.variables[v.id]) { target = t; break; }
+        }
+        if (!target) return;
+        const items = (csv || '').split(',').map(s => s.trim()).filter(s => s !== '');
+        target.variables[v.id].value = items;
+        updateStatus(`Initialized [${v.name}] with ${items.length} item(s)`);
+    };
+}
 
 function openMenu(btnId, items) {
     closeMenu();
@@ -953,6 +1130,7 @@ export function bootstrap() {
     registerHotkeys();
 
     document.getElementById('scratchpiler-close-btn').addEventListener('click', closeOverlay);
+    document.getElementById('sp-debug-resume-btn').addEventListener('click', resumeDebugger);
 
     document.getElementById('sp-menu-file').addEventListener('click', () => {
         openMenu('sp-menu-file', [
@@ -1018,6 +1196,12 @@ export function bootstrap() {
         openMenu('sp-menu-variables', [
             { label: 'New global variable…', action: () => showCreateDialog('New Global Variable', n => doCreateVariable(n, true, false)) },
             { label: 'New local variable…',  action: () => showCreateDialog('New Local Variable',  n => doCreateVariable(n, false, false)) },
+            '-',
+            { label: 'Rename / Delete…', action: () => {
+                const actExplorer = document.getElementById('sp-activity-explorer');
+                if (actExplorer) actExplorer.click();
+                updateStatus('Right-click a variable in the sidebar to rename or delete it');
+            }},
         ]);
     });
 
@@ -1025,6 +1209,12 @@ export function bootstrap() {
         openMenu('sp-menu-lists', [
             { label: 'New global list…', action: () => showCreateDialog('New Global List', n => doCreateVariable(n, true, true)) },
             { label: 'New local list…',  action: () => showCreateDialog('New Local List',  n => doCreateVariable(n, false, true)) },
+            '-',
+            { label: 'Rename / Delete / Initialize…', action: () => {
+                const actExplorer = document.getElementById('sp-activity-explorer');
+                if (actExplorer) actExplorer.click();
+                updateStatus('Click ⋮ on a list in the sidebar to rename, delete, or initialize it');
+            }},
         ]);
     });
 
@@ -1226,6 +1416,7 @@ export function bootstrap() {
                 currentVM = vm;
                 updateStatusBarVM('ok');
                 reindex(vm);
+                startDebugPoll(vm);
                 vm.on('targetsUpdate',   () => { reindex(vm); if (overlayVisible) populateSpriteDropdown(); });
                 vm.runtime.on('PROJECT_LOADED', () => {
                     // A new project was loaded — any previously-tracked injected block IDs

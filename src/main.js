@@ -12,7 +12,7 @@ import { registerLanguage } from "./language.js";
 import { buildOverlayDOM, buildTriggerButton, snGetRealActions, buildSearchNowhereDOM, snSwitchTab, snUpdateFocus, openSearchNowhere, closeSearchNowhere, snEscHtml, snHighlight, snMakeResultEl, snRenderSection, snEmptyState, snGetSpriteResults, snGetBlockResults, snRenderResults, logToOutput, flashCompileBtn, openSpritePicker, closeSpritePicker, spPickerRender, spPickerMoveFocus, setupSpritePicker, showSpriteContextMenu, closeSpriteContextMenu, setupSidebarResize, setupOutputPanel } from "./ui-dom.js";
 
 
-export { compileSource, tokenize, parse, lint, typeCheckDiagnostics } from "./compiler.js";
+export { compileSource, tokenize, parse, lint, typeCheckDiagnostics, uid } from "./compiler.js";
 
 export { decompile } from "./decompiler.js";
 

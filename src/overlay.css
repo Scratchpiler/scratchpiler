@@ -500,8 +500,44 @@
         .sp-ctx-sep { height: 1px; background: #002e5a; margin: 3px 0; }
 
         /* Clickable detail items */
-        .sp-detail-item { cursor: pointer; }
+        .sp-detail-item { cursor: pointer; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .sp-detail-item:hover { background: #002447; color: #e8f4ff; }
+
+        /* Variable/list item row with action button */
+        .sp-detail-item-row {
+            display: flex; align-items: center;
+            padding: 0; margin: 0;
+        }
+        .sp-detail-item-row .sp-detail-item { padding: 4px 4px 4px 26px; }
+        .sp-detail-action-btn {
+            flex-shrink: 0; width: 22px; height: 22px; margin-right: 4px;
+            background: none; border: none; color: #3a5276; cursor: pointer;
+            border-radius: 3px; font-size: 13px; line-height: 1;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.1s, background 0.1s, color 0.1s;
+        }
+        .sp-detail-item-row:hover .sp-detail-action-btn { opacity: 1; }
+        .sp-detail-action-btn:hover { background: #002e5a; color: #e8f4ff; }
+
+        /* Floating context menu (fixed-position) */
+        .sp-context-menu {
+            position: fixed !important;
+            top: auto; left: auto;
+        }
+
+        /* Debug bar */
+        #sp-debug-bar {
+            background: #0d001a; border-top: 2px solid #9b59b6;
+            padding: 7px 14px; display: flex; align-items: center; gap: 12px;
+            flex-shrink: 0; font-size: 12px;
+        }
+        #sp-debug-label { color: #c39bd3; font-family: ui-monospace, 'SF Mono', Consolas, monospace; }
+        #sp-debug-resume-btn {
+            background: #6c3483; border: 1px solid #9b59b6; border-radius: 4px;
+            color: #e8daef; font-family: inherit; font-size: 11px;
+            padding: 4px 12px; cursor: pointer; transition: background 0.1s;
+        }
+        #sp-debug-resume-btn:hover { background: #8e44ad; }
 
         /* ===== Sprite Tab Bar ===== */
         #sp-tab-bar {
