@@ -1,7 +1,7 @@
 # scratchpiler
 
 <p align="center">
-  <img src="resources/Scratchpiler.png" alt="Scratchpiler" width="180" />
+  <img src="resources/Scratchpiler 2.png" alt="Scratchpiler" width="180" />
 </p>
 
 <p align="center">
