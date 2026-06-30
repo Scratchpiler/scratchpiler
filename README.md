@@ -11,7 +11,7 @@
   <img src="https://img.shields.io/badge/license-ISC-lightgrey" alt="License: ISC" />
 </p>
 
-A text-based DSL that compiles directly into Scratch's block VM. Because sometimes you want to write a platformer without playing Tetris with puzzle pieces, or because you've finally realized that dragging colorful plastic shapes with a mouse is a slow descent into developer madness.
+A text-based DSL that compiles directly into Scratch's block VM. Because sometimes you want to write a platformer without playing Tetris with puzzle pieces, or because you've finally realized that Scratch is a turing-complete ISA waiting to be compiled against.
 
 ---
 
