@@ -1,5 +1,6 @@
 import { KEYWORDS } from "./constants.js";
 import { scratchIndex } from "./vm.js";
+import { ASM_OPCODES } from "./asm-opcodes.js";
 
 // [L] DSL Compiler
 
@@ -10,7 +11,7 @@ const TT = {
     LBRACE: '{', RBRACE: '}', LPAREN: '(', RPAREN: ')',
     COMMA: ',', COLON: ':', HASH: '#', HEX: 'HEX', DOT: '.',
     LT: '<', GT: '>', EQ: '=', PLUS: '+', MINUS: '-',
-    STAR: '*', SLASH: '/', EOF: 'EOF',
+    STAR: '*', SLASH: '/', SEMI: ';', EOF: 'EOF',
 };
 
 const KW_SET = new Set(KEYWORDS);
@@ -87,7 +88,7 @@ export function tokenize(src) {
         const SINGLE = { '{': TT.LBRACE, '}': TT.RBRACE, '(': TT.LPAREN, ')': TT.RPAREN,
                           ',': TT.COMMA,  ':': TT.COLON, '<': TT.LT, '>': TT.GT,
                           '=': TT.EQ, '+': TT.PLUS, '-': TT.MINUS, '*': TT.STAR,
-                          '/': TT.SLASH, '#': TT.HASH, '.': TT.DOT };
+                          '/': TT.SLASH, '#': TT.HASH, '.': TT.DOT, ';': TT.SEMI };
         if (SINGLE[c]) {
             advance();
             tokens.push({ type: SINGLE[c], value: c, line: startLine, col: startCol });
@@ -108,7 +109,7 @@ export function tokenize(src) {
 // Human-readable names for token types
 const TOKEN_NAMES = {
     '(': '`(`', ')': '`)`', '{': '`{`', '}': '`}`',
-    ',': '`,`', ':': '`:`',
+    ',': '`,`', ':': '`:`', ';': '`;`',
     NUM: 'a number', STR: 'a string (e.g. "hello")',
     VAR: 'a variable (e.g. [score])', IDENT: 'an identifier', EOF: 'end of file',
 };
@@ -231,6 +232,15 @@ const CALL_SIGS = {
     checkCancel:    'checkCancel()      — stop this script if cancelled',
 };
 
+// Returns up to `max` candidates whose spelling is close to `name` (prefix/substring heuristics).
+function fuzzyMatch(name, candidates, max = 3) {
+    const vl = name.toLowerCase();
+    return candidates.filter(k => {
+        const kl = k.toLowerCase();
+        return kl.startsWith(vl) || vl.startsWith(kl.slice(0, 3)) || kl.includes(vl) || vl.includes(kl.slice(0, 4));
+    }).slice(0, max);
+}
+
 export function parse(tokens) {
     let pos = 0;
     let callCtx = '';  // set before args helpers; picked up automatically by eat()
@@ -352,6 +362,7 @@ export function parse(tokens) {
         if (v === 'await')         return parseLaunchAwait('await');
         if (v === 'cancel')        return parseCancel();
         if (v === 'breakpoint')    return parseBreakpoint();
+        if (v === '__asm__')      return parseAsmStmt();
 
         return parseSimpleStatement();
     }
@@ -506,6 +517,84 @@ export function parse(tokens) {
     function parseBreakpoint() {
         const t = peek(); pos++;
         return { type: 'BreakpointStmt', line: t.line, col: t.col };
+    }
+
+    // __asm__ volatile [unsafe] ( opcode(args); opcode(args); ... )
+    function parseAsmStmt() {
+        const t = peek(); pos++; // consume '__asm__'
+        if (!checkV('volatile')) {
+            errors.push({ line: peek().line, col: peek().col, len: Math.max((peek().value || '').length, 1),
+                message: '`__asm__ volatile(...)`: expected `volatile` immediately after `__asm__`' });
+        } else pos++;
+        let mode = 'strict';
+        if (checkV('unsafe')) { pos++; mode = 'unsafe'; }
+        eat(TT.LPAREN, check(TT.LBRACE)
+            ? '`__asm__ volatile(...)` uses parens `(...)`, not braces like other blocks'
+            : '`__asm__ volatile(...)`: expected `(` to open the asm block');
+        const statements = [];
+        while (!check(TT.RPAREN) && !check(TT.EOF)) {
+            const s = parseAsmInnerStmt();
+            if (s) statements.push(s);
+        }
+        eat(TT.RPAREN, '`__asm__ volatile(...)`: expected `)` to close the asm block');
+        return { type: 'AsmStmt', mode, statements, line: t.line, col: t.col };
+    }
+
+    function parseAsmInnerStmt() {
+        const opTok = peek();
+        if (opTok.type !== TT.IDENT) {
+            errors.push({ line: opTok.line, col: opTok.col, len: Math.max((opTok.value || '').length, 1),
+                message: `__asm__: expected an opcode name (e.g. \`looks_say\`), got ${tok(opTok)}` });
+            pos++;
+            return null;
+        }
+        const opcode = opTok.value; pos++;
+        eat(TT.LPAREN, `__asm__: expected \`(\` after opcode \`${opcode}\``);
+        const args = [];
+        while (!check(TT.RPAREN) && !check(TT.EOF)) {
+            args.push(parseAsmInnerArg());
+            if (!tryEat(TT.COMMA)) break;
+        }
+        eat(TT.RPAREN, `__asm__: expected \`)\` to close arguments for \`${opcode}\``);
+        if (!tryEat(TT.SEMI)) {
+            errors.push({ line: peek().line, col: peek().col, len: 1,
+                message: `__asm__: expected \`;\` after \`${opcode}(...)\`` });
+        }
+        return { opcode, args, line: opTok.line, col: opTok.col };
+    }
+
+    function parseAsmInnerArg() {
+        const t = peek();
+        if (check(TT.STR)) { pos++; return { kind: 'lit', valueType: 'string', value: t.value, line: t.line, col: t.col }; }
+        if (check(TT.NUM)) { pos++; return { kind: 'lit', valueType: 'number', value: t.value, line: t.line, col: t.col }; }
+        if (check(TT.MINUS) && tokens[pos + 1] && tokens[pos + 1].type === TT.NUM) {
+            pos++; const n = eat(TT.NUM);
+            return { kind: 'lit', valueType: 'number', value: -n.value, line: t.line, col: t.col };
+        }
+        if (check(TT.IDENT) && (t.value === 'true' || t.value === 'false')) {
+            pos++; return { kind: 'lit', valueType: 'boolean', value: t.value === 'true', line: t.line, col: t.col };
+        }
+        if (check(TT.VAR)) { pos++; return { kind: 'reg', name: t.value, line: t.line, col: t.col }; }
+        if (check(TT.IDENT)) {
+            if (tokens[pos + 1] && tokens[pos + 1].type === TT.LPAREN) {
+                errors.push({ line: t.line, col: t.col, len: t.value.length,
+                    message: `__asm__: nested opcode calls are not supported as arguments (v1) — \`${t.value}(...)\` must be its own statement; args must be a literal or a bare register name` });
+                pos++; // consume ident
+                let depth = 1; pos++; // consume '('
+                while (depth > 0 && !check(TT.EOF)) {
+                    if (check(TT.LPAREN)) depth++;
+                    else if (check(TT.RPAREN)) depth--;
+                    pos++;
+                }
+                return { kind: 'lit', valueType: 'number', value: 0, line: t.line, col: t.col };
+            }
+            pos++;
+            return { kind: 'reg', name: t.value, line: t.line, col: t.col };
+        }
+        errors.push({ line: t.line, col: t.col, len: Math.max((t.value || '').length, 1),
+            message: `__asm__: expected a literal (string/number/boolean) or a bare register name, got ${tok(t)}` });
+        pos++;
+        return { kind: 'lit', valueType: 'number', value: 0, line: t.line, col: t.col };
     }
 
     function parseEnum() {
@@ -868,12 +957,7 @@ export function parse(tokens) {
         if (v === 'checkCancel') { args0(ln,cl); return { type: 'CheckCancelStmt', line: ln, col: cl }; }
 
         {
-            const all = Object.keys(CALL_SIGS);
-            const vl = v.toLowerCase();
-            const similar = all.filter(k => {
-                const kl = k.toLowerCase();
-                return kl.startsWith(vl) || vl.startsWith(kl.slice(0, 3)) || kl.includes(vl) || vl.includes(kl.slice(0, 4));
-            }).slice(0, 3).map(k => `\`${CALL_SIGS[k]}\``);
+            const similar = fuzzyMatch(v, Object.keys(CALL_SIGS)).map(k => `\`${CALL_SIGS[k]}\``);
             const hint = similar.length ? `  Did you mean: ${similar.join('  or  ')}?` : '  Commands are camelCase function calls like `move(10)`, `say("hi")`, `forever { }`.';
             errors.push({ line: ln, col: cl, len: v.length || 1,
                 message: `Unknown statement \`${v}\`.${hint}` });
@@ -1058,6 +1142,15 @@ export function lint(ast) {
             case 'PyForStmt':
             case 'ScratchroutineStmt':
                 lintBody(stmt.body); break;
+            case 'AsmStmt':
+                if (stmt.mode === 'unsafe') {
+                    for (const s of stmt.statements) {
+                        if (!ASM_OPCODES[s.opcode]) {
+                            warn(s, `__asm__ volatile unsafe: opcode \`${s.opcode}\` is not in the known schema table — argument wiring is a best-effort guess and may not execute correctly.`);
+                        }
+                    }
+                }
+                break;
         }
     }
 
@@ -1698,6 +1791,103 @@ function compile(ast, vm, spriteName) {
         return id;
     }
 
+    // --- __asm__ volatile(...) ---
+
+    // Converts a flat asm arg ({kind:'lit'|'reg', ...}) into the expr-like shape
+    // numInput/strInput/boolInput/genExpr already know how to consume.
+    function asmArgToExprLike(arg) {
+        if (arg.kind === 'reg') return { type: 'Var', name: arg.name, line: arg.line, col: arg.col };
+        if (arg.valueType === 'number')  return { type: 'Num', value: arg.value, line: arg.line, col: arg.col };
+        if (arg.valueType === 'boolean') return { type: 'Str', value: arg.value ? 'true' : 'false', line: arg.line, col: arg.col };
+        return { type: 'Str', value: arg.value, line: arg.line, col: arg.col };
+    }
+
+    // Builds a block whose opcode is in ASM_OPCODES, validating each arg against its schema.
+    function genAsmSchemaBlock(inner, schema) {
+        const id = uid();
+        const inputs = {}, fields = {};
+        for (let i = 0; i < schema.params.length; i++) {
+            const spec = schema.params[i], arg = inner.args[i];
+            if (spec.valueType === 'variable' || spec.valueType === 'list') {
+                if (arg.kind !== 'reg') {
+                    errors.push({ line: arg.line || 1, col: arg.col || 1, len: 1,
+                        message: `__asm__: \`${inner.opcode}\` argument \`${spec.name}\` must be a register (variable name), not a literal` });
+                    continue;
+                }
+                const v = resolveVar(arg.name);
+                if (!v) {
+                    errors.push({ line: arg.line || 1, col: arg.col || 1, len: arg.name.length,
+                        message: `Variable not found: ${arg.name}` });
+                    continue;
+                }
+                fields[spec.name] = { name: spec.name, value: v.name, id: v.id };
+                continue;
+            }
+            const exprLike = asmArgToExprLike(arg);
+            if (spec.kind === 'field') {
+                fields[spec.name] = { name: spec.name, value: arg.kind === 'reg' ? arg.name : String(arg.value) };
+            } else if (spec.valueType === 'number') {
+                inputs[spec.name] = numInput(exprLike, id);
+            } else if (spec.valueType === 'string' || spec.valueType === 'menu') {
+                if (spec.menuShadow) {
+                    const menuVal = arg.kind === 'reg' ? arg.name : String(arg.value);
+                    const menuId = menuBlock(spec.menuShadow.opcode, spec.menuShadow.field, menuVal, id);
+                    inputs[spec.name] = inp(menuId, menuId);
+                } else {
+                    inputs[spec.name] = strInput(exprLike, id);
+                }
+            } else if (spec.valueType === 'boolean') {
+                inputs[spec.name] = boolInput(exprLike, id);
+            }
+        }
+        addBlock({ id, opcode: inner.opcode, next: null, parent: null, inputs, fields, shadow: false, topLevel: false });
+        return id;
+    }
+
+    // Best-effort block builder for `unsafe` mode when the opcode has no known schema —
+    // no correctness guarantee, mirrors the caveat of C's inline asm / Rust's `unsafe`.
+    function genAsmHeuristicBlock(inner) {
+        const id = uid();
+        const inputs = {};
+        inner.args.forEach((arg, i) => {
+            const exprLike = asmArgToExprLike(arg);
+            const key = `VALUE${i}`;
+            if (arg.kind === 'reg' || arg.valueType === 'string') inputs[key] = strInput(exprLike, id);
+            else if (arg.valueType === 'number') inputs[key] = numInput(exprLike, id);
+            else inputs[key] = boolInput(exprLike, id);
+        });
+        addBlock({ id, opcode: inner.opcode, next: null, parent: null, inputs, fields: {}, shadow: false, topLevel: false });
+        return id;
+    }
+
+    // Returns block ids for every inner asm statement, in order — consumed by genStmts.
+    function genAsmStmt(node) {
+        const ids = [];
+        for (const inner of node.statements) {
+            const schema = ASM_OPCODES[inner.opcode];
+            if (!schema) {
+                if (node.mode === 'strict') {
+                    const similar = fuzzyMatch(inner.opcode, Object.keys(ASM_OPCODES));
+                    const hint = similar.length ? `  Did you mean: ${similar.map(s => `\`${s}\``).join('  or  ')}?` : '';
+                    errors.push({ line: inner.line || 1, col: inner.col || 1, len: inner.opcode.length,
+                        message: `__asm__ volatile: unknown opcode \`${inner.opcode}\`.${hint}  Use \`__asm__ volatile unsafe(...)\` to allow opcodes outside the known list.` });
+                    continue;
+                }
+                const id = genAsmHeuristicBlock(inner);
+                if (id) ids.push(id);
+                continue;
+            }
+            if (inner.args.length !== schema.params.length) {
+                errors.push({ line: inner.line || 1, col: inner.col || 1, len: inner.opcode.length,
+                    message: `__asm__: \`${inner.opcode}\` expects ${schema.params.length} argument(s) (${schema.params.map(p => p.name).join(', ')}), got ${inner.args.length}` });
+                continue;
+            }
+            const id = genAsmSchemaBlock(inner, schema);
+            if (id) ids.push(id);
+        }
+        return ids;
+    }
+
     // Generate a chain of statement nodes; returns [firstId, lastId]
     function genStmts(stmts, parentId) {
         if (!stmts || stmts.length === 0) return [null, null];
@@ -1728,6 +1918,9 @@ function compile(ast, vm, spriteName) {
             } else if (stmt.type === 'PopulateListStmt') {
                 const populateIds = genPopulateListStmt(stmt);
                 populateIds.forEach(id => { if (id) ids.push(id); });
+            } else if (stmt.type === 'AsmStmt') {
+                const asmIds = genAsmStmt(stmt);
+                asmIds.forEach(id => { if (id) ids.push(id); });
             } else {
                 const id = genStmt(stmt, null);
                 if (id) ids.push(id);

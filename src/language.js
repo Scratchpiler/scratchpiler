@@ -2,6 +2,8 @@ import { LANG_ID, KEYWORDS } from "./constants.js";
 import { scratchIndex } from "./vm.js";
 import { currentVM, currentSpriteContext } from "./editor.js";
 import { formatSource } from "./injector.js";
+import { tokenize } from "./compiler.js";
+import { ASM_OPCODES } from "./asm-opcodes.js";
 
 export function registerLanguage(monaco) {
     monaco.languages.register({ id: LANG_ID });
@@ -35,6 +37,7 @@ export function registerLanguage(monaco) {
         tokenizer: {
             root: [
                 [/\/\/.*$/, 'comment'],
+                [/\b__asm__\b/, { token: 'keyword', next: '@asmHeader' }],
                 [/"[^"]*"/, 'string'],
                 [/\[[^\]]+\]/, 'variable'],
                 [/#[0-9a-fA-F]{6}/, 'number'],
@@ -48,6 +51,35 @@ export function registerLanguage(monaco) {
                 }],
                 [/[{}()[\],:]/, 'delimiter'],
                 [/[+\-*\/<>=]/, 'operator'],
+            ],
+            // __asm__ [volatile] [unsafe] ( ... ) — consumes the header keywords up to the opening '('
+            asmHeader: [
+                [/\s+/, ''],
+                [/\bvolatile\b/, 'keyword'],
+                [/\bunsafe\b/, 'keyword'],
+                [/\(/, { token: 'delimiter.parenthesis', next: '@asmBody' }],
+                ['', { token: '', next: '@pop' }],
+            ],
+            // Top level of the asm block: sees opcode names, ';', and the outer ')'
+            asmBody: [
+                [/\/\/.*$/, 'comment'],
+                [/\s+/, ''],
+                [/;/, 'delimiter'],
+                [/\)/, { token: 'delimiter.parenthesis', next: '@pop' }],
+                [/[a-zA-Z_][\w]*(?=\s*\()/, 'type.identifier'],
+                [/\(/, { token: 'delimiter.parenthesis', next: '@asmArgs' }],
+            ],
+            // Inside a single opcode call's parens: literals + bare registers
+            asmArgs: [
+                [/\s+/, ''],
+                [/\)/, { token: 'delimiter.parenthesis', next: '@pop' }],
+                [/\(/, { token: 'delimiter.parenthesis', next: '@push' }],
+                [/"[^"]*"/, 'string'],
+                [/[0-9]+(\.[0-9]+)?/, 'number'],
+                [/\btrue\b|\bfalse\b/, 'keyword'],
+                [/,/, 'delimiter'],
+                [/\[[^\]]+\]/, 'variable'],
+                [/[a-zA-Z_][\w]*/, 'variable'],
             ],
         },
     });
@@ -282,6 +314,26 @@ export function registerLanguage(monaco) {
                 return { suggestions: [] };
             }
 
+            // __asm__ volatile(...) context: opcode names at the top level, registers inside a call
+            const asmCtx = detectAsmContext(model, position);
+            if (asmCtx) {
+                const CIKa = monaco.languages.CompletionItemKind;
+                if (asmCtx.kind === 'opcode') {
+                    return {
+                        suggestions: Object.keys(ASM_OPCODES).map(op => ({
+                            label: op, kind: CIKa.Function,
+                            detail: `__asm__ opcode · ${ASM_OPCODES[op].params.map(p => p.name).join(', ')}`,
+                            insertText: `${op}($0)`,
+                            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                            range,
+                        })),
+                    };
+                }
+                return { suggestions: collectRegistersInScope(model, position).map(r => ({
+                    label: r.name, kind: CIKa.Variable, detail: r.source, insertText: r.name, range,
+                })) };
+            }
+
             // Hat-block range fix: extend backwards to cover "on " prefix
             const onMatch = linePrefix.match(/\bon\s+$/);
             const hatRange = onMatch
@@ -435,6 +487,23 @@ export function registerLanguage(monaco) {
         'cancel':         { label: 'cancel name  — set the cancel flag (check with checkCancel)', params: [{ label: 'name', documentation: 'Scratchroutine name' }] },
         'isRunning':      { label: 'isRunning(name)  — boolean: is routine currently executing?', params: [{ label: 'name', documentation: 'Scratchroutine name' }] },
         'checkCancel':    { label: 'checkCancel()  — stop this script if cancelled (inside scratchroutine only)', params: [] },
+        // Inline assembly
+        '__asm__': {
+            label: '__asm__ volatile(...)  — inline raw Scratch opcodes\n' +
+                   '\n' +
+                   'Body is PARENS, not braces:\n' +
+                   '  __asm__ volatile(\n' +
+                   '    looks_say("hi");\n' +
+                   '    motion_movesteps(69);\n' +
+                   '  )\n' +
+                   '\n' +
+                   'Args are literals or bare register names (variables in scope):\n' +
+                   '  __asm__ volatile( data_changevariableby(counter, 5); )\n' +
+                   '\n' +
+                   '__asm__ volatile unsafe(...) allows opcodes outside the known list\n' +
+                   '(best-effort arg wiring, no correctness guarantee).',
+            params: [],
+        },
         // List aggregates
         'sum':   { label: '[list].sum()  — sum of all numeric items', params: [] },
         'min':   { label: '[list].min()  — minimum numeric item',     params: [] },
@@ -464,7 +533,7 @@ export function registerLanguage(monaco) {
             // Function call: name(
             const fnM = before.match(/(\w+)\s*\([^)]*$/);
             if (fnM) {
-                const sig = SIG_DB[fnM[1]];
+                const sig = SIG_DB[fnM[1]] || asmSigFor(fnM[1]);
                 if (sig) {
                     const commas = (before.slice(before.lastIndexOf('(') + 1).match(/,/g) || []).length;
                     return mkSig(sig, commas);
@@ -565,6 +634,95 @@ export function registerLanguage(monaco) {
 
 function getActiveSpriteNameFromDropdown() {
     return currentSpriteContext;
+}
+
+// Detects whether `position` sits inside a `__asm__ volatile(...)` region, and at what
+// depth: 1 = top level of the asm block (opcode-name position), 2+ = inside an opcode
+// call's own parens (register/literal position). Returns null outside any asm region.
+function detectAsmContext(model, position) {
+    const offset = model.getOffsetAt(position);
+    let toks;
+    try { toks = tokenize(model.getValue()); } catch (e) { return null; }
+    const posOf = (t) => model.getOffsetAt({ lineNumber: t.line, column: t.col });
+
+    let lastAsmIdx = -1;
+    for (let i = 0; i < toks.length; i++) {
+        if (posOf(toks[i]) >= offset) break;
+        if (toks[i].value === '__asm__') lastAsmIdx = i;
+    }
+    if (lastAsmIdx === -1) return null;
+
+    let depth = 0, sawOpen = false;
+    for (let i = lastAsmIdx + 1; i < toks.length; i++) {
+        if (posOf(toks[i]) >= offset) break;
+        if (toks[i].type === '(') { depth++; sawOpen = true; }
+        else if (toks[i].type === ')') { depth--; if (sawOpen && depth <= 0) return null; }
+    }
+    if (!sawOpen || depth <= 0) return null;
+    return { kind: depth === 1 ? 'opcode' : 'register' };
+}
+
+// Union of real Scratch variables/lists in scope plus compiler-internal temp vars
+// (for/pyfor iterators, scratchroutine params) active at `position` — a deliberately
+// simple source-level heuristic, since the real forScope/routineScope only exist
+// transiently inside a live compile() call against a parsed AST + VM.
+function collectRegistersInScope(model, position) {
+    const seen = new Set();
+    const registers = [];
+    const add = (name, source) => {
+        if (seen.has(name)) return;
+        seen.add(name);
+        registers.push({ name, source });
+    };
+
+    for (const v of scratchIndex.globalVariables) add(v.name, `Global ${v.type}`);
+    const activeName = getActiveSpriteNameFromDropdown();
+    if (activeName) {
+        for (const v of (scratchIndex.spriteVariables[activeName] ?? [])) add(v.name, `${activeName} ${v.type}`);
+    }
+
+    const src = model.getValue();
+    const offset = model.getOffsetAt(position);
+    const before = src.slice(0, offset);
+    let depth = 0;
+    const scopeStack = []; // { depth, names: [] }
+    // Walk char-by-char tracking brace depth, applying scope entries at the point they occur.
+    for (let i = 0; i < before.length; i++) {
+        const c = before[i];
+        if (c === '{') {
+            // Does a scope-introducing header end right before this brace?
+            const head = before.slice(0, i);
+            const forM = head.match(/\b(?:for|pyfor)\s*\[([^\]]+)\][^{}]*$/);
+            const routineM = head.match(/\bscratchroutine\s+\w+\s*\(([^)]*)\)[^{}]*$/);
+            const names = [];
+            if (forM) names.push(forM[1].trim());
+            if (routineM) {
+                for (const p of routineM[1].split(',')) {
+                    const name = p.trim();
+                    if (name) names.push(name);
+                }
+            }
+            scopeStack.push({ depth, names });
+            depth++;
+        } else if (c === '}') {
+            depth--;
+            while (scopeStack.length && scopeStack[scopeStack.length - 1].depth >= depth) scopeStack.pop();
+        }
+    }
+    for (const frame of scopeStack) {
+        for (const name of frame.names) add(name, 'Loop / routine variable');
+    }
+
+    return registers;
+}
+
+function asmSigFor(opcode) {
+    const schema = ASM_OPCODES[opcode];
+    if (!schema) return null;
+    return {
+        label: `${opcode}(${schema.params.map(p => p.name).join(', ')})`,
+        params: schema.params.map(p => ({ label: p.name })),
+    };
 }
 
 function buildSuggestions(monaco, range, hatRange) {
