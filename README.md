@@ -95,6 +95,7 @@ Blocks are injected into the selected sprite. Variables must already exist in Sc
 - **Hex color literals** — `#ff6600`
 - **Ergonomic aliases** — friendlier names for common operations: `print()`, `step()`, `left()`, `right()`, `front()`, `back()`, `clone()`, `ask()`, `send()`, `append()`, `push()`, `remove()`, `clear()`, and more
 - **Scratchroutines** — named concurrent tasks: `scratchroutine name(params) {}`, launched with `launch`/`await`, cancelled with `cancel`, queried with `isRunning()`, and interrupted with `checkCancel()`
+- **Inline assembly** — `__asm__ volatile(...)` calls raw Scratch opcodes directly, bypassing the friendly alias layer entirely, plus an `unsafe` mode for opcodes we haven't taught the compiler about yet
 - **List aggregates** — `.sum()`, `.min()`, `.max()`, `.count(val)` compile to hidden pre-computation loops
 - **`else if` / `elif` chaining** — flat chaining without visual nesting
 - **Type checking** — linter warns when you pass a variable where a list is expected (or vice versa), before the compiler has to deal with you
@@ -116,6 +117,7 @@ The original 7,200-line monolith of despair has been shattered into beautifully 
 |---|---|
 | `main.js` | The puppet master. Orchestrates the chaos by importing everything and tying the loose ends. |
 | `compiler.js` | Parses your beautiful text into AST, runs the typechecker and linter, and finally spits out raw Scratch blocks. |
+| `asm-opcodes.js` | The `__asm__` schema table — every opcode scratchpiler will vouch for, and exactly what arguments it expects. Everything else is `unsafe`'s problem. |
 | `decompiler.js` | Performs unholy necromancy to pull blocks out of the Scratch VM and stitch them back into readable Scratchpiler text. |
 | `injector.js` | Shoves the compiled AST directly into the VM's memory. It asks no questions and takes no prisoners. |
 | `editor.js` | Handles the Monaco instance, state persistence, project indexing, and the overall lifecycle of the overlay. |
@@ -148,6 +150,7 @@ The original 7,200-line monolith of despair has been shattered into beautifully 
 | [docs/sound.md](docs/sound.md) | Sound functions |
 | [docs/events.md](docs/events.md) | Events and broadcasting |
 | [docs/scratchroutines.md](docs/scratchroutines.md) | Scratchroutines: concurrent tasks with launch, await, cancel, isRunning |
+| [docs/asm.md](docs/asm.md) | Inline assembly: `__asm__ volatile(...)`, registers, strict vs. `unsafe`, opcode coverage |
 | [docs/sensing.md](docs/sensing.md) | Sensing, mouse, keyboard, time |
 | [docs/variables-and-lists.md](docs/variables-and-lists.md) | Variables, lists, dot methods |
 | [docs/math.md](docs/math.md) | Math functions and operators |

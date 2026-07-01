@@ -158,6 +158,8 @@ on flag {
 }
 ```
 
+**One exception:** `__asm__ volatile(...)` uses parentheses, not braces. It's the one construct in this entire language that ignores the rule you just read. See [asm.md](asm.md) before you find out the hard way.
+
 ---
 
 ## Script structure

@@ -357,6 +357,27 @@ Compiles to four blocks: sets `[__dbg_at__]` to `1`, sets `[__dbg_resume__]` to 
 
 ---
 
+## Inline assembly
+
+```
+__asm__ volatile(
+    looks_say("123");            // real opcode name, not the friendly alias
+    motion_movesteps(69);
+)
+
+__asm__ volatile(
+    data_changevariableby(counter, 5);   // bare name = register (variable reference)
+)
+
+__asm__ volatile unsafe(
+    some_opcode_we_dont_know("hi");      // allowed, no correctness guarantee
+)
+```
+
+Uses **parentheses**, not braces — see [asm.md](asm.md) if you just typed `{` and got a wall of errors. Full opcode/register/`unsafe` reference: [docs/asm.md](asm.md).
+
+---
+
 ## Operators
 
 ```

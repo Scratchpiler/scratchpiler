@@ -134,6 +134,12 @@ pyfor [x] in [score] {   // ⚠ Warning: [score] is a variable, not a list
 
 ---
 
+## Inline assembly opcode check
+
+`__asm__ volatile unsafe(...)` blocks get one extra lint pass: any opcode not in the known-schema table is flagged with a yellow warning as you type, even though it still compiles and injects. Without `unsafe` (strict mode, the default), the exact same unknown opcode is a hard compile error instead of a warning — the linter is advisory everywhere else in this language, but here the compiler overrides it on purpose, because there's no schema to safely guess argument wiring from. See [asm.md](asm.md).
+
+---
+
 ## Configuring lint rules
 
 Lint rules can be toggled individually in **Settings** (the gear icon in the sidebar):

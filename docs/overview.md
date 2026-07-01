@@ -144,6 +144,21 @@ Under the hood, `breakpoint` compiles to four blocks: `set [__dbg_at__] to 1` �
 
 ---
 
+## Inline assembly
+
+`__asm__ volatile(...)` skips the friendly alias layer and calls real Scratch opcodes by their actual internal names — `motion_movesteps` instead of `move(10)`. It exists for the same reason C has inline asm: sometimes the abstraction is in the way, or the friendly name you want hasn't been written yet.
+
+```
+__asm__ volatile(
+    looks_say("123");
+    motion_movesteps(69);
+)
+```
+
+Note the parentheses — the one construct in this language that doesn't use `{ }` for its body, a design decision made with full awareness that everyone (including us) would type braces there at least once anyway. Add `unsafe` (`__asm__ volatile unsafe(...)`) to allow opcodes outside the known-schema table, at the cost of any guarantee the resulting block does anything sensible at runtime. See [asm.md](asm.md) for the full, deliberately verbose writeup.
+
+---
+
 ## Custom blocks
 
 Same story as variables. The block definition must exist in Scratch's block palette before you can call it in scratchpiler. Scratchpiler compiles the *implementation* (the `define` body); it resolves the *prototype* (parameter names and IDs) from the live VM.
