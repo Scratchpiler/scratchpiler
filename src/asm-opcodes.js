@@ -551,6 +551,51 @@ export const ASM_OPCODES = {
         ],
     },
 
+    // --- Pen ---
+    'pen_clear': {
+        params: [],
+    },
+    'pen_stamp': {
+        params: [],
+    },
+    'pen_penDown': {
+        params: [],
+    },
+    'pen_penUp': {
+        params: [],
+    },
+    'pen_setPenColorToColor': {
+        params: [
+            { name: 'COLOR', kind: 'input', valueType: 'string' },
+        ],
+    },
+    'pen_setPenSizeTo': {
+        params: [
+            { name: 'SIZE', kind: 'input', valueType: 'number' },
+        ],
+    },
+    'pen_changePenSizeBy': {
+        params: [
+            { name: 'SIZE', kind: 'input', valueType: 'number' },
+        ],
+    },
+    'pen_setPenColorParamTo': {
+        params: [
+            { name: 'COLOR_PARAM', kind: 'input', valueType: 'menu',
+              menuValues: ['color', 'saturation', 'brightness', 'transparency'],
+              menuShadow: { opcode: 'pen_menu_colorParam', field: 'COLOR_PARAM' } },
+            { name: 'VALUE', kind: 'input', valueType: 'number' },
+        ],
+    },
+    'pen_changePenColorParamBy': {
+        params: [
+            { name: 'COLOR_PARAM', kind: 'input', valueType: 'menu',
+              menuValues: ['color', 'saturation', 'brightness', 'transparency'],
+              menuShadow: { opcode: 'pen_menu_colorParam', field: 'COLOR_PARAM' } },
+            { name: 'VALUE', kind: 'input', valueType: 'number' },
+        ],
+    },
+
     // procedures_call excluded — needs a `mutation` object (proccode/argumentids) naming
     // which custom block to invoke, which this flat positional-arg model can't express.
     // Use the language's normal custom-block call syntax instead.

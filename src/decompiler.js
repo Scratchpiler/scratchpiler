@@ -97,6 +97,7 @@ function decompExpr(block, B) {
         case 'text':         return JSON.stringify(String(fieldVal(block, 'TEXT') ?? ''));
         case 'data_variable':return `[${fieldVal(block, 'VARIABLE') ?? ''}]`;
         case 'data_listcontents': return `[${fieldVal(block, 'LIST') ?? ''}]`;
+        case 'colour_picker': return fieldVal(block, 'COLOUR') ?? '#000000';
 
         case 'motion_xposition':  return 'xPos';
         case 'motion_yposition':  return 'yPos';
@@ -316,6 +317,28 @@ function decompStmt(block, B, indent) {
         case 'sensing_askandwait':  return `${I}askAndWait(${decompInput(block,'QUESTION',B,false)})\n`;
         case 'sensing_resettimer':  return `${I}resetTimer()\n`;
         case 'sensing_setdragmode': return `${I}setDragMode("${fieldVal(block,'DRAG_MODE') ?? 'draggable'}")\n`;
+
+        // Pen
+        case 'pen_penDown':  return `${I}penDown()\n`;
+        case 'pen_penUp':    return `${I}penUp()\n`;
+        case 'pen_clear':    return `${I}penClear()\n`;
+        case 'pen_stamp':    return `${I}stamp()\n`;
+        case 'pen_setPenColorToColor':
+            return `${I}setPenColor(${decompInput(block,'COLOR',B,false)})\n`;
+        case 'pen_setPenSizeTo':
+            return `${I}setPenSize(${decompInput(block,'SIZE',B,true)})\n`;
+        case 'pen_changePenSizeBy':
+            return `${I}changePenSize(${decompInput(block,'SIZE',B,true)})\n`;
+        case 'pen_setPenColorParamTo': {
+            const menuId = inpBlockId(block,'COLOR_PARAM');
+            const menu   = menuId && B[menuId];
+            return `${I}setPenColorParam("${fieldVal(menu,'COLOR_PARAM') ?? 'color'}", ${decompInput(block,'VALUE',B,true)})\n`;
+        }
+        case 'pen_changePenColorParamBy': {
+            const menuId = inpBlockId(block,'COLOR_PARAM');
+            const menu   = menuId && B[menuId];
+            return `${I}changePenColorParam("${fieldVal(menu,'COLOR_PARAM') ?? 'color'}", ${decompInput(block,'VALUE',B,true)})\n`;
+        }
 
         // Data – list extras
         case 'data_deletealloflist': return `${I}listDeleteAll([${fieldVal(block,'LIST') ?? ''}])\n`;

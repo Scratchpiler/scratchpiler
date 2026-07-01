@@ -171,7 +171,7 @@ answer.length()         // how long the user's response was
 
 ## Hex color literals
 
-`#rrggbb` hex literals generate Scratch `colour_picker` blocks. These are most useful with the pen extension (not yet implemented in scratchpiler) or anywhere Scratch expects a color value.
+`#rrggbb` hex literals generate Scratch `colour_picker` blocks. These are most useful with the [pen extension](pen.md) (see `setPenColor()`) or anywhere Scratch expects a color value.
 
 ```
 #ff0000    // red

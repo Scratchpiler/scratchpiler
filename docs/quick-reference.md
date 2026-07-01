@@ -232,6 +232,21 @@ size   costumeNum   costumeName
 
 ---
 
+## Pen
+
+```
+penDown()   penUp()             // aliases: down()  up()
+penClear()
+stamp()
+setPenColor(color)               // #hex literal, or a string/expression
+setPenSize(size)
+changePenSize(amount)
+setPenColorParam("param", value)      // color saturation brightness transparency
+changePenColorParam("param", amount)
+```
+
+---
+
 ## Sound
 
 ```
@@ -318,6 +333,10 @@ right(degrees)   → turnRight(degrees)
 front()          → goToFront()
 back()           → goToBack()
 turnTo(degrees)  → setDirection(degrees)
+
+// Pen
+down()           → penDown()
+up()             → penUp()
 
 // Looks / output
 print(msg)       → say(msg)

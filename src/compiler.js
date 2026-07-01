@@ -192,6 +192,16 @@ const CALL_SIGS = {
     changeSoundEffect:    'changeSoundEffect("PITCH" | "PAN LEFT/RIGHT", amount)',
     clearSoundEffects:    'clearSoundEffects()',
     setDragMode:          'setDragMode("draggable" | "not draggable")',
+    // Pen
+    penDown:  'penDown()',
+    penUp:    'penUp()',
+    penClear: 'penClear()',
+    stamp:    'stamp()',
+    setPenColor:          'setPenColor(color)  — #hex literal or string',
+    setPenSize:           'setPenSize(size)',
+    changePenSize:        'changePenSize(amount)',
+    setPenColorParam:     'setPenColorParam("param", value)  — "color"|"saturation"|"brightness"|"transparency"',
+    changePenColorParam:  'changePenColorParam("param", amount)',
     // pyfor
     pyfor:    'pyfor [iterator] in [list] { … }',
     // Ergonomic aliases
@@ -203,6 +213,8 @@ const CALL_SIGS = {
     right:      'right(degrees)  — alias for turnRight()',
     front:      'front()  — alias for goToFront()',
     back:       'back()  — alias for goToBack()',
+    down:       'down()  — alias for penDown()',
+    up:         'up()  — alias for penUp()',
     clone:      'clone()  — alias for createClone("_myself_")',
     stopMe:     'stopMe()  — alias for stopThis()',
     ask:        'ask("question")  — alias for askAndWait()',
@@ -834,6 +846,17 @@ export function parse(tokens) {
         if (v === 'resetTimer')     { args0(ln,cl); return { type: 'ResetTimerStmt', line: ln, col: cl }; }
         if (v === 'setDragMode')    { const [m] = args1(ln,cl); return { type: 'SetDragModeStmt', mode: m, line: ln, col: cl }; }
 
+        // Pen
+        if (v === 'penDown')  { args0(ln,cl); return { type: 'PenDownStmt', line: ln, col: cl }; }
+        if (v === 'penUp')    { args0(ln,cl); return { type: 'PenUpStmt', line: ln, col: cl }; }
+        if (v === 'penClear') { args0(ln,cl); return { type: 'PenClearStmt', line: ln, col: cl }; }
+        if (v === 'stamp')    { args0(ln,cl); return { type: 'PenStampStmt', line: ln, col: cl }; }
+        if (v === 'setPenColor')  { const [c] = args1(ln,cl); return { type: 'SetPenColorStmt', color: c, line: ln, col: cl }; }
+        if (v === 'setPenSize')   { const [n] = args1(ln,cl); return { type: 'SetPenSizeStmt', value: n, line: ln, col: cl }; }
+        if (v === 'changePenSize'){ const [n] = args1(ln,cl); return { type: 'ChangePenSizeStmt', value: n, line: ln, col: cl }; }
+        if (v === 'setPenColorParam')    { const [p,n] = args2(ln,cl); return { type: 'SetPenColorParamStmt', param: p, value: n, line: ln, col: cl }; }
+        if (v === 'changePenColorParam') { const [p,n] = args2(ln,cl); return { type: 'ChangePenColorParamStmt', param: p, amount: n, line: ln, col: cl }; }
+
         // New list ops
         if (v === 'listDeleteAll') { eat(TT.LPAREN); const listName = eat(TT.VAR).value; eat(TT.RPAREN); return { type: 'ListDeleteAllStmt', listName, line: ln, col: cl }; }
 
@@ -901,6 +924,9 @@ export function parse(tokens) {
         // front / back → goToFront / goToBack (layer shortcuts)
         if (v === 'front') { args0(ln,cl); return { type: 'GoToFrontStmt', line: ln, col: cl }; }
         if (v === 'back')  { args0(ln,cl); return { type: 'GoToBackStmt',  line: ln, col: cl }; }
+        // down / up → penDown / penUp (pen shortcuts)
+        if (v === 'down') { args0(ln,cl); return { type: 'PenDownStmt', line: ln, col: cl }; }
+        if (v === 'up')   { args0(ln,cl); return { type: 'PenUpStmt',   line: ln, col: cl }; }
         // clone() → createClone("_myself_") (common case shorthand)
         if (v === 'clone') { args0(ln,cl); return { type: 'CreateCloneStmt', target: { type: 'Str', value: '_myself_', line: ln, col: cl }, line: ln, col: cl }; }
         // stopMe() → stopThis (friendlier stop)
@@ -3055,6 +3081,62 @@ function compile(ast, vm, spriteName) {
                 addBlock({ id, opcode: 'sensing_setdragmode', next: null, parent: parentId,
                     inputs: {}, fields: { DRAG_MODE: { name: 'DRAG_MODE', value: modeVal } },
                     shadow: false, topLevel: false });
+                return id;
+            }
+
+            // Pen
+            case 'PenDownStmt': {
+                addBlock({ id, opcode: 'pen_penDown', next: null, parent: parentId,
+                    inputs: {}, fields: {}, shadow: false, topLevel: false });
+                return id;
+            }
+            case 'PenUpStmt': {
+                addBlock({ id, opcode: 'pen_penUp', next: null, parent: parentId,
+                    inputs: {}, fields: {}, shadow: false, topLevel: false });
+                return id;
+            }
+            case 'PenClearStmt': {
+                addBlock({ id, opcode: 'pen_clear', next: null, parent: parentId,
+                    inputs: {}, fields: {}, shadow: false, topLevel: false });
+                return id;
+            }
+            case 'PenStampStmt': {
+                addBlock({ id, opcode: 'pen_stamp', next: null, parent: parentId,
+                    inputs: {}, fields: {}, shadow: false, topLevel: false });
+                return id;
+            }
+            case 'SetPenColorStmt': {
+                addBlock({ id, opcode: 'pen_setPenColorToColor', next: null, parent: parentId,
+                    inputs: { COLOR: strInput(node.color, id) },
+                    fields: {}, shadow: false, topLevel: false });
+                return id;
+            }
+            case 'SetPenSizeStmt': {
+                addBlock({ id, opcode: 'pen_setPenSizeTo', next: null, parent: parentId,
+                    inputs: { SIZE: numInput(node.value, id) },
+                    fields: {}, shadow: false, topLevel: false });
+                return id;
+            }
+            case 'ChangePenSizeStmt': {
+                addBlock({ id, opcode: 'pen_changePenSizeBy', next: null, parent: parentId,
+                    inputs: { SIZE: numInput(node.value, id) },
+                    fields: {}, shadow: false, topLevel: false });
+                return id;
+            }
+            case 'SetPenColorParamStmt': {
+                const paramVal = node.param.type === 'Str' ? node.param.value : 'color';
+                const menuId = menuBlock('pen_menu_colorParam', 'COLOR_PARAM', paramVal, id);
+                addBlock({ id, opcode: 'pen_setPenColorParamTo', next: null, parent: parentId,
+                    inputs: { COLOR_PARAM: inp(menuId, menuId), VALUE: numInput(node.value, id) },
+                    fields: {}, shadow: false, topLevel: false });
+                return id;
+            }
+            case 'ChangePenColorParamStmt': {
+                const paramVal = node.param.type === 'Str' ? node.param.value : 'color';
+                const menuId = menuBlock('pen_menu_colorParam', 'COLOR_PARAM', paramVal, id);
+                addBlock({ id, opcode: 'pen_changePenColorParamBy', next: null, parent: parentId,
+                    inputs: { COLOR_PARAM: inp(menuId, menuId), VALUE: numInput(node.amount, id) },
+                    fields: {}, shadow: false, topLevel: false });
                 return id;
             }
 

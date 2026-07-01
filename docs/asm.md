@@ -112,13 +112,13 @@ Typing an unrecognized opcode inside `unsafe` doesn't hard-fail the compile — 
 
 ## Opcode coverage
 
-The known-opcode table covers roughly 90 of Scratch's core motion/looks/sound/event/control/sensing/operator/data opcodes — the ones with call sites already wired up elsewhere in the compiler, so their input/field key names are guaranteed correct rather than guessed. It lives in `src/asm-opcodes.js`, in case you want to know exactly what's covered before reaching for `unsafe`.
+The known-opcode table covers roughly 100 of Scratch's core motion/looks/sound/event/control/sensing/operator/data/pen opcodes — the ones with call sites already wired up elsewhere in the compiler, so their input/field key names are guaranteed correct rather than guessed. It lives in `src/asm-opcodes.js`, in case you want to know exactly what's covered before reaching for `unsafe`.
 
 **Deliberately excluded**, even in strict mode's table (and not something `unsafe` fixes, since these are structural, not a schema gap):
 
 - **Hat/event blocks** (`event_whenflagclicked`, `event_whenkeypressed`, and friends) — these must always sit at the top of a script with no parent. Wiring one into the middle of a stack via `__asm__` doesn't crash anything, but it also doesn't do anything; it just sits there, inert, attached to a block that will never trigger it.
 - **`procedures_call`** — calling a custom block requires a `mutation` object naming exactly which block and what its parameters are. That's structured metadata a flat, positional-argument opcode call has no way to express. Use the language's normal custom-block call syntax for those.
-- **Extension opcodes** (pen, music, video sensing, text-to-speech, translate, ...) — not in scope at all yet, `unsafe` or not.
+- **Extension opcodes other than pen** (music, video sensing, text-to-speech, translate, ...) — not in scope at all yet, `unsafe` or not. Pen is now covered in the schema table above, same as every other core category.
 
 ---
 

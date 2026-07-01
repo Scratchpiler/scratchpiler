@@ -45,10 +45,15 @@ export const KEYWORDS = [
     'setVolume','changeVolume',
     // Sensing extras
     'askAndWait','resetTimer',
+    // Pen
+    'penDown','penUp','penClear','stamp',
+    'setPenColor','setPenSize','changePenSize',
+    'setPenColorParam','changePenColorParam',
     // Ergonomic aliases
     'print','println','step','forward','left','right',
     'append','push','pop','remove','insert','replace','clear',
     'front','back','stopMe','ask','send','sendAndWait',
+    'down','up',
     // else-if alias
     'elif',
     // Scratchroutines

@@ -93,6 +93,7 @@ Blocks are injected into the selected sprite. Variables must already exist in Sc
 - **Compound assignment** — `[x] += 1`, `[x] *= 2`, `[x]++`, `[x]--`
 - **Custom blocks** — `define myBlock(param1, param2) { ... }`
 - **Hex color literals** — `#ff6600`
+- **Pen extension** — `penDown()`, `penUp()`, `penClear()`, `stamp()`, `setPenColor(#hex)`, `setPenSize()`, `changePenSize()`, `setPenColorParam()`, `changePenColorParam()`
 - **Ergonomic aliases** — friendlier names for common operations: `print()`, `step()`, `left()`, `right()`, `front()`, `back()`, `clone()`, `ask()`, `send()`, `append()`, `push()`, `remove()`, `clear()`, and more
 - **Scratchroutines** — named concurrent tasks: `scratchroutine name(params) {}`, launched with `launch`/`await`, cancelled with `cancel`, queried with `isRunning()`, and interrupted with `checkCancel()`
 - **Inline assembly** — `__asm__ volatile(...)` calls raw Scratch opcodes directly, bypassing the friendly alias layer entirely, plus an `unsafe` mode for opcodes we haven't taught the compiler about yet
@@ -147,6 +148,7 @@ The original 7,200-line monolith of despair has been shattered into beautifully 
 | [docs/control-flow.md](docs/control-flow.md) | Hat blocks, loops, conditionals |
 | [docs/motion.md](docs/motion.md) | Motion functions and reporters |
 | [docs/looks.md](docs/looks.md) | Looks, costumes, effects |
+| [docs/pen.md](docs/pen.md) | Pen: drawing, stamping, color and size |
 | [docs/sound.md](docs/sound.md) | Sound functions |
 | [docs/events.md](docs/events.md) | Events and broadcasting |
 | [docs/scratchroutines.md](docs/scratchroutines.md) | Scratchroutines: concurrent tasks with launch, await, cancel, isRunning |

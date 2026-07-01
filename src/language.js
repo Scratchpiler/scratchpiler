@@ -252,6 +252,7 @@ export function registerLanguage(monaco) {
                 const BACKDROPS = scratchIndex.stage.backdrops || [];
                 const EFFECTS   = ['color','fisheye','whirl','pixelate','mosaic','brightness','ghost'];
                 const ROT_STYLES = ["all around", "left-right", "don't rotate"];
+                const PEN_COLOR_PARAMS = ['color','saturation','brightness','transparency'];
                 const TIME_UNITS = ['year','month','date','day','hour','minute','second'];
 
                 // Match the context before the opening quote
@@ -300,6 +301,9 @@ export function registerLanguage(monaco) {
                 }
                 if (/\bsetDragMode\s*\($/.test(beforeQuote)) {
                     return { suggestions: strItems(['draggable', 'not draggable'], CIKs.Enum, 'Drag mode') };
+                }
+                if (/\b(?:setPenColorParam|changePenColorParam)\s*\($/.test(beforeQuote)) {
+                    return { suggestions: strItems(PEN_COLOR_PARAMS, CIKs.Enum, 'Pen color parameter') };
                 }
                 if (/\bcurrentTime\s*\($/.test(beforeQuote)) {
                     return { suggestions: strItems(TIME_UNITS, CIKs.Enum, 'Time unit') };
@@ -459,6 +463,16 @@ export function registerLanguage(monaco) {
         'changeSoundEffect':   { label: 'changeSoundEffect("effect", amount)', params: [{ label: '"effect"', documentation: '"PITCH" or "PAN LEFT/RIGHT"' }, { label: 'amount' }] },
         'clearSoundEffects':   { label: 'clearSoundEffects()', params: [] },
         'setDragMode':         { label: 'setDragMode("mode")', params: [{ label: '"mode"', documentation: '"draggable" or "not draggable"' }] },
+        // Pen
+        'penDown':  { label: 'penDown()', params: [] },
+        'penUp':    { label: 'penUp()', params: [] },
+        'penClear': { label: 'penClear()  — erase all pen marks and stamps', params: [] },
+        'stamp':    { label: 'stamp()  — stamp the current costume onto the canvas', params: [] },
+        'setPenColor':         { label: 'setPenColor(color)', params: [{ label: 'color', documentation: '#rrggbb hex literal, or a string/expression' }] },
+        'setPenSize':          { label: 'setPenSize(size)', params: [{ label: 'size' }] },
+        'changePenSize':       { label: 'changePenSize(amount)', params: [{ label: 'amount' }] },
+        'setPenColorParam':    { label: 'setPenColorParam("param", value)', params: [{ label: '"param"', documentation: 'color, saturation, brightness, transparency' }, { label: 'value' }] },
+        'changePenColorParam': { label: 'changePenColorParam("param", amount)', params: [{ label: '"param"', documentation: 'color, saturation, brightness, transparency' }, { label: 'amount' }] },
         // Ergonomic aliases
         'print':      { label: 'print(message)  — alias for say()', params: [{ label: 'message' }] },
         'println':    { label: 'println(message)  — alias for say()', params: [{ label: 'message' }] },
@@ -468,6 +482,8 @@ export function registerLanguage(monaco) {
         'right':      { label: 'right(degrees)  — alias for turnRight()', params: [{ label: 'degrees' }] },
         'front':      { label: 'front()  — bring to front layer (alias for goToFront)', params: [] },
         'back':       { label: 'back()  — send to back layer (alias for goToBack)', params: [] },
+        'down':       { label: 'down()  — put the pen down (alias for penDown)', params: [] },
+        'up':         { label: 'up()  — lift the pen up (alias for penUp)', params: [] },
         'clone':      { label: 'clone()  — create clone of self (alias for createClone("_myself_"))', params: [] },
         'stopMe':     { label: 'stopMe()  — stop this script (alias for stopThis)', params: [] },
         'ask':        { label: 'ask("question")  — alias for askAndWait()', params: [{ label: '"question"' }] },
@@ -830,6 +846,16 @@ function buildSuggestions(monaco, range, hatRange) {
     push('clearSoundEffects()',    CIK.Function, 'Sound',    'clearSoundEffects()');
     // Sensing extras
     push('setDragMode()',          CIK.Function, 'Sensing',  'setDragMode("${1|draggable,not draggable|}")');
+    // Pen
+    push('penDown()',             CIK.Function, 'Pen', 'penDown()');
+    push('penUp()',               CIK.Function, 'Pen', 'penUp()');
+    push('penClear()',            CIK.Function, 'Pen', 'penClear()');
+    push('stamp()',               CIK.Function, 'Pen', 'stamp()');
+    push('setPenColor()',         CIK.Function, 'Pen', 'setPenColor(#$0)');
+    push('setPenSize()',          CIK.Function, 'Pen', 'setPenSize($0)');
+    push('changePenSize()',       CIK.Function, 'Pen', 'changePenSize($0)');
+    push('setPenColorParam()',    CIK.Function, 'Pen', 'setPenColorParam("${1|color,saturation,brightness,transparency|}", $0)');
+    push('changePenColorParam()', CIK.Function, 'Pen', 'changePenColorParam("${1|color,saturation,brightness,transparency|}", $0)');
     // Hat blocks for greaterThan
     pushHat('on timer > n {}',    'on timer > ${1:10} {\n\t$0\n}');
     pushHat('on loudness > n {}', 'on loudness > ${1:10} {\n\t$0\n}');
@@ -925,6 +951,10 @@ function buildSuggestions(monaco, range, hatRange) {
          'Bring sprite to the front layer — alias for `goToFront()`');
     push('back()',     CIK.Function, 'Aliases · goToBack()',     'back()',
          'Send sprite to the back layer — alias for `goToBack()`');
+    push('down()',      CIK.Function, 'Aliases · penDown()',      'down()',
+         'Put the pen down — alias for `penDown()`');
+    push('up()',        CIK.Function, 'Aliases · penUp()',        'up()',
+         'Lift the pen up — alias for `penUp()`');
     push('clone()',    CIK.Function, 'Aliases · createClone()',  'clone()',
          'Create a clone of this sprite — alias for `createClone("_myself_")`');
     push('stopMe()',   CIK.Function, 'Aliases · stopThis()',     'stopMe()',
