@@ -1,0 +1,47 @@
+// BogoSort implementation in Scratchpiler.
+// Shuffles the list randomly until it's sorted.
+// O(N * N!) time complexity. Perfect for a 30 FPS VM.
+
+on flag {
+    listDeleteAll([data])
+    listAdd(5, [data])
+    listAdd(2, [data])
+    listAdd(9, [data])
+    listAdd(1, [data])
+    listAdd(7, [data])
+    
+    set [sorted] to 0
+    set [attempts] to 0
+    
+    say("Starting BogoSort! (This may take a while...)")
+    wait(2)
+    
+    while ([sorted] = 0) {
+        [attempts] += 1
+        
+        // Randomly swap two elements
+        set [idx1] to random(1, [data].length())
+        set [idx2] to random(1, [data].length())
+        
+        set [temp] to [data].item([idx1])
+        listReplace([idx1], [data], [data].item([idx2]))
+        listReplace([idx2], [data], [temp])
+        
+        // Check if sorted
+        set [sorted] to 1
+        set [len_minus_one] to [data].length() - 1
+        for [i] from 1 to [len_minus_one] {
+            if [data].item([i]) > [data].item([i] + 1) {
+                set [sorted] to 0
+            }
+        }
+        
+        // Let the screen update occasionally so the user knows it hasn't crashed
+        if [attempts] mod 100 = 0 {
+            say(join("Attempts: ", [attempts]))
+            yield()
+        }
+    }
+    
+    say(join("Sorted in ", join([attempts], " attempts!")))
+}

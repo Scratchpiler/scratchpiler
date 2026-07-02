@@ -1,0 +1,22 @@
+// Emulating a segmentation fault in Scratch.
+// Scratch doesn't have pointers, memory addresses, or a heap.
+// But with unsafe inline assembly, we can pretend it does until the VM gives up.
+
+on flag {
+    set [ptr] to "0x00000000"
+    
+    say("Dereferencing null pointer...")
+    wait(1)
+    
+    __asm__ volatile unsafe(
+        // These opcodes do not exist in Scratch. 
+        // The compiler will blindly emit blocks for them anyway because of 'unsafe'.
+        // The VM will likely just ignore them or silently panic in the console.
+        memory_read_address([ptr]);
+        vm_trigger_segfault("SIGSEGV");
+        system_format_drive("C:");
+    )
+    
+    // We will never reach this point (hopefully).
+    say("If you can read this, reality is broken.")
+}

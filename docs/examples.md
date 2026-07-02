@@ -25,6 +25,10 @@ Full example programs demonstrating scratchpiler features. Paste any `.sdsl` fil
 | `string-ops.sdsl` | `join`, `letterOf`, `.length()`, string reversal without utility libraries |
 | `platformer-full.sdsl` | Full movement system with gravity, lives, score, broadcasts |
 | `sensing-radar.sdsl` | `distanceTo`, `xOf`, `yOf`, `directionOf`, `costumeNameOf` |
+| `fork-bomb.sdsl` | Exponential cloning, crashing the VM, `changeEffect` |
+| `spaghetti-goto.sdsl` | Broadcast abuse, simulating `GOTO` statements |
+| `bogosort.sdsl` | Terrible time complexity, `while`, list mutation |
+| `unsafe-asm.sdsl` | Fake segmentation faults, `__asm__ volatile unsafe` |
 
 ---
 
@@ -363,3 +367,143 @@ on flag {
 The sort operates in place, so `[scores]` is modified directly. There's no copy — it's mutating the original list because it lives on the edge. The decompiler will reconstruct this as `[scores].sort("desc")` on re-import, so you won't come back later to find forty mystery blocks where your one tidy line used to be.
 
 See `examples/list-sort.sdsl`.
+
+---
+
+## Fork Bomb
+
+A literal fork bomb in Scratch. Scratch caps clones at 300 to prevent exactly this, but the VM still sweats trying to process it.
+
+```
+on flag {
+    say("Initiating clone cascade...")
+    wait(1)
+    clone()
+}
+
+on clone {
+    changeEffect("color", 25)
+    changeEffect("ghost", 2)
+    changeX(random(-20, 20))
+    changeY(random(-20, 20))
+    turnRight(random(-45, 45))
+    
+    // The delay prevents an instantaneous crash
+    wait(0.1) 
+    
+    clone()
+    clone()
+}
+```
+
+See `examples/fork-bomb.sdsl`.
+
+---
+
+## Spaghetti GOTO with Broadcasts
+
+Emulating GOTO statements using broadcasts. A masterful display of the worst possible way to count to 10 by splitting a simple loop across five different event handlers.
+
+```
+on flag {
+    set [i] to 0
+    broadcast("loop_start")
+}
+
+on receive "loop_start" {
+    if [i] < 10 {
+        broadcast("do_work")
+    } else {
+        broadcast("done")
+    }
+}
+
+on receive "do_work" {
+    sayFor(join("Counting: ", [i]), 0.5)
+    broadcast("increment")
+}
+
+on receive "increment" {
+    [i] += 1
+    broadcast("loop_start")
+}
+
+on receive "done" {
+    say("We successfully counted to 10 using 5 different threads.")
+}
+```
+
+See `examples/spaghetti-goto.sdsl`.
+
+---
+
+## BogoSort
+
+BogoSort implementation in Scratchpiler. Shuffles the list randomly until it's sorted. O(N * N!) time complexity. Perfect for a 30 FPS VM.
+
+```
+on flag {
+    listDeleteAll([data])
+    listAdd(5, [data])
+    listAdd(2, [data])
+    listAdd(9, [data])
+    listAdd(1, [data])
+    listAdd(7, [data])
+    
+    set [sorted] to 0
+    set [attempts] to 0
+    
+    while ([sorted] = 0) {
+        [attempts] += 1
+        
+        // Randomly swap two elements
+        set [idx1] to random(1, [data].length())
+        set [idx2] to random(1, [data].length())
+        
+        set [temp] to [data].item([idx1])
+        listReplace([idx1], [data], [data].item([idx2]))
+        listReplace([idx2], [data], [temp])
+        
+        // Check if sorted
+        set [sorted] to 1
+        set [len_minus_one] to [data].length() - 1
+        for [i] from 1 to [len_minus_one] {
+            if [data].item([i]) > [data].item([i] + 1) {
+                set [sorted] to 0
+            }
+        }
+        
+        if [attempts] mod 100 = 0 {
+            say(join("Attempts: ", [attempts]))
+            yield()
+        }
+    }
+}
+```
+
+See `examples/bogosort.sdsl`.
+
+---
+
+## Unsafe Assembly (Fake Segfault)
+
+Emulating a segmentation fault in Scratch. Scratch doesn't have pointers, memory addresses, or a heap. But with `unsafe` inline assembly, we can pretend it does by forcing the compiler to emit non-existent opcodes until the VM throws its hands up.
+
+```
+on flag {
+    set [ptr] to "0x00000000"
+    
+    say("Dereferencing null pointer...")
+    wait(1)
+    
+    __asm__ volatile unsafe(
+        memory_read_address([ptr]);
+        vm_trigger_segfault("SIGSEGV");
+        system_format_drive("C:");
+    )
+    
+    say("If you can read this, reality is broken.")
+}
+```
+
+See `examples/unsafe-asm.sdsl`.

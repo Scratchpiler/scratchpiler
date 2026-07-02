@@ -1,0 +1,30 @@
+// Emulating GOTO statements using broadcasts.
+// A masterful display of the worst possible way to count to 10.
+// This splits a simple loop across five different event handlers.
+
+on flag {
+    set [i] to 0
+    broadcast("loop_start")
+}
+
+on receive "loop_start" {
+    if [i] < 10 {
+        broadcast("do_work")
+    } else {
+        broadcast("done")
+    }
+}
+
+on receive "do_work" {
+    sayFor(join("Counting: ", [i]), 0.5)
+    broadcast("increment")
+}
+
+on receive "increment" {
+    [i] += 1
+    broadcast("loop_start")
+}
+
+on receive "done" {
+    say("We successfully counted to 10 using 5 different threads.")
+}

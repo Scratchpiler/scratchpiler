@@ -1,0 +1,24 @@
+// A literal fork bomb in Scratch.
+// Scratch caps clones at 300 to prevent exactly this,
+// but the VM still sweats trying to process it.
+
+on flag {
+    say("Initiating clone cascade...")
+    wait(1)
+    clone()
+}
+
+on clone {
+    changeEffect("color", 25)
+    changeEffect("ghost", 2)
+    changeX(random(-20, 20))
+    changeY(random(-20, 20))
+    turnRight(random(-45, 45))
+    
+    // The delay prevents an instantaneous crash, 
+    // replacing it with a dramatic, slow-motion freeze.
+    wait(0.1) 
+    
+    clone()
+    clone()
+}
