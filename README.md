@@ -113,7 +113,7 @@ Blocks are injected into the selected sprite. Variables must already exist in Sc
 
 ## Source Architecture
 
-The original 7,200-line monolith of despair has been shattered into beautifully decoupled modules. Because staring at a single file until your eyes bleed is no way to live.
+The original 7,200-line monolith of despair has been shattered into beautifully decoupled modules. Because staring at a single file until your eyes bleed is no way to live. Now the compiled artifact is 12,000 lines and counting.
 
 | Module | Purpose |
 |---|---|
