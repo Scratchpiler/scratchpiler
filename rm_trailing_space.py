@@ -1,4 +1,5 @@
-filename = 'scratchpiler.user.js'
+import os
+from pathlib import Path
 
 def clean_and_count_trailing_whitespace(file_path):
     try:
@@ -21,13 +22,26 @@ def clean_and_count_trailing_whitespace(file_path):
                 # Write back with a single newline
                 f.write(cleaned_line + '\n')
                 
-        print(f"✅ Successfully cleaned '{file_path}'.")
-        print(f"🧹 Total trailing whitespaces removed: {total_removed}")
+        if total_removed > 0:
+            print(f"✅ Successfully cleaned '{file_path}'.")
+            print(f"🧹 Trailing whitespaces removed: {total_removed}")
+        return total_removed
         
-    except FileNotFoundError:
-        print(f"❌ Error: '{file_path}' was not found in the current directory.")
+    except UnicodeDecodeError:
+        pass # Skip non-utf-8 text files
     except Exception as e:
-        print(f"❌ An error occurred: {e}")
+        print(f"❌ An error occurred processing {file_path}: {e}")
+    return 0
 
 if __name__ == '__main__':
-    clean_and_count_trailing_whitespace(filename)
+    total_removed = 0
+    src_dir = Path('src')
+    
+    if src_dir.is_dir():
+        for file_path in src_dir.rglob('*'):
+            if file_path.is_file():
+                total_removed += clean_and_count_trailing_whitespace(file_path)
+        
+        print(f"\n🎉 Total trailing whitespaces removed across '{src_dir}': {total_removed}")
+    else:
+        print(f"❌ Error: '{src_dir}' directory was not found in the current directory.")
