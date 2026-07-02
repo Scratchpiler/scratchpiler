@@ -1241,7 +1241,7 @@ export function lint(ast) {
                 if (stmt.mode === 'unsafe') {
                     for (const s of stmt.statements) {
                         if (!ASM_OPCODES[s.opcode]) {
-                            warn(s, `__asm__ volatile unsafe: opcode \`${s.opcode}\` is not in the known schema table — argument wiring is a best-effort guess and may not execute correctly.`);
+                            warn(s, `__asm__ volatile unsafe: opcode \`${s.opcode}\` is not in the known schema table — argument wiring is a best-effort guess and may not execute correctly. It might even crash certain clients or cause a loading loop.`);
                         }
                     }
                 }
