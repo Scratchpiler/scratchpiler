@@ -243,6 +243,11 @@ setPenSize(size)
 changePenSize(amount)
 setPenColorParam("param", value)      // color saturation brightness transparency
 changePenColorParam("param", amount)
+
+// same commands, pen.* namespaced form:
+pen.down()   pen.up()   pen.clear()   pen.stamp()
+pen.setColor(color)   pen.setSize(size)   pen.changeSize(amount)
+pen.setColorParam("param", value)   pen.changeColorParam("param", amount)
 ```
 
 ---

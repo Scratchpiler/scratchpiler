@@ -2,6 +2,28 @@
 
 Draws permanent-ish trails and stamps onto the Stage's canvas layer, underneath every sprite. Requires the Pen extension to be added to the project in the Scratch editor first — scratchpiler happily compiles `penDown()` either way, but nothing will actually draw until Scratch itself knows the pen blocks exist.
 
+Every pen command below also has a `pen.` namespaced form — `penDown()` and `pen.down()` compile to the exact same thing, so use whichever reads better:
+
+```
+pen.down()
+pen.setColor(#ff0000)
+pen.setSize(5)
+pen.stamp()
+pen.up()
+```
+
+| Flat form | `pen.` form |
+| --- | --- |
+| `penDown()` | `pen.down()` |
+| `penUp()` | `pen.up()` |
+| `penClear()` | `pen.clear()` |
+| `stamp()` | `pen.stamp()` |
+| `setPenColor(color)` | `pen.setColor(color)` |
+| `setPenSize(size)` | `pen.setSize(size)` |
+| `changePenSize(amount)` | `pen.changeSize(amount)` |
+| `setPenColorParam("param", value)` | `pen.setColorParam("param", value)` |
+| `changePenColorParam("param", amount)` | `pen.changeColorParam("param", amount)` |
+
 ---
 
 ## Drawing state

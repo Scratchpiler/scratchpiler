@@ -686,6 +686,37 @@ export function parse(tokens) {
                 method, args, line: t.line, col: t.col };
         }
 
+        // Namespaced pen commands: pen.down(), pen.setColor(...), etc.
+        if (t.type === TT.IDENT && v === 'pen' && tokens[pos+1]?.type === TT.DOT) {
+            pos += 2; // consume 'pen' and '.'
+            const mTok = peek();
+            // Method names may collide with reserved keywords (down/up/clear/stamp/setSize/changeSize),
+            // whose tokens carry the keyword itself as `type` rather than TT.IDENT.
+            const isWordTok = mTok.type === TT.IDENT || KW_SET.has(mTok.value);
+            const method = isWordTok ? mTok.value : '';
+            if (isWordTok) pos++;
+            const PEN_METHODS = {
+                down:             () => { args0(t.line, t.col); return { type: 'PenDownStmt', line: t.line, col: t.col }; },
+                up:               () => { args0(t.line, t.col); return { type: 'PenUpStmt', line: t.line, col: t.col }; },
+                clear:            () => { args0(t.line, t.col); return { type: 'PenClearStmt', line: t.line, col: t.col }; },
+                stamp:            () => { args0(t.line, t.col); return { type: 'PenStampStmt', line: t.line, col: t.col }; },
+                setColor:         () => { const [c]   = args1(t.line, t.col); return { type: 'SetPenColorStmt', color: c, line: t.line, col: t.col }; },
+                setSize:          () => { const [n]   = args1(t.line, t.col); return { type: 'SetPenSizeStmt', value: n, line: t.line, col: t.col }; },
+                changeSize:       () => { const [n]   = args1(t.line, t.col); return { type: 'ChangePenSizeStmt', value: n, line: t.line, col: t.col }; },
+                setColorParam:    () => { const [p,n] = args2(t.line, t.col); return { type: 'SetPenColorParamStmt', param: p, value: n, line: t.line, col: t.col }; },
+                changeColorParam: () => { const [p,n] = args2(t.line, t.col); return { type: 'ChangePenColorParamStmt', param: p, amount: n, line: t.line, col: t.col }; },
+            };
+            if (PEN_METHODS[method]) return PEN_METHODS[method]();
+            const known = Object.keys(PEN_METHODS);
+            const similar = fuzzyMatch(method, known);
+            const hint = similar.length
+                ? `  Did you mean: ${similar.map(k => `pen.${k}()`).join('  or  ')}?`
+                : `  Known pen.* methods: ${known.map(k => `pen.${k}()`).join(', ')}`;
+            errors.push({ line: mTok.line || t.line, col: mTok.col || t.col, len: method.length || 1,
+                message: `Unknown method \`pen.${method}()\`.${hint}` });
+            return { type: 'UnknownStmt', value: `pen.${method}`, line: t.line, col: t.col };
+        }
+
         // Increment / decrement: [var]++ or [var]--
         if (t.type === TT.VAR) {
             const n1 = tokens[pos+1], n2 = tokens[pos+2];

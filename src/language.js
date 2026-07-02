@@ -178,6 +178,31 @@ export function registerLanguage(monaco) {
                 };
             }
 
+            // Dot-method completions after pen.
+            if (linePrefix.endsWith('.') && /\bpen\.$/.test(linePrefix)) {
+                const dotRange = { ...range, startColumn: word.startColumn };
+                const CIKd = monaco.languages.CompletionItemKind;
+                const PEN_DOT_METHODS = [
+                    { label: 'down()',             insertText: 'down()',            detail: 'Pen · penDown()' },
+                    { label: 'up()',                insertText: 'up()',              detail: 'Pen · penUp()' },
+                    { label: 'clear()',             insertText: 'clear()',           detail: 'Pen · penClear() — erase all pen marks and stamps' },
+                    { label: 'stamp()',             insertText: 'stamp()',           detail: 'Pen · stamp()' },
+                    { label: 'setColor(color)',     insertText: 'setColor(#$0)',     detail: 'Pen · setPenColor(color)' },
+                    { label: 'setSize(size)',       insertText: 'setSize($0)',       detail: 'Pen · setPenSize(size)' },
+                    { label: 'changeSize(amount)',  insertText: 'changeSize($0)',    detail: 'Pen · changePenSize(amount)' },
+                    { label: 'setColorParam("param", value)', insertText: 'setColorParam("${1|color,saturation,brightness,transparency|}", $0)', detail: 'Pen · setPenColorParam(param, value)' },
+                    { label: 'changeColorParam("param", amount)', insertText: 'changeColorParam("${1|color,saturation,brightness,transparency|}", $0)', detail: 'Pen · changePenColorParam(param, amount)' },
+                ];
+                return {
+                    suggestions: PEN_DOT_METHODS.map(m => ({
+                        label: m.label, kind: CIKd.Method, detail: m.detail,
+                        insertText: m.insertText,
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        range: dotRange,
+                    })),
+                };
+            }
+
             // context aware completions (strings)
             // Detect if cursor is inside an unclosed string literal and
             // return only the appropriate completions for that argument slot.
@@ -302,7 +327,7 @@ export function registerLanguage(monaco) {
                 if (/\bsetDragMode\s*\($/.test(beforeQuote)) {
                     return { suggestions: strItems(['draggable', 'not draggable'], CIKs.Enum, 'Drag mode') };
                 }
-                if (/\b(?:setPenColorParam|changePenColorParam)\s*\($/.test(beforeQuote)) {
+                if (/\b(?:setPenColorParam|changePenColorParam|setColorParam|changeColorParam)\s*\($/.test(beforeQuote)) {
                     return { suggestions: strItems(PEN_COLOR_PARAMS, CIKs.Enum, 'Pen color parameter') };
                 }
                 if (/\bcurrentTime\s*\($/.test(beforeQuote)) {
@@ -527,6 +552,20 @@ export function registerLanguage(monaco) {
         'count': { label: '[list].count(value)  — how many items equal value', params: [{ label: 'value', documentation: 'Value to count' }] },
     };
 
+    // pen.method(...) signatures — kept separate from SIG_DB because names like
+    // setSize/changeSize/clear/stamp already mean something else at the top level.
+    const PEN_DOT_SIG = {
+        down:             SIG_DB['penDown'],
+        up:               SIG_DB['penUp'],
+        clear:            { label: 'pen.clear()  — erase all pen marks and stamps', params: [] },
+        stamp:            { label: 'pen.stamp()  — stamp the current costume onto the canvas', params: [] },
+        setColor:         { label: 'pen.setColor(color)', params: [{ label: 'color', documentation: '#rrggbb hex literal, or a string/expression' }] },
+        setSize:          { label: 'pen.setSize(size)', params: [{ label: 'size' }] },
+        changeSize:       { label: 'pen.changeSize(amount)', params: [{ label: 'amount' }] },
+        setColorParam:    { label: 'pen.setColorParam("param", value)', params: [{ label: '"param"', documentation: 'color, saturation, brightness, transparency' }, { label: 'value' }] },
+        changeColorParam: { label: 'pen.changeColorParam("param", amount)', params: [{ label: '"param"', documentation: 'color, saturation, brightness, transparency' }, { label: 'amount' }] },
+    };
+
     const KEYWORD_RE = /\b(wait until|repeat until|if|while|repeat|for)\s*$/;
 
     monaco.languages.registerSignatureHelpProvider(LANG_ID, {
@@ -540,6 +579,16 @@ export function registerLanguage(monaco) {
             const dotM = before.match(/\[([^\]]+)\]\.(\w+)\s*\([^)]*$/);
             if (dotM) {
                 const sig = SIG_DB[dotM[2]];
+                if (sig) {
+                    const commas = (before.slice(before.lastIndexOf('(') + 1).match(/,/g) || []).length;
+                    return mkSig(sig, commas);
+                }
+            }
+
+            // Dot method: pen.method(
+            const penM = before.match(/\bpen\.(\w+)\s*\([^)]*$/);
+            if (penM) {
+                const sig = PEN_DOT_SIG[penM[1]];
                 if (sig) {
                     const commas = (before.slice(before.lastIndexOf('(') + 1).match(/,/g) || []).length;
                     return mkSig(sig, commas);
@@ -585,7 +634,8 @@ export function registerLanguage(monaco) {
         provideHover(model, position) {
             const word = model.getWordAtPosition(position);
             if (!word) return null;
-            const sig = SIG_DB[word.word];
+            const linePrefix = model.getLineContent(position.lineNumber).substring(0, word.startColumn - 1);
+            const sig = /\bpen\.$/.test(linePrefix) ? PEN_DOT_SIG[word.word] : SIG_DB[word.word];
             if (!sig) return null;
             return {
                 range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
@@ -856,6 +906,25 @@ function buildSuggestions(monaco, range, hatRange) {
     push('changePenSize()',       CIK.Function, 'Pen', 'changePenSize($0)');
     push('setPenColorParam()',    CIK.Function, 'Pen', 'setPenColorParam("${1|color,saturation,brightness,transparency|}", $0)');
     push('changePenColorParam()', CIK.Function, 'Pen', 'changePenColorParam("${1|color,saturation,brightness,transparency|}", $0)');
+    // Pen · dot-namespace aliases
+    push('pen.down()',             CIK.Function, 'Aliases · penDown()',             'pen.down()',
+         'Put the pen down — alias for `penDown()`');
+    push('pen.up()',               CIK.Function, 'Aliases · penUp()',               'pen.up()',
+         'Lift the pen up — alias for `penUp()`');
+    push('pen.clear()',            CIK.Function, 'Aliases · penClear()',            'pen.clear()',
+         'Erase all pen marks and stamps — alias for `penClear()`');
+    push('pen.stamp()',            CIK.Function, 'Aliases · stamp()',               'pen.stamp()',
+         'Stamp the current costume onto the canvas — alias for `stamp()`');
+    push('pen.setColor()',         CIK.Function, 'Aliases · setPenColor()',         'pen.setColor(#$0)',
+         'Set the pen color — alias for `setPenColor(color)`');
+    push('pen.setSize()',          CIK.Function, 'Aliases · setPenSize()',          'pen.setSize($0)',
+         'Set the pen thickness — alias for `setPenSize(size)`');
+    push('pen.changeSize()',       CIK.Function, 'Aliases · changePenSize()',       'pen.changeSize($0)',
+         'Adjust the pen thickness — alias for `changePenSize(amount)`');
+    push('pen.setColorParam()',    CIK.Function, 'Aliases · setPenColorParam()',    'pen.setColorParam("${1|color,saturation,brightness,transparency|}", $0)',
+         'Set one pen color channel — alias for `setPenColorParam(param, value)`');
+    push('pen.changeColorParam()', CIK.Function, 'Aliases · changePenColorParam()', 'pen.changeColorParam("${1|color,saturation,brightness,transparency|}", $0)',
+         'Adjust one pen color channel — alias for `changePenColorParam(param, amount)`');
     // Hat blocks for greaterThan
     pushHat('on timer > n {}',    'on timer > ${1:10} {\n\t$0\n}');
     pushHat('on loudness > n {}', 'on loudness > ${1:10} {\n\t$0\n}');
