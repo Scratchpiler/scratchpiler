@@ -43,7 +43,7 @@ export function tokenize(src) {
             let s = '';
             while (i < src.length && src[i] !== '"') s += advance();
             if (src[i] === '"') advance();
-            tokens.push({ type: TT.STR, value: s, line: startLine, col: startCol });
+            tokens.push({ type: TT.STR, value: s, line: startLine, col: startCol, endLine: line, endCol: col });
             continue;
         }
 
@@ -53,7 +53,7 @@ export function tokenize(src) {
             let s = '';
             while (i < src.length && src[i] !== ']') s += advance();
             if (src[i] === ']') advance();
-            tokens.push({ type: TT.VAR, value: s.trim(), line: startLine, col: startCol });
+            tokens.push({ type: TT.VAR, value: s.trim(), line: startLine, col: startCol, endLine: line, endCol: col });
             continue;
         }
 
@@ -61,7 +61,7 @@ export function tokenize(src) {
         if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i+1]))) {
             let s = '';
             while (i < src.length && /[0-9.]/.test(src[i])) s += advance();
-            tokens.push({ type: TT.NUM, value: parseFloat(s), line: startLine, col: startCol });
+            tokens.push({ type: TT.NUM, value: parseFloat(s), line: startLine, col: startCol, endLine: line, endCol: col });
             continue;
         }
 
@@ -69,7 +69,7 @@ export function tokenize(src) {
         if (/[a-zA-Z_]/.test(c)) {
             let s = '';
             while (i < src.length && /[\w]/.test(src[i])) s += advance();
-            tokens.push({ type: KW_SET.has(s) ? s : TT.IDENT, value: s, line: startLine, col: startCol });
+            tokens.push({ type: KW_SET.has(s) ? s : TT.IDENT, value: s, line: startLine, col: startCol, endLine: line, endCol: col });
             continue;
         }
 
@@ -79,7 +79,7 @@ export function tokenize(src) {
             if (/^[0-9a-fA-F]{6}$/.test(hex6)) {
                 advance(); // consume '#'
                 for (let h = 0; h < 6; h++) advance();
-                tokens.push({ type: TT.HEX, value: '#' + hex6, line: startLine, col: startCol });
+                tokens.push({ type: TT.HEX, value: '#' + hex6, line: startLine, col: startCol, endLine: line, endCol: col });
                 continue;
             }
         }
@@ -91,7 +91,7 @@ export function tokenize(src) {
                           '/': TT.SLASH, '#': TT.HASH, '.': TT.DOT, ';': TT.SEMI };
         if (SINGLE[c]) {
             advance();
-            tokens.push({ type: SINGLE[c], value: c, line: startLine, col: startCol });
+            tokens.push({ type: SINGLE[c], value: c, line: startLine, col: startCol, endLine: line, endCol: col });
             continue;
         }
 
@@ -115,7 +115,7 @@ const TOKEN_NAMES = {
 };
 
 // Full call signatures for every built-in — shown in error messages
-const CALL_SIGS = {
+export const CALL_SIGS = {
     move:             'move(steps)',
     turnRight:        'turnRight(degrees)',
     turnLeft:         'turnLeft(degrees)',
@@ -245,7 +245,7 @@ const CALL_SIGS = {
 };
 
 // Returns up to `max` candidates whose spelling is close to `name` (prefix/substring heuristics).
-function fuzzyMatch(name, candidates, max = 3) {
+export function fuzzyMatch(name, candidates, max = 3) {
     const vl = name.toLowerCase();
     return candidates.filter(k => {
         const kl = k.toLowerCase();
@@ -317,14 +317,19 @@ export function parse(tokens) {
             const nameT = peek(); pos++;
             eat(TT.LPAREN, '`define name(params)`: expected `(` after the block name');
             const params = [];
+            const paramSpans = [];
             while (!check(TT.RPAREN) && !check(TT.EOF)) {
-                params.push(peek().value); pos++;
+                const pT = peek();
+                params.push(pT.value); pos++;
+                paramSpans.push({ name: pT.value, line: pT.line, col: pT.col,
+                                  endLine: pT.endLine, endCol: pT.endCol });
                 if (!tryEat(TT.COMMA)) break;
             }
             eat(TT.RPAREN, '`define name(params)`: expected `)` to close the parameter list');
             const body = parseBody();
             return { type: 'DefineBlock', name: nameT.value, params, body,
-                     line: nameT.line, col: nameT.col };
+                     line: nameT.line, col: nameT.col,
+                     nameEndLine: nameT.endLine, nameEndCol: nameT.endCol, paramSpans };
         }
         // on <hatArg> { ... }
         pos++; // consume 'on'
@@ -439,7 +444,8 @@ export function parse(tokens) {
             errors.push({ line: t.line, col: t.col, len: 3,
                 message: '`for [var] from expr to expr {}`: expected `[variable]` after `for`' });
         }
-        const varName = check(TT.VAR) ? eat(TT.VAR).value : '_err_';
+        const varTok = check(TT.VAR) ? eat(TT.VAR) : null;
+        const varName = varTok ? varTok.value : '_err_';
         if (!checkV('from')) {
             errors.push({ line: peek().line, col: peek().col, len: peek().value.length,
                 message: '`for [var] from expr to expr {}`: expected `from` after variable' });
@@ -451,7 +457,8 @@ export function parse(tokens) {
         } else { pos++; }
         const toExpr = parseExpr();
         const body = parseBody();
-        return { type: 'ForStmt', varName, from: fromExpr, to: toExpr, body, line: t.line, col: t.col };
+        return { type: 'ForStmt', varName, from: fromExpr, to: toExpr, body, line: t.line, col: t.col,
+                 varSpan: varTok ? { line: varTok.line, col: varTok.col, endLine: varTok.endLine, endCol: varTok.endCol } : null };
     }
 
     function parsePyFor() {
@@ -471,7 +478,9 @@ export function parse(tokens) {
         }
         const listTok = check(TT.VAR) ? eat(TT.VAR) : { value: '_err_', line: t.line, col: t.col };
         const body = parseBody();
-        return { type: 'PyForStmt', varName: varTok.value, listName: listTok.value, body, line: t.line, col: t.col };
+        return { type: 'PyForStmt', varName: varTok.value, listName: listTok.value, body, line: t.line, col: t.col,
+                 varSpan:  varTok.endLine  ? { line: varTok.line,  col: varTok.col,  endLine: varTok.endLine,  endCol: varTok.endCol }  : null,
+                 listSpan: listTok.endLine ? { line: listTok.line, col: listTok.col, endLine: listTok.endLine, endCol: listTok.endCol } : null };
     }
 
     function parseScratchroutine() {
@@ -483,16 +492,24 @@ export function parse(tokens) {
         }
         const name = nameTok.type === TT.IDENT ? (pos++, nameTok.value) : '_err_';
         const params = [];
+        const paramSpans = [];
         if (check(TT.LPAREN)) {
             eat(TT.LPAREN);
             while (!check(TT.RPAREN) && !check(TT.EOF)) {
-                params.push(peek().value); pos++;
+                const pT = peek();
+                params.push(pT.value); pos++;
+                paramSpans.push({ name: pT.value, line: pT.line, col: pT.col,
+                                  endLine: pT.endLine, endCol: pT.endCol });
                 if (!tryEat(TT.COMMA)) break;
             }
             eat(TT.RPAREN);
         }
         const body = parseBody();
-        return { type: 'ScratchroutineStmt', name, params, body, line: t.line, col: t.col };
+        return { type: 'ScratchroutineStmt', name, params, body, line: t.line, col: t.col,
+                 nameSpan: nameTok.type === TT.IDENT
+                     ? { line: nameTok.line, col: nameTok.col, endLine: nameTok.endLine, endCol: nameTok.endCol }
+                     : null,
+                 paramSpans };
     }
 
     function parseLaunchAwait(mode) {
@@ -512,7 +529,10 @@ export function parse(tokens) {
             }
             eat(TT.RPAREN);
         }
-        return { type: mode === 'launch' ? 'LaunchStmt' : 'AwaitStmt', name, args, line: t.line, col: t.col };
+        return { type: mode === 'launch' ? 'LaunchStmt' : 'AwaitStmt', name, args, line: t.line, col: t.col,
+                 nameSpan: nameTok.type === TT.IDENT
+                     ? { line: nameTok.line, col: nameTok.col, endLine: nameTok.endLine, endCol: nameTok.endCol }
+                     : null };
     }
 
     function parseCancel() {
@@ -523,7 +543,10 @@ export function parse(tokens) {
                 message: '`cancel name`: expected a scratchroutine name after `cancel`' });
         }
         const name = nameTok.type === TT.IDENT ? (pos++, nameTok.value) : '_err_';
-        return { type: 'CancelStmt', name, line: t.line, col: t.col };
+        return { type: 'CancelStmt', name, line: t.line, col: t.col,
+                 nameSpan: nameTok.type === TT.IDENT
+                     ? { line: nameTok.line, col: nameTok.col, endLine: nameTok.endLine, endCol: nameTok.endCol }
+                     : null };
     }
 
     function parseBreakpoint() {
@@ -637,7 +660,8 @@ export function parse(tokens) {
             } else {
                 value = { type: 'Num', value: 0, line: nameTok.line, col: nameTok.col };
             }
-            entries.push({ name, value });
+            entries.push({ name, value, line: nameTok.line, col: nameTok.col,
+                           endLine: nameTok.endLine, endCol: nameTok.endCol });
             tryEat(TT.COMMA);
         }
         eat(TT.RBRACE, '`enum { ... }` — expected `}` to close enum body');
@@ -653,14 +677,23 @@ export function parse(tokens) {
         }
         const name = nameTok.type === TT.IDENT ? (pos++, nameTok.value) : '_err_';
         const fields = [];
+        const fieldSpans = [];
         eat(TT.LBRACE, '`struct` declaration — expected `{` after the struct name');
         while (!check(TT.RBRACE) && !check(TT.EOF)) {
             const fTok = peek();
-            if (fTok.type === TT.IDENT) { fields.push(fTok.value); pos++; }
+            if (fTok.type === TT.IDENT) {
+                fields.push(fTok.value); pos++;
+                fieldSpans.push({ name: fTok.value, line: fTok.line, col: fTok.col,
+                                  endLine: fTok.endLine, endCol: fTok.endCol });
+            }
             tryEat(TT.COMMA);
         }
         eat(TT.RBRACE, '`struct` declaration — expected `}` to close field list');
-        return { type: 'StructDecl', name, fields, line: t.line, col: t.col };
+        return { type: 'StructDecl', name, fields, line: t.line, col: t.col,
+                 nameSpan: nameTok.type === TT.IDENT
+                     ? { line: nameTok.line, col: nameTok.col, endLine: nameTok.endLine, endCol: nameTok.endCol }
+                     : null,
+                 fieldSpans };
     }
 
     function parseSimpleStatement() {
@@ -682,7 +715,7 @@ export function parse(tokens) {
             }
             eat(TT.RPAREN, `\`[${t.value}].${method}(...)\`: expected \`)\``);
             return { type: 'MemberCallStmt',
-                object: { type: 'Var', name: t.value, line: t.line, col: t.col },
+                object: { type: 'Var', name: t.value, line: t.line, col: t.col, endLine: t.endLine, endCol: t.endCol },
                 method, args, line: t.line, col: t.col };
         }
 
@@ -723,12 +756,14 @@ export function parse(tokens) {
             if (n1 && n2 && n1.type === TT.PLUS  && n2.type === TT.PLUS) {
                 pos += 3;
                 return { type: 'ChangeVarStmt', varName: t.value,
-                         value: { type: 'Num', value: 1,  line: t.line, col: t.col }, line: t.line, col: t.col };
+                         value: { type: 'Num', value: 1,  line: t.line, col: t.col }, line: t.line, col: t.col,
+                         varSpan: { line: t.line, col: t.col, endLine: t.endLine, endCol: t.endCol } };
             }
             if (n1 && n2 && n1.type === TT.MINUS && n2.type === TT.MINUS) {
                 pos += 3;
                 return { type: 'ChangeVarStmt', varName: t.value,
-                         value: { type: 'Num', value: -1, line: t.line, col: t.col }, line: t.line, col: t.col };
+                         value: { type: 'Num', value: -1, line: t.line, col: t.col }, line: t.line, col: t.col,
+                         varSpan: { line: t.line, col: t.col, endLine: t.endLine, endCol: t.endCol } };
             }
         }
 
@@ -743,11 +778,12 @@ export function parse(tokens) {
                     pos += 3; // consume [var], op, =
                     const rhs = parseExpr();
                     const varName = t.value;
-                    if (op === '+') return { type: 'ChangeVarStmt', varName, value: rhs, line: t.line, col: t.col };
+                    const varSpan = { line: t.line, col: t.col, endLine: t.endLine, endCol: t.endCol };
+                    if (op === '+') return { type: 'ChangeVarStmt', varName, value: rhs, line: t.line, col: t.col, varSpan };
                     // For *=, /=, -= we need set [v] to ([v] op rhs)
                     const varRef = { type: 'Var', name: varName, line: t.line, col: t.col };
                     const binop  = { type: 'BinOp', op, left: varRef, right: rhs };
-                    return { type: 'SetVarStmt', varName, value: binop, line: t.line, col: t.col };
+                    return { type: 'SetVarStmt', varName, value: binop, line: t.line, col: t.col, varSpan };
                 }
             }
         }
@@ -909,8 +945,9 @@ export function parse(tokens) {
                     message: `\`set\` must be followed by a [variable], e.g. \`set [score] to 0\` — got ${tok(peek())}` });
                 return { type: 'UnknownStmt', value: v, line: ln, col: cl };
             }
-            const varName = eat(TT.VAR).value; tryEatV('to');
-            return { type: 'SetVarStmt', varName, value: parseExpr(), line: ln, col: cl };
+            const varT = eat(TT.VAR); tryEatV('to');
+            return { type: 'SetVarStmt', varName: varT.value, value: parseExpr(), line: ln, col: cl,
+                     varSpan: { line: varT.line, col: varT.col, endLine: varT.endLine, endCol: varT.endCol } };
         }
         if (v === 'change') {
             if (!check(TT.VAR)) {
@@ -918,8 +955,9 @@ export function parse(tokens) {
                     message: `\`change\` must be followed by a [variable], e.g. \`change [score] by 1\` — got ${tok(peek())}` });
                 return { type: 'UnknownStmt', value: v, line: ln, col: cl };
             }
-            const varName = eat(TT.VAR).value; tryEatV('by');
-            return { type: 'ChangeVarStmt', varName, value: parseExpr(), line: ln, col: cl };
+            const varT = eat(TT.VAR); tryEatV('by');
+            return { type: 'ChangeVarStmt', varName: varT.value, value: parseExpr(), line: ln, col: cl,
+                     varSpan: { line: varT.line, col: varT.col, endLine: varT.endLine, endCol: varT.endCol } };
         }
         if (v === 'showVariable') { eat(TT.LPAREN); const va = eat(TT.VAR).value; eat(TT.RPAREN); return { type: 'ShowVarStmt', name: va, line: ln, col: cl }; }
         if (v === 'hideVariable') { eat(TT.LPAREN); const va = eat(TT.VAR).value; eat(TT.RPAREN); return { type: 'HideVarStmt', name: va, line: ln, col: cl }; }
@@ -1096,7 +1134,7 @@ export function parse(tokens) {
         if (check(TT.HEX)) { pos++; return { type: 'Hex', value: t.value, line: t.line, col: t.col }; }
         if (check(TT.VAR)) {
             pos++;
-            const varExpr = { type: 'Var', name: t.value, line: t.line, col: t.col };
+            const varExpr = { type: 'Var', name: t.value, line: t.line, col: t.col, endLine: t.endLine, endCol: t.endCol };
             if (check(TT.DOT)) {
                 pos++; // consume '.'
                 const mTok = peek();
@@ -1123,7 +1161,7 @@ export function parse(tokens) {
             if (check(TT.VAR) && peek().line === t.line) {
                 const idxTok = peek(); pos++;
                 return { type: 'MemberCall', object: varExpr, method: 'item',
-                    args: [{ type: 'Var', name: idxTok.value, line: idxTok.line, col: idxTok.col }],
+                    args: [{ type: 'Var', name: idxTok.value, line: idxTok.line, col: idxTok.col, endLine: idxTok.endLine, endCol: idxTok.endCol }],
                     line: t.line, col: t.col };
             }
             return varExpr;

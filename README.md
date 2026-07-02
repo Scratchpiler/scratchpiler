@@ -105,8 +105,9 @@ Blocks are injected into the selected sprite. Variables must already exist in Sc
 - **Linter** — warns about dead code and orphaned blocks before you compile
 - **Decompiler** — import existing Scratch scripts back as text; recognizes compiled `pyfor`, `for`, `.sort()`, and `while` patterns
 - **Per-sprite persistence** — each sprite's code is saved independently to `localStorage`
-- **Hover docs** — hover a function name to see its signature and documentation
-- **Autocomplete** — full Monaco IntelliSense for all functions, variables, costumes, and aliases
+- **Hover docs** — hover a function name to see its signature and documentation, including your own `define`s and scratchroutines
+- **Autocomplete** — full Monaco IntelliSense for all functions, variables, costumes, and aliases — scope-aware, so parameters and loop variables are only offered where they actually exist
+- **Code intelligence** — a real semantic analyzer: go-to-definition (F12), find-all-references, rename (F2), semantic highlighting, unknown-name/arity/shadowing diagnostics, and code-smell hints (unused blocks, busy-waits, magic numbers)
 
 ---
 
@@ -124,6 +125,8 @@ The original 7,200-line monolith of despair has been shattered into beautifully 
 | `editor.js` | Handles the Monaco instance, state persistence, project indexing, and the overall lifecycle of the overlay. |
 | `ui-dom.js` | Manipulates the DOM. Creates buttons, sidebars, context menus, and other UI atrocities so you don't have to interact with Scratch's default interface. |
 | `language.js` | Tells Monaco how to highlight our DSL without crying. |
+| `analyzer.js` | The semantic analyzer. Builds a symbol table and occurrence index from the AST, then judges your code twice: once for correctness (unknown names, wrong arity, shadowing) and once for taste (magic numbers, busy-waits, blocks you defined and then ghosted). |
+| `semantic-providers.js` | The thin Monaco adapter over `analyzer.js` — go-to-definition, rename, find-references, and semantic highlighting. |
 | `monaco.js` | Injects the VS Code editor into a kid's block-coding website. |
 | `vm.js` | Acquires and wraps the internal Scratch VM object so we can violate its APIs. |
 | `constants.js` | Constants. Because magic strings are for cowards. |
@@ -158,6 +161,7 @@ The original 7,200-line monolith of despair has been shattered into beautifully 
 | [docs/math.md](docs/math.md) | Math functions and operators |
 | [docs/custom-blocks.md](docs/custom-blocks.md) | Custom block definitions |
 | [docs/linter.md](docs/linter.md) | Warnings, type checking, dead code detection, and configuring lint rules |
+| [docs/code-intelligence.md](docs/code-intelligence.md) | Semantic analyzer: go-to-definition, rename, semantic highlighting, diagnostics, code smells |
 | [docs/examples.md](docs/examples.md) | Full example programs |
 
 ---

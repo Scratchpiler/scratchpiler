@@ -4,6 +4,7 @@ import { currentVM, currentSpriteContext } from "./editor.js";
 import { formatSource } from "./injector.js";
 import { tokenize } from "./compiler.js";
 import { ASM_OPCODES } from "./asm-opcodes.js";
+import { getAnalysis, visibleSymbols } from "./analyzer.js";
 
 export function registerLanguage(monaco) {
     monaco.languages.register({ id: LANG_ID });
@@ -12,6 +13,14 @@ export function registerLanguage(monaco) {
         base: 'vs-dark', inherit: true,
         rules: [
             { token: 'mathfunc', foreground: '#4ec994' },
+            // Semantic token colors (analyzer-driven, layered over Monarch)
+            { token: 'parameter',  foreground: '#ffc58f' },
+            { token: 'variable',   foreground: '#ebbbff' },
+            { token: 'function',   foreground: '#bbdaff' },
+            { token: 'enumMember', foreground: '#99ffff' },
+            { token: 'type',       foreground: '#ffeead' },
+            { token: 'property',   foreground: '#d1f1a9' },
+            { token: 'invalid',    foreground: '#ff9da4', fontStyle: 'underline' },
         ],
         colors: {
             'editor.background':                 '#002451',
@@ -125,9 +134,27 @@ export function registerLanguage(monaco) {
                 }
             }
 
-            // Struct completions: inside an unclosed [ with no dot yet.
-            // Typing `[p` shows `player.x]`, `player.y]`, etc. — one-shot fill.
+            // Var completions inside an unclosed [ with no dot yet:
+            // in-scope params/loop vars first, then struct fields, then project vars.
             if (linePrefix.endsWith('[')) {
+                const CIKf = monaco.languages.CompletionItemKind;
+                const suggestions = [];
+                try {
+                    const a = getAnalysis(model, currentSpriteContext);
+                    for (const sym of visibleSymbols(a, position.lineNumber, position.column)) {
+                        if (sym.kind === 'param' || sym.kind === 'loopVar') {
+                            suggestions.push({
+                                label: `${sym.name}]`, kind: CIKf.Variable,
+                                detail: sym.kind === 'param'
+                                    ? `Parameter · ${sym.meta.owner || 'custom block'}`
+                                    : 'Loop variable',
+                                insertText: `${sym.name}]`,
+                                sortText: `0_${sym.name}`,
+                                range,
+                            });
+                        }
+                    }
+                } catch (_) {}
                 const src = model.getValue();
                 const structDefs = {};
                 const structRe = /\bstruct\s+(\w+)\s*\{([^}]*)\}/g;
@@ -135,24 +162,35 @@ export function registerLanguage(monaco) {
                 while ((sm2 = structRe.exec(src)) !== null) {
                     structDefs[sm2[1]] = sm2[2].split(/[\s,]+/).filter(f => f.length > 0);
                 }
-                const entries = Object.entries(structDefs);
-                if (entries.length > 0) {
-                    const CIKf = monaco.languages.CompletionItemKind;
-                    const suggestions = [];
-                    for (const [sName, fields] of entries) {
-                        for (const field of fields) {
-                            suggestions.push({
-                                label: `${sName}.${field}]`,
-                                kind: CIKf.Field,
-                                detail: `Struct field · ${sName}`,
-                                insertText: `${sName}.${field}]`,
-                                sortText: `0_${sName}_${field}`,
-                                range,
-                            });
-                        }
+                for (const [sName, fields] of Object.entries(structDefs)) {
+                    for (const field of fields) {
+                        suggestions.push({
+                            label: `${sName}.${field}]`,
+                            kind: CIKf.Field,
+                            detail: `Struct field · ${sName}`,
+                            insertText: `${sName}.${field}]`,
+                            sortText: `1_${sName}_${field}`,
+                            range,
+                        });
                     }
-                    return { suggestions };
                 }
+                const activeName = getActiveSpriteNameFromDropdown();
+                const projVars = [
+                    ...scratchIndex.globalVariables,
+                    ...(activeName && activeName !== '__stage__'
+                        ? (scratchIndex.spriteVariables[activeName] ?? []) : []),
+                ];
+                for (const v of projVars) {
+                    suggestions.push({
+                        label: `${v.name}]`,
+                        kind: v.type === 'list' ? CIKf.Enum : CIKf.Variable,
+                        detail: v.type === 'list' ? 'List' : 'Variable',
+                        insertText: `${v.name}]`,
+                        sortText: `2_${v.name}`,
+                        range,
+                    });
+                }
+                if (suggestions.length > 0) return { suggestions };
             }
 
             // Dot-method completions after [varname].
@@ -368,7 +406,56 @@ export function registerLanguage(monaco) {
             const hatRange = onMatch
                 ? { ...range, startColumn: word.startColumn - onMatch[0].length }
                 : range;
-            return { suggestions: buildSuggestions(monaco, range, hatRange) };
+            const suggestions = buildSuggestions(monaco, range, hatRange);
+
+            // Analyzer-driven, scope-aware additions: in-scope params/loop vars,
+            // enum constants, and call snippets for in-file defines/scratchroutines.
+            try {
+                const a = getAnalysis(model, currentSpriteContext);
+                const CIKa = monaco.languages.CompletionItemKind;
+                const IS = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+                for (const sym of visibleSymbols(a, position.lineNumber, position.column)) {
+                    if (sym.kind === 'param' || sym.kind === 'loopVar') {
+                        suggestions.push({
+                            label: `[${sym.name}]`, kind: CIKa.Variable,
+                            detail: sym.kind === 'param'
+                                ? `Parameter · ${sym.meta.owner || 'custom block'}`
+                                : 'Loop variable',
+                            insertText: `[${sym.name}]`,
+                            sortText: `0_${sym.name}`,
+                            range,
+                        });
+                    } else if (sym.kind === 'enumMember') {
+                        suggestions.push({
+                            label: sym.name, kind: CIKa.Constant,
+                            detail: `enum constant = ${sym.meta.value ? JSON.stringify(sym.meta.value.value) : '?'}`,
+                            insertText: sym.name, range,
+                        });
+                    } else if (sym.kind === 'define' || sym.kind === 'routine') {
+                        const params = sym.meta.params || [];
+                        const snippet = params.length
+                            ? `${sym.name}(${params.map((p, i) => `\${${i + 1}:${p}}`).join(', ')})`
+                            : `${sym.name}()`;
+                        const label = `${sym.name}(${params.join(', ')})`;
+                        if (sym.kind === 'define') {
+                            suggestions.push({
+                                label, kind: CIKa.Function, detail: 'Custom block (define)',
+                                insertText: snippet, insertTextRules: IS, range,
+                            });
+                        } else {
+                            suggestions.push({
+                                label: `launch ${label}`, kind: CIKa.Function, detail: 'scratchroutine',
+                                insertText: `launch ${snippet}`, insertTextRules: IS, range,
+                            });
+                            suggestions.push({
+                                label: `await ${label}`, kind: CIKa.Function, detail: 'scratchroutine',
+                                insertText: `await ${snippet}`, insertTextRules: IS, range,
+                            });
+                        }
+                    }
+                }
+            } catch (_) {}
+            return { suggestions };
         },
     });
 
@@ -598,7 +685,7 @@ export function registerLanguage(monaco) {
             // Function call: name(
             const fnM = before.match(/(\w+)\s*\([^)]*$/);
             if (fnM) {
-                const sig = SIG_DB[fnM[1]] || asmSigFor(fnM[1]);
+                const sig = SIG_DB[fnM[1]] || asmSigFor(fnM[1]) || userSigFor(model, fnM[1]);
                 if (sig) {
                     const commas = (before.slice(before.lastIndexOf('(') + 1).match(/,/g) || []).length;
                     return mkSig(sig, commas);
@@ -615,6 +702,20 @@ export function registerLanguage(monaco) {
             return null;
         },
     });
+
+    // Signature entry for an in-file define / scratchroutine
+    function userSigFor(model, name) {
+        try {
+            const a = getAnalysis(model, currentSpriteContext);
+            const sym = a.byKey.get('define:' + name) || a.byKey.get('routine:' + name);
+            if (!sym) return null;
+            const params = sym.meta.params || [];
+            return {
+                label: `${name}(${params.join(', ')})  —  ${sym.kind === 'define' ? 'custom block' : 'scratchroutine'}`,
+                params: params.map(p => ({ label: p })),
+            };
+        } catch (_) { return null; }
+    }
 
     function mkSig(sig, activeParam) {
         return {
@@ -635,7 +736,9 @@ export function registerLanguage(monaco) {
             const word = model.getWordAtPosition(position);
             if (!word) return null;
             const linePrefix = model.getLineContent(position.lineNumber).substring(0, word.startColumn - 1);
-            const sig = /\bpen\.$/.test(linePrefix) ? PEN_DOT_SIG[word.word] : SIG_DB[word.word];
+            const sig = /\bpen\.$/.test(linePrefix)
+                ? PEN_DOT_SIG[word.word]
+                : (SIG_DB[word.word] || userSigFor(model, word.word));
             if (!sig) return null;
             return {
                 range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),

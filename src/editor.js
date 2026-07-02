@@ -4,7 +4,9 @@ import { acquireVM, scratchIndex, reindex } from "./vm.js";
 import { loadMonaco } from "./monaco.js";
 import { registerLanguage } from "./language.js";
 import { buildOverlayDOM, buildTriggerButton, buildSearchNowhereDOM, setupSpritePicker, spPickerOpen, searchNowhereOpen, logToOutput, flashCompileBtn, openSpritePicker, closeSpritePicker, showSpriteContextMenu, closeSpriteContextMenu, setupOutputPanel, setupSidebarResize, openSearchNowhere, closeSearchNowhere, } from "./ui-dom.js";
-import { compileSource, decompile, tokenize, parse, lint, typeCheckDiagnostics, injectBlocks, uid } from "./main.js";
+import { compileSource, decompile, lint, typeCheckDiagnostics, injectBlocks, uid } from "./main.js";
+import { getAnalysis, semanticDiagnostics, smellDiagnostics } from "./analyzer.js";
+import { registerSemanticProviders } from "./semantic-providers.js";
 
 // [I] Editor Lifecycle
 
@@ -610,6 +612,8 @@ function setupSettings() {
     const lintTypecheckChk  = document.getElementById('sp-setting-lint-typecheck');
     const lintUnreachChk    = document.getElementById('sp-setting-lint-unreachable');
     const lintOrphanedChk   = document.getElementById('sp-setting-lint-orphaned');
+    const lintSemanticChk   = document.getElementById('sp-setting-lint-semantic');
+    const lintSmellsChk     = document.getElementById('sp-setting-lint-smells');
 
     let settings = {};
     try {
@@ -625,6 +629,8 @@ function setupSettings() {
     if (settings.lintTypecheck === undefined) settings.lintTypecheck = true;
     if (settings.lintUnreachable === undefined) settings.lintUnreachable = true;
     if (settings.lintOrphaned === undefined)  settings.lintOrphaned = true;
+    if (settings.lintSemantic === undefined)  settings.lintSemantic = true;
+    if (settings.lintSmells === undefined)    settings.lintSmells = true;
 
     themeSelect.value      = settings.theme;
     fontSizeSelect.value   = settings.fontSize;
@@ -635,6 +641,8 @@ function setupSettings() {
     lintTypecheckChk.checked  = settings.lintTypecheck;
     lintUnreachChk.checked    = settings.lintUnreachable;
     lintOrphanedChk.checked   = settings.lintOrphaned;
+    if (lintSemanticChk) lintSemanticChk.checked = settings.lintSemantic;
+    if (lintSmellsChk)   lintSmellsChk.checked   = settings.lintSmells;
 
     // Sync into module-level spSettings
     spSettings.tabSize         = parseInt(settings.tabSize, 10) || 4;
@@ -642,6 +650,8 @@ function setupSettings() {
     spSettings.lintTypecheck   = settings.lintTypecheck;
     spSettings.lintUnreachable = settings.lintUnreachable;
     spSettings.lintOrphaned    = settings.lintOrphaned;
+    spSettings.lintSemantic    = settings.lintSemantic;
+    spSettings.lintSmells      = settings.lintSmells;
 
     function applySettings() {
         if (!monacoEditor) return;
@@ -652,6 +662,8 @@ function setupSettings() {
         spSettings.lintTypecheck   = lintTypecheckChk.checked;
         spSettings.lintUnreachable = lintUnreachChk.checked;
         spSettings.lintOrphaned    = lintOrphanedChk.checked;
+        if (lintSemanticChk) spSettings.lintSemantic = lintSemanticChk.checked;
+        if (lintSmellsChk)   spSettings.lintSmells   = lintSmellsChk.checked;
 
         monaco.editor.setTheme(themeSelect.value);
         monacoEditor.updateOptions({
@@ -671,6 +683,8 @@ function setupSettings() {
             lintTypecheck:    lintTypecheckChk.checked,
             lintUnreachable:  lintUnreachChk.checked,
             lintOrphaned:     lintOrphanedChk.checked,
+            lintSemantic:     lintSemanticChk ? lintSemanticChk.checked : true,
+            lintSmells:       lintSmellsChk ? lintSmellsChk.checked : true,
         }));
     }
 
@@ -683,6 +697,8 @@ function setupSettings() {
     lintTypecheckChk.addEventListener('change', applySettings);
     lintUnreachChk.addEventListener('change', applySettings);
     lintOrphanedChk.addEventListener('change', applySettings);
+    if (lintSemanticChk) lintSemanticChk.addEventListener('change', applySettings);
+    if (lintSmellsChk)   lintSmellsChk.addEventListener('change', applySettings);
 
     return applySettings;
 }
@@ -831,6 +847,8 @@ const spSettings = {
     lintTypecheck:   true,
     lintUnreachable: true,
     lintOrphaned:    true,
+    lintSemantic:    true,
+    lintSmells:      true,
 };
 
 let saveTimer = null;
@@ -1274,6 +1292,7 @@ export function bootstrap() {
 
     loadMonaco(function (monaco) {
         registerLanguage(monaco);
+        registerSemanticProviders(monaco, () => currentSpriteContext);
 
         monacoEditor = monaco.editor.create(
             document.getElementById('scratchpiler-editor-container'),
@@ -1281,6 +1300,7 @@ export function bootstrap() {
                 value: '',
                 language: LANG_ID,
                 theme: 'scratchpiler-dark',
+                'semanticHighlighting.enabled': true,
                 automaticLayout: true,
                 minimap: { enabled: false },
                 fontSize: 14,
@@ -1322,12 +1342,11 @@ export function bootstrap() {
                 saveTimer = setTimeout(() => saveToLocalStorage(currentSpriteContext), saveDelay);
             }
             lintTimer = setTimeout(() => {
-                const src = monacoEditor.getValue();
                 try {
-                    const toks = tokenize(src);
-                    const { ast, errors } = parse(toks);
                     const model = monacoEditor.getModel();
                     const sn = currentSpriteContext;
+                    const analysis = getAnalysis(model, sn);
+                    const { ast, parseErrors: errors } = analysis;
                     const rawLint = lint(ast);
 
                     const lintWarnings = rawLint.filter(w => {
@@ -1339,6 +1358,13 @@ export function bootstrap() {
 
                     const typeWarnings = spSettings.lintTypecheck
                         ? typeCheckDiagnostics(ast, sn)
+                        : [];
+
+                    const semWarnings = spSettings.lintSemantic
+                        ? semanticDiagnostics(analysis)
+                        : [];
+                    const smellHints = spSettings.lintSmells
+                        ? smellDiagnostics(analysis)
                         : [];
 
                     monaco.editor.setModelMarkers(model, LANG_ID, [
@@ -1361,8 +1387,21 @@ export function bootstrap() {
                             message:  w.message,
                             severity: monaco.MarkerSeverity.Warning,
                         })),
+                        ...semWarnings.map(w => ({
+                            startLineNumber: w.line, startColumn: w.col,
+                            endLineNumber:   w.line, endColumn: w.col + (w.len || 1),
+                            message:  w.message,
+                            severity: monaco.MarkerSeverity.Warning,
+                        })),
+                        ...smellHints.map(w => ({
+                            startLineNumber: w.line, startColumn: w.col,
+                            endLineNumber:   w.line, endColumn: w.col + (w.len || 1),
+                            message:  w.message,
+                            severity: monaco.MarkerSeverity.Info,
+                        })),
                     ]);
-                    updateStatusBarProblems(errors.length, lintWarnings.length + typeWarnings.length);
+                    updateStatusBarProblems(errors.length,
+                        lintWarnings.length + typeWarnings.length + semWarnings.length + smellHints.length);
                 } catch (_) {}
             }, 350);
         });

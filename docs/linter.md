@@ -149,17 +149,17 @@ Lint rules can be toggled individually in **Settings** (the gear icon in the sid
 | **Type checking** | List vs. variable misuse, dot methods on wrong types, pyfor list validation |
 | **Unreachable code** | Dead code after terminators (`stopAll`, `forever`, etc.) |
 | **Orphaned blocks** | Statements and blocks outside any hat block |
+| **Semantic checks** | Unknown names, wrong argument counts, shadowing, duplicates — see [code-intelligence.md](code-intelligence.md) |
+| **Code smells** | Unused blocks, busy-waits, magic numbers, dead sets — see [code-intelligence.md](code-intelligence.md) |
 
-All three are on by default. Turning them off does not affect compilation — only what the editor underlines in yellow.
+All five are on by default. Turning them off does not affect compilation — only what the editor underlines.
 
 ---
 
 ## What the linter does not check
 
-- Whether variables exist (that's a compile-time error, not a lint warning. The compiler will deal with you then.)
 - Logic errors ("you're setting `[lives]` to 0 before checking if it's less than 1. Classic.")
-- Performance issues ("that `forever` loop has no `wait` and is currently melting the client's GPU.")
 - Division by zero (Scratch handles this by returning `Infinity`. We encourage you to use this to calculate your chances of landing a real software engineering job after building your resume on Scratch.)
 - Whether your game design is actually fun or good (you are on your own here; the machine has no taste.)
 
-The linter is not a sophisticated static analysis engine. It catches the mechanical problems that are trivially detectable from the AST. The rest of the bugs are yours to keep.
+Whether variables exist and whether that `forever` loop is a GPU-melting busy-wait *are* checked now — by the [semantic analyzer](code-intelligence.md), which runs alongside the linter. The linter catches the mechanical problems that are trivially detectable from the AST; the analyzer catches the ones that need a symbol table. The rest of the bugs are yours to keep.
