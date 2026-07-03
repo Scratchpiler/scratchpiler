@@ -9,4 +9,6 @@
 // @match        https://scratch.mit.edu/projects/*/editor*
 // @run-at       document-idle
 // @grant        unsafeWindow
+// @grant        GM_getValue
+// @grant        GM_setValue
 // ==/UserScript==

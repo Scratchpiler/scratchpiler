@@ -1,0 +1,44 @@
+// Pointers & Heap
+// `&[x]` takes the address of a global variable (promoting it to a slot of
+// the hidden stage list __heap), `*[p]` / `*(expr)` dereference, and
+// alloc(n)/free(p) manage dynamic heap blocks via a hidden first-fit
+// allocator. Everything round-trips through the decompiler.
+//
+// Requires: variables [x], [px], [head], [node], [next], [i], [sum]
+
+on flag {
+    // Address-of and dereference
+    set [x] to 42
+    set [px] to &[x]
+    say("through the pointer: {*[px]}")
+    set *[px] to 99
+    say("x is now {[x]}")
+
+    // Build a linked list 3 -> 2 -> 1 (each node is 2 cells: value, next)
+    set [head] to 0
+    set [i] to 0
+    repeat 3 {
+        change [i] by 1
+        set [node] to alloc(2)
+        set *[node] to [i]
+        set *([node] + 1) to [head]
+        set [head] to [node]
+    }
+
+    // Walk the list and sum the values
+    set [sum] to 0
+    set [node] to [head]
+    while ([node] > 0) {
+        change [sum] by *[node]
+        set [node] to *([node] + 1)
+    }
+    say("sum = {[sum]}")
+
+    // Free every node (grab next before freeing)
+    set [node] to [head]
+    while ([node] > 0) {
+        set [next] to *([node] + 1)
+        free([node])
+        set [node] to [next]
+    }
+}

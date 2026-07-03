@@ -1,4 +1,4 @@
-import { formatSource } from "./injector.js";
+import { formatSource } from "./format.js";
 // [L2] Decompiler (Import)
 
 // Read a field value from either internal {name,value} or sb3 [value,id] format
@@ -46,7 +46,7 @@ function decompInputRaw(input, B, isNum) {
             // inline primitive: [4,"10"] = number, [10,"text"] = string, [12,"var",id] = variable
             const t = ref[0];
             if (t === 4 || t === 5 || t === 6 || t === 7 || t === 8) return String(ref[1] ?? '0');
-            if (t === 10) return JSON.stringify(String(ref[1] ?? ''));
+            if (t === 10) return JSON.stringify(String(ref[1] ?? '')).replace(/{/g, '{{').replace(/}/g, '}}');
             if (t === 11) return JSON.stringify(String(ref[1] ?? ''));  // broadcast name
             if (t === 12) return `[${ref[1]}]`;  // variable
             if (t === 13) return `[${ref[1]}]`;  // list
@@ -94,8 +94,12 @@ function decompExpr(block, B) {
         case 'math_angle':
         case 'math_whole_number':
         case 'math_positive_number': return String(fieldVal(block, 'NUM') ?? '0');
-        case 'text':         return JSON.stringify(String(fieldVal(block, 'TEXT') ?? ''));
+        // Literal braces must re-escape to {{ }} or the recompile would read them as interpolation
+        case 'text':         return JSON.stringify(String(fieldVal(block, 'TEXT') ?? '')).replace(/{/g, '{{').replace(/}/g, '}}');
         case 'data_variable':return `[${fieldVal(block, 'VARIABLE') ?? ''}]`;
+        case 'argument_reporter_string_number':
+        case 'argument_reporter_boolean':
+            return `[${fieldVal(block, 'VALUE') ?? ''}]`;
         case 'data_listcontents': return `[${fieldVal(block, 'LIST') ?? ''}]`;
         case 'colour_picker': return fieldVal(block, 'COLOUR') ?? '#000000';
 
@@ -116,7 +120,38 @@ function decompExpr(block, B) {
         case 'sensing_dayssince2000': return 'daysSince2000';
 
         case 'operator_random':  return `random(${decompInput(block,'FROM',B,true)}, ${decompInput(block,'TO',B,true)})`;
-        case 'operator_join':    return `join(${decompInput(block,'STRING1',B,false)}, ${decompInput(block,'STRING2',B,false)})`;
+        case 'operator_join': {
+            // Interpolation re-sugar: flatten right-nested join chains. A chain of
+            // ≥3 parts only arises from `"a {x} b"` interpolation (or equivalent
+            // hand-nesting) — print it back as an interpolated string.
+            const parts = [];
+            let cur = block;
+            while (cur && cur.opcode === 'operator_join') {
+                parts.push([cur, 'STRING1']);
+                const nxt = inpBlock(cur, 'STRING2', B);
+                if (nxt && nxt.opcode === 'operator_join' && !nxt.shadow) cur = nxt;
+                else { parts.push([cur, 'STRING2']); cur = null; }
+            }
+            if (parts.length >= 3) {
+                let out = '"', ok = true;
+                for (const [blk, slot] of parts) {
+                    const inner = inpBlock(blk, slot, B);
+                    const raw = decompInput(blk, slot, B, false);
+                    const isLiteral = (!inner || inner.shadow) && raw.startsWith('"');
+                    if (isLiteral) {
+                        // raw is a JSON string with braces already {{ }}-escaped
+                        let text;
+                        try { text = JSON.parse(raw); } catch { ok = false; break; }
+                        if (String(text).includes('"')) { ok = false; break; }
+                        out += String(text);
+                    } else {
+                        out += `{${inner && !inner.shadow ? decompExpr(inner, B) : raw}}`;
+                    }
+                }
+                if (ok) return out + '"';
+            }
+            return `join(${decompInput(block,'STRING1',B,false)}, ${decompInput(block,'STRING2',B,false)})`;
+        }
         case 'operator_letter_of': return `letterOf(${decompInput(block,'LETTER',B,true)}, ${decompInput(block,'STRING',B,false)})`;
         case 'operator_contains':  return `contains(${decompInput(block,'STRING1',B,false)}, ${decompInput(block,'STRING2',B,false)})`;
 
@@ -160,10 +195,29 @@ function decompExpr(block, B) {
         case 'operator_mod':      return `${decompInput(block,'NUM1',B,true)} mod ${decompInput(block,'NUM2',B,true)}`;
         case 'operator_lt':       return `${decompInput(block,'OPERAND1',B,true)} < ${decompInput(block,'OPERAND2',B,true)}`;
         case 'operator_gt':       return `${decompInput(block,'OPERAND1',B,true)} > ${decompInput(block,'OPERAND2',B,true)}`;
-        case 'operator_equals':   return `${decompInput(block,'OPERAND1',B,false)} = ${decompInput(block,'OPERAND2',B,false)}`;
+        case 'operator_equals': {
+            const o1 = decompInput(block,'OPERAND1',B,false);
+            const o2 = decompInput(block,'OPERAND2',B,false);
+            // Boolean literals compile to `"1" = "1"` / `"1" = "0"`
+            if (o1 === '"1"' && o2 === '"1"') return 'true';
+            if (o1 === '"1"' && o2 === '"0"') return 'false';
+            return `${o1} = ${o2}`;
+        }
         case 'operator_and':      return `${decompExpr(inpBlock(block,'OPERAND1',B),B)} and ${decompExpr(inpBlock(block,'OPERAND2',B),B)}`;
         case 'operator_or':       return `${decompExpr(inpBlock(block,'OPERAND1',B),B)} or ${decompExpr(inpBlock(block,'OPERAND2',B),B)}`;
-        case 'operator_not':      return `not ${decompExpr(inpBlock(block,'OPERAND',B),B)}`;
+        case 'operator_not': {
+            // Desugared comparisons: not(=) → !=, not(>) → <=, not(<) → >=
+            const inner = inpBlock(block,'OPERAND',B);
+            if (inner && inner.opcode === 'operator_equals') {
+                const a = decompInput(inner,'OPERAND1',B,false), b = decompInput(inner,'OPERAND2',B,false);
+                if (!(a === '"1"' && (b === '"1"' || b === '"0"'))) return `${a} != ${b}`;
+            }
+            if (inner && inner.opcode === 'operator_gt')
+                return `${decompInput(inner,'OPERAND1',B,true)} <= ${decompInput(inner,'OPERAND2',B,true)}`;
+            if (inner && inner.opcode === 'operator_lt')
+                return `${decompInput(inner,'OPERAND1',B,true)} >= ${decompInput(inner,'OPERAND2',B,true)}`;
+            return `not ${decompExpr(inner,B)}`;
+        }
         case 'operator_length':   return `${decompInput(block,'STRING',B,false)}.length()`;
         case 'operator_round':    return `round(${decompInput(block,'NUM',B,true)})`;
         case 'operator_mathop': {
@@ -178,8 +232,38 @@ function decompExpr(block, B) {
 
         case 'data_lengthoflist':    return `[${fieldVal(block,'LIST') ?? ''}].length()`;
         case 'data_listcontainsitem': return `[${fieldVal(block,'LIST') ?? ''}].contains(${decompInput(block,'ITEM',B,false)})`;
-        case 'data_itemoflist':      return `[${fieldVal(block,'LIST') ?? ''}].item(${decompInput(block,'INDEX',B,true)})`;
-        case 'data_itemnumoflist':   return `[${fieldVal(block,'LIST') ?? ''}].indexOf(${decompInput(block,'ITEM',B,false)})`;
+        case 'data_itemoflist': {
+            const listName = fieldVal(block,'LIST') ?? '';
+            if (listName === '__heap') {
+                // Heap read: literal slot → promoted variable; `p + i` between
+                // two variable reads → `[p][i]`; anything else → `*(expr)`
+                const idxBlk = inpBlock(block,'INDEX',B);
+                if (!idxBlk || idxBlk.shadow) {
+                    const n = Number(litVal(block,'INDEX',B));
+                    if (Number.isInteger(n) && n >= 1 && n <= ptabNames.length) return `[${ptabNames[n-1]}]`;
+                } else if (idxBlk.opcode === 'operator_add') {
+                    const o1 = inpBlock(idxBlk,'NUM1',B);
+                    const o2 = inpBlock(idxBlk,'NUM2',B);
+                    const varish = (b) => b && (b.opcode === 'data_variable' || b.opcode === 'argument_reporter_string_number');
+                    if (varish(o1) && varish(o2)) return `${decompExpr(o1,B)}${decompExpr(o2,B)}`;
+                }
+                return `*(${decompInput(block,'INDEX',B,true)})`;
+            }
+            return `[${listName}].item(${decompInput(block,'INDEX',B,true)})`;
+        }
+        case 'data_itemnumoflist': {
+            const listName = fieldVal(block,'LIST') ?? '';
+            if (listName === '__ptab') {
+                const itemBlk = inpBlock(block,'ITEM',B);
+                if (!itemBlk || itemBlk.shadow) {
+                    try {
+                        const name = JSON.parse(decompInput(block,'ITEM',B,false).replace(/{{/g,'{').replace(/}}/g,'}'));
+                        return `&[${name}]`;
+                    } catch (_) { /* fall through */ }
+                }
+            }
+            return `[${listName}].indexOf(${decompInput(block,'ITEM',B,false)})`;
+        }
 
         default: return `/* ${block.opcode} */`;
     }
@@ -211,6 +295,8 @@ function decompStmt(block, B, indent) {
         }
         case 'control_repeat_until': {
             const condBlock = inpBlock(block,'CONDITION',B);
+            const lowered = decompLoweredLoop(block, condBlock, B, I);
+            if (lowered !== null) return lowered;
             const body = decompChain(inpBlockId(block,'SUBSTACK'), B, I + '    ');
             if (condBlock && condBlock.opcode === 'operator_not') {
                 const inner = decompExpr(inpBlock(condBlock,'OPERAND',B), B);
@@ -405,8 +491,30 @@ function decompStmt(block, B, indent) {
             return `${I}listDelete(${decompInput(block,'INDEX',B,true)}, [${fieldVal(block,'LIST') ?? ''}])\n`;
         case 'data_insertatlist':
             return `${I}listInsert(${decompInput(block,'ITEM',B,false)}, ${decompInput(block,'INDEX',B,true)}, [${fieldVal(block,'LIST') ?? ''}])\n`;
-        case 'data_replaceitemoflist':
-            return `${I}listReplace(${decompInput(block,'INDEX',B,true)}, [${fieldVal(block,'LIST') ?? ''}], ${decompInput(block,'ITEM',B,false)})\n`;
+        case 'data_replaceitemoflist': {
+            const listName = fieldVal(block,'LIST') ?? '';
+            if (listName === '__heap') {
+                const idxBlk = inpBlock(block,'INDEX',B);
+                const idxLit = (!idxBlk || idxBlk.shadow) ? Number(litVal(block,'INDEX',B)) : NaN;
+                if (Number.isInteger(idxLit) && idxLit >= 1 && idxLit <= ptabNames.length) {
+                    const name = ptabNames[idxLit-1];
+                    // `change [x] by V` compiles to replace(slot, item(slot) + V)
+                    const itemBlk = inpBlock(block,'ITEM',B);
+                    if (itemBlk && itemBlk.opcode === 'operator_add') {
+                        const a = inpBlock(itemBlk,'NUM1',B);
+                        if (a && a.opcode === 'data_itemoflist' && (fieldVal(a,'LIST') ?? '') === '__heap') {
+                            const aIdx = inpBlock(a,'INDEX',B);
+                            if ((!aIdx || aIdx.shadow) && Number(litVal(a,'INDEX',B)) === idxLit) {
+                                return `${I}change [${name}] by ${decompInput(itemBlk,'NUM2',B,true)}\n`;
+                            }
+                        }
+                    }
+                    return `${I}set [${name}] to ${decompInput(block,'ITEM',B,false)}\n`;
+                }
+                return `${I}set *(${decompInput(block,'INDEX',B,true)}) to ${decompInput(block,'ITEM',B,false)}\n`;
+            }
+            return `${I}listReplace(${decompInput(block,'INDEX',B,true)}, [${listName}], ${decompInput(block,'ITEM',B,false)})\n`;
+        }
 
         // Custom block calls
         case 'procedures_call': {
@@ -425,12 +533,271 @@ function decompStmt(block, B, indent) {
     }
 }
 
-function decompChain(startId, B, indent) {
+// Name of the define currently being decompiled (for `return` recognition).
+// The decompiler is synchronous, so a module-level slot is safe.
+let currentDefineName = null;
+
+// Promoted-variable name table (stage list __ptab), refreshed per decompile()
+let ptabNames = [];
+
+// --- P3 control-flow sugar recognition ---------------------------------------
+// Hidden flag/temp variables produced by the lowering pass (src/lower.js).
+const HID      = '_scratchpiler_internal_[a-z0-9]{4}';
+const RE_BRK   = new RegExp(`^${HID}_brk\\d+$`);
+const RE_CONT  = new RegExp(`^${HID}_cont\\d+$`);
+const RE_REP   = new RegExp(`^${HID}_rep\\d+$`);
+const RE_DW    = new RegExp(`^${HID}_dowhile\\d+$`);
+const RE_MATCH = new RegExp(`^${HID}_match\\d+$`);
+
+// Strip surrounding quotes from a decompiled literal ("5" → 5) when the
+// content is numeric — the compiler stores literals in text shadows, so they
+// decompile quoted even when the source wrote a bare number.
+function unquoteNum(s) {
+    const m = /^"(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)"$/i.exec(s);
+    return m ? m[1] : s;
+}
+
+function litVal(block, name, B) {
+    return decompInput(block, name, B, true).replace(/^"|"$/g, '');
+}
+
+// operator_equals(data_variable matching `re`, literal `val`) → var name | null
+function isFlagEq(b, B, re, val) {
+    if (!b || b.opcode !== 'operator_equals') return null;
+    const o1 = inpBlock(b, 'OPERAND1', B);
+    if (!o1 || o1.opcode !== 'data_variable') return null;
+    const name = fieldVal(o1, 'VARIABLE') ?? '';
+    if (!re.test(name)) return null;
+    return litVal(b, 'OPERAND2', B) === val ? name : null;
+}
+
+// Guard condition wrapped around loop-body remainders: <brk = 0>, <cont = 0>,
+// or an and() of the two.
+function isGuardCond(b, B) {
+    if (!b) return false;
+    if (b.opcode === 'operator_and') {
+        return isGuardCond(inpBlock(b, 'OPERAND1', B), B) &&
+               isGuardCond(inpBlock(b, 'OPERAND2', B), B);
+    }
+    return !!(isFlagEq(b, B, RE_BRK, '0') || isFlagEq(b, B, RE_CONT, '0'));
+}
+
+function chainIds(startId, B) {
+    const ids = [];
+    let id = startId;
+    while (id && B[id]) { ids.push(id); id = B[id].next; }
+    return ids;
+}
+
+// `set [_.._matchN] to subject` + if/elif equals-chain → match statement.
+// Returns { text, nextId } or null (pattern mismatch — emit normally).
+function tryDecompMatch(setBlock, tag, B, indent) {
+    const first = setBlock.next && B[setBlock.next];
+    if (!first || (first.opcode !== 'control_if' && first.opcode !== 'control_if_else')) return null;
+    const flatten = (b) => {
+        if (!b) return null;
+        if (b.opcode === 'operator_or') {
+            const l = flatten(inpBlock(b, 'OPERAND1', B));
+            const r = flatten(inpBlock(b, 'OPERAND2', B));
+            return l && r ? [...l, ...r] : null;
+        }
+        if (b.opcode === 'operator_equals') {
+            const o1 = inpBlock(b, 'OPERAND1', B);
+            if (o1 && o1.opcode === 'data_variable' && (fieldVal(o1, 'VARIABLE') ?? '') === tag) {
+                return [unquoteNum(decompInput(b, 'OPERAND2', B, false))];
+            }
+        }
+        return null;
+    };
+    const I2 = indent + '    ', I3 = I2 + '    ';
+    const cases = [];
+    let defaultText = null;
+    let cur = first;
+    for (;;) {
+        const values = flatten(inpBlock(cur, 'CONDITION', B));
+        if (!values) return null;
+        cases.push({ values, body: decompChain(inpBlockId(cur, 'SUBSTACK'), B, I3) });
+        if (cur.opcode === 'control_if') break;
+        const elseId  = inpBlockId(cur, 'SUBSTACK2');
+        const elseBlk = elseId && B[elseId];
+        if (elseBlk && !elseBlk.next &&
+            (elseBlk.opcode === 'control_if' || elseBlk.opcode === 'control_if_else') &&
+            flatten(inpBlock(elseBlk, 'CONDITION', B))) {
+            cur = elseBlk;
+            continue;
+        }
+        defaultText = decompChain(elseId, B, I3);
+        break;
+    }
+    const subject = unquoteNum(decompInput(setBlock, 'VALUE', B, false));
+    let text = `${indent}match ${subject} {\n`;
+    for (const c of cases) text += `${I2}case ${c.values.join(', ')} {\n${c.body}${I2}}\n`;
+    if (defaultText !== null) text += `${I2}default {\n${defaultText}${I2}}\n`;
+    text += `${indent}}\n`;
+    return { text, nextId: first.next || null };
+}
+
+// do { body } while cond: repeat_until whose body ends with `set [_.._dwN] to cond`
+function decompDoWhile(block, B, I) {
+    const startId = inpBlockId(block, 'SUBSTACK');
+    const ids  = chainIds(startId, B);
+    const last = ids.length ? B[ids[ids.length - 1]] : null;
+    if (!last || last.opcode !== 'data_setvariableto' ||
+        !RE_DW.test(fieldVal(last, 'VARIABLE') ?? '')) return null;
+    let cond = decompInput(last, 'VALUE', B, false);
+    const body = decompChain(startId, B, I + '    ', ids[ids.length - 1]);
+    // A hoisted temp feeding the condition would have been consumed inside the
+    // body chain — pull it from the leftovers.
+    for (const [name, repl] of (decompChain.leftover || new Map())) {
+        if (cond.includes(`[${name}]`)) cond = cond.split(`[${name}]`).join(repl);
+    }
+    return `${I}do {\n${body}${I}} while ${cond}\n`;
+}
+
+// Recognize the repeat-until shapes emitted for loops containing break/continue
+// (and do-while). Returns decompiled text or null.
+function decompLoweredLoop(block, condBlock, B, I) {
+    // forever + break:  repeat until <brk = 1>
+    if (isFlagEq(condBlock, B, RE_BRK, '1')) {
+        const body = decompChain(inpBlockId(block, 'SUBSTACK'), B, I + '    ');
+        return `${I}forever {\n${body}${I}}\n`;
+    }
+    // plain do-while:  repeat until <dw = "false">
+    if (isFlagEq(condBlock, B, RE_DW, 'false')) return decompDoWhile(block, B, I);
+
+    if (condBlock && condBlock.opcode === 'operator_or') {
+        const aBlk = inpBlock(condBlock, 'OPERAND1', B);
+        const bBlk = inpBlock(condBlock, 'OPERAND2', B);
+        if (!isFlagEq(bBlk, B, RE_BRK, '1')) return null;
+        // do-while + break:  repeat until <<dw = "false"> or <brk = 1>>
+        if (isFlagEq(aBlk, B, RE_DW, 'false')) return decompDoWhile(block, B, I);
+        if (aBlk && aBlk.opcode === 'operator_not') {
+            const inner = inpBlock(aBlk, 'OPERAND', B);
+            // repeat n + break:  repeat until <<not <rep < n>> or <brk = 1>> with
+            // a trailing `change [rep] by 1`
+            if (inner && inner.opcode === 'operator_lt') {
+                const o1 = inpBlock(inner, 'OPERAND1', B);
+                const repName = o1 && o1.opcode === 'data_variable' ? (fieldVal(o1, 'VARIABLE') ?? '') : '';
+                if (RE_REP.test(repName)) {
+                    const ids  = chainIds(inpBlockId(block, 'SUBSTACK'), B);
+                    const last = ids.length ? B[ids[ids.length - 1]] : null;
+                    if (last && last.opcode === 'data_changevariableby' &&
+                        (fieldVal(last, 'VARIABLE') ?? '') === repName) {
+                        const n = unquoteNum(decompInput(inner, 'OPERAND2', B, false));
+                        const body = decompChain(inpBlockId(block, 'SUBSTACK'), B, I + '    ', ids[ids.length - 1]);
+                        return `${I}repeat ${n} {\n${body}${I}}\n`;
+                    }
+                }
+            }
+            // while c + break:  repeat until <<not c> or <brk = 1>>
+            const innerTxt = decompExpr(inner, B);
+            const body = decompChain(inpBlockId(block, 'SUBSTACK'), B, I + '    ');
+            return `${I}while (${innerTxt}) {\n${body}${I}}\n`;
+        }
+        // repeat until c + break:  repeat until <c or <brk = 1>>
+        const condTxt = decompExpr(aBlk, B);
+        const body = decompChain(inpBlockId(block, 'SUBSTACK'), B, I + '    ');
+        return `${I}repeat until (${condTxt}) {\n${body}${I}}\n`;
+    }
+    return null;
+}
+
+function decompChain(startId, B, indent, stopId) {
     const lines = [];
     let id = startId;
-    while (id) {
+    // Hoisted-expression reconstruction: ternary temps (`_.._ternN`) and
+    // return-value captures (`_.._rvN`) are written directly before their
+    // consumer; map temp name → inline source text and substitute into the
+    // following statements instead of emitting the plumbing statements.
+    const pendingTern = new Map();
+    const substTern = (text) => {
+        for (const [name, repl] of pendingTern) {
+            if (text.includes(`[${name}]`)) {
+                text = text.split(`[${name}]`).join(repl);
+                pendingTern.delete(name);
+            }
+        }
+        return text;
+    };
+    const pushLine = (text) => lines.push(substTern(text));
+    while (id && id !== stopId) {
         const block = B[id];
         if (!block) break;
+
+        // return <expr>: `set [__ret_<fn>] to E` + `stop this script`
+        if (currentDefineName && block.opcode === 'data_setvariableto' &&
+            (fieldVal(block, 'VARIABLE') ?? '') === `__ret_${currentDefineName}`) {
+            const nxt = block.next && B[block.next];
+            const val = decompInput(block, 'VALUE', B, false);
+            if (nxt && nxt.opcode === 'control_stop' && (fieldVal(nxt, 'STOP_OPTION') ?? '') === 'this script') {
+                pushLine(`${indent}return ${val}\n`);
+                id = nxt.next || null;
+                continue;
+            }
+            pushLine(`${indent}return ${val}\n`);
+            id = block.next || null;
+            continue;
+        }
+
+        // Hoisted returning call: `call f(args)` + `set [_.._rvN] to [__ret_f]`
+        if (block.opcode === 'procedures_call' && block.next) {
+            const nxt = B[block.next];
+            const rvName = nxt && nxt.opcode === 'data_setvariableto' ? (fieldVal(nxt, 'VARIABLE') ?? '') : '';
+            if (/^_scratchpiler_internal_[a-z0-9]{4}_rv\d+$/.test(rvName)) {
+                const callName = ((block.mutation && block.mutation.proccode) || '').split(' ')[0];
+                const valBlock = inpBlock(nxt, 'VALUE', B);
+                if (valBlock && valBlock.opcode === 'data_variable' &&
+                    (fieldVal(valBlock, 'VARIABLE') ?? '') === `__ret_${callName}`) {
+                    const argIds  = JSON.parse((block.mutation && block.mutation.argumentids) || '[]');
+                    const argStrs = argIds.map(aid => {
+                        const inputData = block.inputs && block.inputs[aid];
+                        return inputData ? decompInputRaw(inputData, B, false) : '""';
+                    });
+                    pendingTern.set(rvName, substTern(`${callName}(${argStrs.join(', ')})`));
+                    id = nxt.next || null;
+                    continue;
+                }
+            }
+        }
+
+        // Detect hoisted ternary: if/else whose branches each contain exactly
+        // one `set [_.._ternN]` of the same temp variable.
+        if (block.opcode === 'control_if_else') {
+            const s1 = B[inpBlockId(block, 'SUBSTACK')];
+            const s2 = B[inpBlockId(block, 'SUBSTACK2')];
+            if (s1 && s2 && !s1.next && !s2.next &&
+                s1.opcode === 'data_setvariableto' && s2.opcode === 'data_setvariableto') {
+                const v1 = fieldVal(s1, 'VARIABLE') ?? '', v2 = fieldVal(s2, 'VARIABLE') ?? '';
+                if (v1 === v2 && /^_scratchpiler_internal_[a-z0-9]{4}_tern\d+$/.test(v1)) {
+                    const cond = decompExpr(inpBlock(block, 'CONDITION', B), B);
+                    const a = decompInput(s1, 'VALUE', B, false);
+                    const b = decompInput(s2, 'VALUE', B, false);
+                    pendingTern.set(v1, `(${substTern(cond)} ? ${substTern(a)} : ${substTern(b)})`);
+                    id = block.next || null;
+                    continue;
+                }
+            }
+        }
+
+        // P3 control-flow plumbing: hidden flag inits vanish; flag sets become
+        // break/continue; guard-ifs unwrap; `set [_.._matchN]` + if-chain → match.
+        if (block.opcode === 'data_setvariableto') {
+            const vn  = fieldVal(block, 'VARIABLE') ?? '';
+            const val = litVal(block, 'VALUE', B);
+            if ((RE_BRK.test(vn) || RE_CONT.test(vn) || RE_REP.test(vn)) && val === '0') { id = block.next || null; continue; }
+            if (RE_DW.test(vn) && val === 'true')  { id = block.next || null; continue; }
+            if (RE_BRK.test(vn) && val === '1')  { pushLine(`${indent}break\n`);    id = block.next || null; continue; }
+            if (RE_CONT.test(vn) && val === '1') { pushLine(`${indent}continue\n`); id = block.next || null; continue; }
+            if (RE_MATCH.test(vn)) {
+                const res = tryDecompMatch(block, vn, B, indent);
+                if (res) { pushLine(res.text); id = res.nextId; continue; }
+            }
+        }
+        if (block.opcode === 'control_if' && isGuardCond(inpBlock(block, 'CONDITION', B), B)) {
+            lines.push(decompChain(inpBlockId(block, 'SUBSTACK'), B, indent));
+            id = block.next || null;
+            continue;
+        }
 
         // Detect compiled .sort(): set(gap,1) → repeat_until(phase1_knuth) → repeat_until(phase2_shell)
         if (block.opcode === 'data_setvariableto' &&
@@ -491,7 +858,7 @@ function decompChain(startId, B, indent) {
                         }
                         return false;
                     })();
-                    lines.push(`${indent}[${listName}].sort${isDesc ? '("desc")' : '()'}\n`);
+                    pushLine(`${indent}[${listName}].sort${isDesc ? '("desc")' : '()'}\n`);
                     id = phase2.next || null;
                     continue;
                 }
@@ -540,7 +907,7 @@ function decompChain(startId, B, indent) {
                                 const bodyIds = substackIds.slice(1, hasFinalIncr ? -1 : undefined);
                                 let body = '';
                                 for (const bid2 of bodyIds) body += decompStmt(B[bid2], B, indent + '    ');
-                                lines.push(`${indent}pyfor [${shortName}] in [${listName}] {\n${body}${indent}}\n`);
+                                pushLine(`${indent}pyfor [${shortName}] in [${listName}] {\n${body}${indent}}\n`);
                                 id = nextBlock.next || null;
                                 continue;
                             }
@@ -580,7 +947,7 @@ function decompChain(startId, B, indent) {
                     if (msgVal === `__sroutine_${rname}`) {
                         const kw = bcastBlock.opcode === 'event_broadcastandwait' ? 'await' : 'launch';
                         const argsStr = paramArgs.length ? `(${paramArgs.join(', ')})` : '()';
-                        lines.push(`${indent}${kw} ${rname}${argsStr}\n`);
+                        pushLine(`${indent}${kw} ${rname}${argsStr}\n`);
                         id = bcastBlock.next || null;
                         continue;
                     }
@@ -618,7 +985,7 @@ function decompChain(startId, B, indent) {
 
                             let body = '';
                             for (const bid of bodyIds) body += decompStmt(B[bid], B, indent + '    ');
-                            lines.push(`${indent}for [${shortName}] from ${startExpr} to ${endExpr} {\n${body}${indent}}\n`);
+                            pushLine(`${indent}for [${shortName}] from ${startExpr} to ${endExpr} {\n${body}${indent}}\n`);
                             id = nextBlock.next || null;
                             continue;
                         }
@@ -627,10 +994,32 @@ function decompChain(startId, B, indent) {
             }
         }
 
-        lines.push(decompStmt(block, B, indent));
+        pushLine(decompStmt(block, B, indent));
         id = block.next || null;
     }
+    // Unconsumed pending substitutions (e.g. a hoisted temp feeding a stripped
+    // do-while condition) are exposed for the caller.
+    decompChain.leftover = pendingTern;
     return lines.join('');
+}
+
+// Does this statement chain (including nested substacks) set the given variable?
+function chainHasSet(startId, B, varName) {
+    const q = [startId];
+    const seen = new Set();
+    while (q.length) {
+        const bid = q.shift();
+        if (!bid || !B[bid] || seen.has(bid)) continue;
+        seen.add(bid);
+        const b = B[bid];
+        if (b.opcode === 'data_setvariableto' && (fieldVal(b, 'VARIABLE') ?? '') === varName) return true;
+        if (b.next) q.push(b.next);
+        for (const slot of ['SUBSTACK', 'SUBSTACK2']) {
+            const sub = inpBlockId(b, slot);
+            if (sub) q.push(sub);
+        }
+    }
+    return false;
 }
 
 function decompScript(hat, B) {
@@ -645,8 +1034,14 @@ function decompScript(hat, B) {
         const proccode = proto.mutation.proccode || '';
         const name     = proccode.split(' ')[0];
         const params   = JSON.parse(proto.mutation.argumentnames || '[]');
+        // The hidden heap allocator defines are compiler-generated: suppress
+        // them (they are re-spliced on every compile that uses alloc/free).
+        if ((name === 'alloc' || name === 'free') && chainHasSet(hat.next, B, '__heap_free')) return null;
+        currentDefineName = name;
         const body     = decompChain(hat.next, B, '    ');
-        return `define ${name}(${params.join(', ')}) {\n${body}}`;
+        const isReturns = chainHasSet(hat.next, B, `__ret_${name}`);
+        currentDefineName = null;
+        return `define ${name}(${params.join(', ')})${isReturns ? ' returns' : ''} {\n${body}}`;
     }
 
     // Hat block
@@ -706,12 +1101,38 @@ export function decompile(vm, spriteName) {
         : (vm.runtime.targets.find(t => !t.isStage && t.sprite.name === spriteName) || vm.editingTarget);
     if (!target) return '// Error: sprite not found\n';
 
+    // Pointer support: __ptab (on the stage) names the promoted-variable heap
+    // slots — needed to print heap reads/writes as plain variable accesses.
+    ptabNames = [];
+    const stageT = vm.runtime.targets.find(t => t.isStage);
+    if (stageT) {
+        const pt = Object.values(stageT.variables).find(v => v.name === '__ptab' && v.type === 'list');
+        if (pt && Array.isArray(pt.value)) ptabNames = pt.value.map(String);
+    }
+
     const B = target.blocks._blocks;
     const roots = Object.values(B)
         .filter(b => b.topLevel && !b.shadow)
         .sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
 
-    return roots.map(r => decompScript(r, B)).filter(Boolean).join('\n\n') + '\n';
+    // Header-origin scripts (marked with a `scratchpiler:include=name.h`
+    // workspace comment at inject time) collapse back to their #include line.
+    // Without the marker they degrade gracefully to the expanded form.
+    const headerOf = {};
+    for (const c of Object.values(target.comments || {})) {
+        const m = typeof c?.text === 'string' && c.text.match(/^scratchpiler:include=([\w-]+\.h)$/);
+        if (m && c.blockId) headerOf[c.blockId] = m[1];
+    }
+    const includes = new Set();
+    const scripts = [];
+    for (const r of roots) {
+        if (headerOf[r.id]) { includes.add(headerOf[r.id]); continue; }
+        const s = decompScript(r, B);
+        if (s) scripts.push(s);
+    }
+    const includeLines = [...includes].sort().map(h => `#include <${h}>`).join('\n');
+    const body = scripts.join('\n\n');
+    return (includeLines ? includeLines + '\n\n' : '') + body + '\n';
 }
 
 

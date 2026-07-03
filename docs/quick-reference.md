@@ -7,6 +7,8 @@ Everything on one page. For detailed explanations, follow the links to the relev
 ## Script structure
 
 ```
+#include <name.h>        // splice in a header library
+
 on flag { }              // green flag
 on click { }             // sprite clicked
 on clone { }             // started as a clone
@@ -16,7 +18,10 @@ on backdrop "name" { }   // backdrop switched to
 on timer > 10 { }        // timer exceeds value
 on loudness > 50 { }     // microphone loudness exceeds value
 
-define blockName(p1, p2) { }   // custom block definition
+define blockName(p1, p2) { }        // custom block definition
+define blockName(p1, p2) returns {
+    return value                    // custom block that returns a value
+}
 ```
 
 ---
@@ -33,8 +38,18 @@ repeat 10 { }
 forever { }
 repeat until (condition) { }
 while (condition) { }
+do { } while (condition) { }   // body always runs once, then test condition
 for [i] from 1 to 10 { }
 pyfor [item] in [list] { }   // iterate over every element of a list
+
+match [score] {                 // switch is an alias
+    case 100 { }
+    case 90, 95 { }             // multiple values per case
+    default { }
+}
+
+break                           // leave the innermost loop (forever, repeat, while, do..while only)
+continue                        // skip to next iteration of the innermost loop
 
 wait(seconds)
 wait until condition
@@ -92,6 +107,21 @@ change [x] by amount
 showVariable([x])
 hideVariable([x])
 ```
+
+---
+
+## Pointers & Heap
+
+```
+&[x]                      // address of global variable x
+*[p]                      // dereference pointer p (read value)
+set *[p] to value         // write through pointer
+[p][i]                    // pointer indexing: read at offset p + i
+alloc(n)                  // allocate n cells on heap, return pointer
+free(p)                   // free heap cells at pointer p
+```
+
+Everything dereferences and allocates in one expression — useful for building linked lists and dynamic structures.
 
 ---
 
@@ -406,8 +436,11 @@ Uses **parentheses**, not braces — see [asm.md](asm.md) if you just typed `{` 
 
 ```
 +  -  *  /  mod           // arithmetic
-<  >  =                   // comparison (no <=, >=, !=)
+<  >  =  !=  <=  >=       // comparison (!=, <=, >= desugar to not(...) forms)
+a < b < c                 // chained comparisons (middle operand evaluated twice)
 and  or  not              // boolean
+cond ? a : b              // ternary conditional
+true  false               // boolean literals
 ```
 
 ---
@@ -417,8 +450,11 @@ and  or  not              // boolean
 ```
 42          3.14          -5          // numbers
 "hello"                               // strings (double quotes only)
+"score is {[score]}"                  // string interpolation
+"literal {{brace}} is {{}}"           // {{}} escapes literal braces
 [varName]                             // variable reference
 #ff6600                               // hex color
+true  false                           // boolean literals
 ```
 
 ---

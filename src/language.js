@@ -51,6 +51,7 @@ export function registerLanguage(monaco) {
                 [/\[[^\]]+\]/, 'variable'],
                 [/#[0-9a-fA-F]{6}/, 'number'],
                 [/[0-9]+(\.[0-9]+)?/, 'number'],
+                [/\b(?:true|false)\b/, 'keyword'],
                 [/[a-zA-Z_][\w]*/, {
                     cases: {
                         '@keywords':  'keyword',
@@ -59,7 +60,7 @@ export function registerLanguage(monaco) {
                     }
                 }],
                 [/[{}()[\],:]/, 'delimiter'],
-                [/[+\-*\/<>=]/, 'operator'],
+                [/(?:!=|<=|>=|[+\-*\/<>=?&])/, 'operator'],
             ],
             // __asm__ [volatile] [unsafe] ( ... ) — consumes the header keywords up to the opening '('
             asmHeader: [
@@ -464,10 +465,20 @@ export function registerLanguage(monaco) {
         // keyword constructs (detected by looking behind cursor)
         'if':           { label: 'if <condition> { … }',            params: [{ label: '<condition>', documentation: 'A boolean expression' }] },
         'while':        { label: 'while (<condition>) { … }',       params: [{ label: '<condition>', documentation: 'Loop while true' }] },
+        'do':           { label: 'do { … } while (<condition>)',    params: [{ label: '<condition>', documentation: 'Test at the end; body always runs once' }] },
         'repeat until': { label: 'repeat until (<condition>) { … }',params: [{ label: '<condition>', documentation: 'Loop until true' }] },
         'repeat':       { label: 'repeat <count> { … }',            params: [{ label: '<count>',     documentation: 'Number of iterations' }] },
         'for':          { label: 'for [var] from <start> to <end> { … }', params: [{ label: '[var]' }, { label: '<start>' }, { label: '<end>' }] },
+        'match':        { label: 'match [subject] { case … default … }', params: [{ label: '[subject]', documentation: 'Variable or expression to compare against cases' }] },
+        'switch':       { label: 'switch [subject] { case … default … }  (alias for match)', params: [{ label: '[subject]' }] },
+        'case':         { label: 'case <value1>, <value2>, … { … }', params: [{ label: '<values>', documentation: 'One or more values to match, separated by commas' }] },
+        'default':      { label: 'default { … }  (in match blocks)', params: [] },
+        'break':        { label: 'break  — exit the innermost loop', params: [], documentation: 'Supported in: forever, repeat, while, repeat until, do..while. NOT in for/pyfor.' },
+        'continue':     { label: 'continue  — skip to next iteration', params: [], documentation: 'Supported in: forever, repeat, while, repeat until, do..while. NOT in for/pyfor.' },
         'wait until':   { label: 'wait until <condition>',          params: [{ label: '<condition>' }] },
+        'define':       { label: 'define <name>(<params>) returns { return <value> }', params: [{ label: '<name>', documentation: 'Block name' }, { label: '<params>', documentation: 'Parameters (optional)' }, { label: '<value>', documentation: 'Expression to return' }] },
+        'return':       { label: 'return <expr>  (in returns blocks)\nreturn  (bare return exits)', params: [{ label: '<expr>', documentation: 'Value to return (optional)' }] },
+        'returns':      { label: 'returns  — declare that a custom block returns a value', params: [], documentation: 'Used after parameter list in define: define name(params) returns { … }' },
         // function calls
         'move':             { label: 'move(steps)',               params: [{ label: 'steps' }] },
         'turnRight':        { label: 'turnRight(degrees)',         params: [{ label: 'degrees' }] },
@@ -566,6 +577,8 @@ export function registerLanguage(monaco) {
         'turnTo':              { label: 'turnTo(degrees)  — point in absolute direction (0=up, 90=right, 180/-180=down, -90=left)', params: [{ label: 'degrees', documentation: '0=up, 90=right, 180=down, -90=left' }] },
         'pyfor':               { label: 'pyfor [iterator] in [list] { … }', params: [{ label: '[iterator]', documentation: 'Variable to receive each item' }, { label: '[list]', documentation: 'List to iterate over' }] },
         'not':                 { label: 'not <condition>  — boolean NOT', params: [{ label: '<condition>' }] },
+        'true':                { label: 'true  — boolean true literal', params: [] },
+        'false':               { label: 'false  — boolean false literal', params: [] },
         'listDeleteAll':       { label: 'listDeleteAll([list])', params: [{ label: '[list]' }] },
         'populateList':        { label: 'populateList([list], value, count | max, clearFirst)', params: [{ label: '[list]', documentation: 'The list to fill. Must already exist in Scratch.' }, { label: 'value', documentation: 'Expression to fill each slot with.' }, { label: 'count  |  max', documentation: 'Number of items to add. Pass the literal `max` for 200,000.' }, { label: 'clearFirst', documentation: 'true — delete all items first.  false — append on top of existing items.' }] },
         'populateArray':       { label: 'populateArray([list], value, count | max, clearFirst)  — alias for populateList', params: [{ label: '[list]' }, { label: 'value' }, { label: 'count  |  max', documentation: 'Number of items to add. Pass the literal `max` for 200,000.' }, { label: 'clearFirst', documentation: 'true — delete all items first.  false — append on top of existing items.' }] },
@@ -615,6 +628,11 @@ export function registerLanguage(monaco) {
         'cancel':         { label: 'cancel name  — set the cancel flag (check with checkCancel)', params: [{ label: 'name', documentation: 'Scratchroutine name' }] },
         'isRunning':      { label: 'isRunning(name)  — boolean: is routine currently executing?', params: [{ label: 'name', documentation: 'Scratchroutine name' }] },
         'checkCancel':    { label: 'checkCancel()  — stop this script if cancelled (inside scratchroutine only)', params: [] },
+        // Pointers & Heap
+        'alloc':          { label: 'alloc(n)  — allocate n cells on heap', params: [{ label: 'n', documentation: 'Number of cells to allocate' }] },
+        'free':           { label: 'free(p)  — free heap cells at pointer p', params: [{ label: 'p', documentation: 'Pointer returned by alloc()' }] },
+        // Includes
+        '#include':       { label: '#include <name.h>  — splice in a header library', params: [] },
         // Inline assembly
         '__asm__': {
             label: '__asm__ volatile(...)  — inline raw Scratch opcodes\n' +
@@ -926,10 +944,17 @@ function buildSuggestions(monaco, range, hatRange) {
     push('forever {}',             CIK.Snippet, 'Control · forever {}',               'forever {\n\t$0\n}',                                             'Loops the block forever');
     push('repeat until () {}',     CIK.Snippet, 'Control · repeat until (cond) {}',   'repeat until (${1:condition}) {\n\t$0\n}',                       'Loops until the condition becomes true');
     push('while () {}',            CIK.Snippet, 'Control · while (cond) {}',          'while (${1:condition}) {\n\t$0\n}',                              'Loops while the condition is true');
+    push('do { } while ()',         CIK.Snippet, 'Control · do { } while (cond) {}',    'do {\n\t$1\n} while (${0:condition})',                          'Body always runs once, then loops while condition is true');
     push('for [i] from 1 to 10 {}',CIK.Snippet, 'Control · for [i] from n to n {}',  'for [${1:i}] from ${2:1} to ${3:10} {\n\t$0\n}',                'Numeric for-loop — [i] counts from start to end');
     push('pyfor [item] in [list] {}', CIK.Snippet, 'Control · pyfor [item] in [list] {}', 'pyfor [${1:item}] in [${2:myList}] {\n\t$0\n}',            'Python-style list iteration — [item] receives each list element in order');
+    push('match {}',               CIK.Snippet, 'Control · match [subject] { case ... }', 'match [${1:score}] {\n\tcase ${2:100} {\n\t\t$3\n\t}\n\tdefault {\n\t\t$0\n\t}\n}', 'Multi-branch comparison — `switch` is an alias. Cases can have multiple comma-separated values.');
+    push('case',                   CIK.Snippet, 'Control · case value { }',            'case ${1:value} {\n\t$0\n}',                                    'Case branch in a match block (multiple values separated by commas)');
+    push('default',                CIK.Snippet, 'Control · default { }',              'default {\n\t$0\n}',                                            'Default branch in a match block (runs if no cases match)');
+    push('break',                  CIK.Keyword, 'Control · break',                    'break',                                                         'Exit the innermost loop (forever, repeat, while, do..while only)');
+    push('continue',               CIK.Keyword, 'Control · continue',                 'continue',                                                      'Skip to the next iteration of the innermost loop (forever, repeat, while, do..while only)');
     push('wait until',             CIK.Snippet, 'Control · wait until <cond>',        'wait until ${0:condition}',                                      'Pauses until the condition becomes true');
     push('define name(params) {}', CIK.Snippet, 'Custom block · define name(params) {}', 'define ${1:name}(${2:params}) {\n\t$0\n}',                   'Define a custom block (procedure)');
+    push('define name(params) returns {}', CIK.Snippet, 'Custom block · define name(params) returns {}', 'define ${1:name}(${2:params}) returns {\n\t$0\n}', 'Define a custom block that returns a value — use `return <expr>` in the body');
     // Variables (space-form preserved)
     push('set [] to',              CIK.Keyword,  'Variables · set [var] to value',   'set [$1] to $0',      'Set a variable to a value');
     push('change [] by',           CIK.Keyword,  'Variables · change [var] by n',    'change [$1] by $0',   'Add a number to a variable');
@@ -1053,6 +1078,14 @@ function buildSuggestions(monaco, range, hatRange) {
     push('[a] < [b]',  CIK.Operator, 'Comparison', '$1 < $0');
     push('[a] > [b]',  CIK.Operator, 'Comparison', '$1 > $0');
     push('[a] = [b]',  CIK.Operator, 'Comparison', '$1 = $0');
+    push('[a] != [b]', CIK.Operator, 'Comparison · not equal (desugars to not(...))', '$1 != $0');
+    push('[a] <= [b]', CIK.Operator, 'Comparison · less than or equal (desugars to not(...))', '$1 <= $0');
+    push('[a] >= [b]', CIK.Operator, 'Comparison · greater than or equal (desugars to not(...))', '$1 >= $0');
+    // Boolean literals and ternary
+    push('true',  CIK.Keyword, 'Boolean literal', 'true');
+    push('false', CIK.Keyword, 'Boolean literal', 'false');
+    push('? :',   CIK.Snippet, 'Ternary operator', '${1:condition} ? ${2:valueIfTrue} : ${3:valueIfFalse}',
+         'Ternary conditional: condition ? valueIfTrue : valueIfFalse');
     // Sensing / reporters
     push('touching()',             CIK.Function, 'Sensing',  'touching("$0")');
     push('key()',                  CIK.Function, 'Sensing',  'key("$0")');
@@ -1153,6 +1186,24 @@ function buildSuggestions(monaco, range, hatRange) {
     // Increment / decrement
     push('[var]++', CIK.Snippet, 'Variables', '[$1]++', 'Increment variable by 1 — sugar for `change [var] by 1`');
     push('[var]--', CIK.Snippet, 'Variables', '[$1]--', 'Decrement variable by 1 — sugar for `change [var] by -1`');
+
+    // Pointers & Heap
+    push('alloc()',        CIK.Function, 'Pointers & Heap · alloc(n)', 'alloc($0)',
+         'Allocate n cells on the heap — returns a pointer (integer address)');
+    push('free()',         CIK.Function, 'Pointers & Heap · free(p)', 'free($0)',
+         'Free heap cells allocated by alloc(p)');
+    push('&[var]',         CIK.Snippet,  'Pointers & Heap · &[var]', '&[$0]',
+         'Take the address of a global variable');
+    push('*[ptr]',         CIK.Snippet,  'Pointers & Heap · *[ptr]', '*[$0]',
+         'Dereference a pointer (read the value at the address)');
+    push('set *[ptr] to',  CIK.Keyword,  'Pointers & Heap · set *[ptr] to value', 'set *[$1] to $0',
+         'Write through a pointer');
+    push('[ptr][i]',       CIK.Snippet,  'Pointers & Heap · [ptr][i]', '[$1][$0]',
+         'Pointer indexing — read value at offset ptr + i');
+
+    // Includes
+    push('#include <>',    CIK.Snippet,  'Headers · #include <name.h>', '#include <${0:name.h}>',
+         'Include a header library (created in the Headers panel, shared across projects)');
 
     // Scratchroutines
     push('enum {}',         CIK.Snippet,   'Enum · compile-time named constants',

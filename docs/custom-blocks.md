@@ -96,6 +96,57 @@ This is the standard, community-accepted pattern. It works. It is not elegant. I
 
 ---
 
+## Return values
+
+Custom blocks can now return a value by adding a `returns` clause to the definition.
+
+```
+define rectArea(w, h) returns {
+    return w * h
+}
+
+define greet(name) returns {
+    return join("hello, ", name)
+}
+
+on flag {
+    set [area] to rectArea(6, 7)
+    say("area = {[area]}")
+    say("{greet("world")}")
+}
+```
+
+The `returns` keyword after the parameter list declares that this block produces a value. Inside the body, use `return <expr>` to set the result and exit. A bare `return` with no expression just exits without setting a value (defaults to empty string).
+
+**Calling a `returns` block:** A block declared with `returns` can be called inside any expression, not just as a statement. The result is captured and usable immediately.
+
+```
+if rectArea(3, 4) + rectArea(2, 5) = 22 {
+    say("arithmetic checks out")
+}
+```
+
+**Behind the scenes:** The result is stored in a hidden global variable named `__ret_<blockname>`. The call itself runs in warp mode ("run without screen refresh"), making the call → read atomic and fast. Recursion is fully supported because the result is captured immediately after each call returns, preventing outer callers' values from being clobbered.
+
+**Example: factorial with recursion**
+
+```
+define fact(n) returns {
+    if n < 2 {
+        return 1
+    }
+    return n * fact(n - 1)
+}
+
+on flag {
+    say("5! = {fact(5)}")  // says "5! = 120"
+}
+```
+
+**Compiler warning:** If a block is declared with `returns` but contains no `return <value>` statement, the compiler warns that the block may return empty string unintentionally.
+
+---
+
 ## Recursion
 
 Scratch custom blocks technically support recursion, but it is not recommended for anything deep. Because Scratch has no call stack overflow protection, it will simply freeze, locking up the thread and turning your project into a loading spinner that spins until you kill the tab. Shallow recursion (a few levels) works fine; deep recursion is a great way to stress-test your browser's crash reporter.

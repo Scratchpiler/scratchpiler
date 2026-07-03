@@ -4,7 +4,7 @@ import { acquireVM, scratchIndex, reindex } from "./vm.js";
 import { loadMonaco } from "./monaco.js";
 import { registerLanguage } from "./language.js";
 import { buildOverlayDOM, buildTriggerButton, buildSearchNowhereDOM, setupSpritePicker, spPickerOpen, searchNowhereOpen, logToOutput, flashCompileBtn, openSpritePicker, closeSpritePicker, showSpriteContextMenu, closeSpriteContextMenu, setupOutputPanel, setupSidebarResize, openSearchNowhere, closeSearchNowhere, } from "./ui-dom.js";
-import { compileSource, decompile, lint, typeCheckDiagnostics, injectBlocks, uid } from "./main.js";
+import { compileSource, compileSourceWithHeaders, expand, listHeaders, readHeader, writeHeader, deleteHeader, renameHeader, decompile, lint, typeCheckDiagnostics, injectBlocks, uid } from "./main.js";
 import { getAnalysis, semanticDiagnostics, smellDiagnostics } from "./analyzer.js";
 import { registerSemanticProviders } from "./semantic-providers.js";
 
@@ -56,7 +56,11 @@ function renderSidebarSprites() {
 export function selectSidebarSprite(spriteName) {
     if (!spriteName) return;
     const oldSprite = currentSpriteContext;
-    if (oldSprite && oldSprite !== spriteName) {
+    if (editingHeader) {
+        // Leaving header-editing mode: the editor holds header text, not the
+        // old sprite's code — persist it to header storage, never to the sprite.
+        exitHeaderEditing();
+    } else if (oldSprite && oldSprite !== spriteName) {
         saveToLocalStorage(oldSprite);
     }
     currentSpriteContext = spriteName;
@@ -293,19 +297,22 @@ function setupActivityBar() {
     const actSearch = document.getElementById('sp-activity-search');
     const actSettings = document.getElementById('sp-activity-settings');
     const actFixes = document.getElementById('sp-activity-fixes');
+    const actHeaders = document.getElementById('sp-activity-headers');
 
     const panels = {
         explorer: document.getElementById('sp-panel-explorer'),
         search: document.getElementById('sp-panel-search'),
         settings: document.getElementById('sp-panel-settings'),
-        fixes: document.getElementById('sp-panel-fixes')
+        fixes: document.getElementById('sp-panel-fixes'),
+        headers: document.getElementById('sp-panel-headers')
     };
 
     const buttons = {
         explorer: actExplorer,
         search: actSearch,
         settings: actSettings,
-        fixes: actFixes
+        fixes: actFixes,
+        headers: actHeaders
     };
 
     function switchTab(tabId) {
@@ -349,6 +356,7 @@ function setupActivityBar() {
     actSearch.addEventListener('click', () => switchTab('search'));
     actSettings.addEventListener('click', () => switchTab('settings'));
     actFixes.addEventListener('click', () => switchTab('fixes'));
+    actHeaders?.addEventListener('click', () => { switchTab('headers'); renderHeadersList(); });
 
     // Fixes panel actions
     document.getElementById('sp-fix-clear-cache').addEventListener('click', () => {
@@ -855,8 +863,137 @@ let saveTimer = null;
 let lintTimer = null;
 export let currentSpriteContext = null; // track current sprite for per-sprite save/load
 
+// ===== Header editing (#include) =====
+let editingHeader = null; // header name while the editor shows a header, else null
+
+function setCompileBtnLabel() {
+    const btn = document.getElementById('scratchpiler-compile-btn');
+    if (btn) btn.innerHTML = editingHeader ? 'Check Header' : 'Compile &amp; Inject';
+}
+
+function exitHeaderEditing() {
+    if (!editingHeader) return;
+    try { writeHeader(editingHeader, monacoEditor ? monacoEditor.getValue() : ''); } catch (_) {}
+    editingHeader = null;
+    setCompileBtnLabel();
+    renderHeadersList();
+}
+
+function openHeaderInEditor(name) {
+    if (!monacoEditor) return;
+    if (editingHeader && editingHeader !== name) {
+        try { writeHeader(editingHeader, monacoEditor.getValue()); } catch (_) {}
+    } else if (!editingHeader) {
+        saveToLocalStorage(currentSpriteContext);
+    }
+    editingHeader = name;
+    monacoEditor.setValue(readHeader(name) ?? '');
+    setCompileBtnLabel();
+    updateStatus(`Editing ${name} — pick a sprite in the Explorer to go back`);
+    renderHeadersList();
+}
+
+function renderHeadersList() {
+    const list = document.getElementById('sp-headers-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const names = listHeaders();
+    if (names.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'font-size:11px;color:#6b8db5;padding:6px 2px;';
+        empty.textContent = 'No headers yet.';
+        list.appendChild(empty);
+        return;
+    }
+    for (const name of names) {
+        const item = document.createElement('div');
+        item.className = 'sp-sidebar-item' + (editingHeader === name ? ' active' : '');
+        item.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;';
+        const label = document.createElement('span');
+        label.textContent = name;
+        label.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        const renameBtn = document.createElement('button');
+        renameBtn.textContent = '✎';
+        renameBtn.title = 'Rename';
+        renameBtn.style.cssText = 'background:none;border:none;color:inherit;cursor:pointer;padding:0 2px;';
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '✕';
+        delBtn.title = 'Delete';
+        delBtn.style.cssText = renameBtn.style.cssText;
+        item.appendChild(label); item.appendChild(renameBtn); item.appendChild(delBtn);
+        item.addEventListener('click', () => openHeaderInEditor(name));
+        renameBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showCreateDialog(`Rename ${name}`, (newName) => {
+                if (!newName.endsWith('.h')) newName += '.h';
+                try { renameHeader(name, newName); } catch (err) { updateStatus(err.message); return; }
+                if (editingHeader === name) editingHeader = newName;
+                renderHeadersList();
+            });
+        });
+        delBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!confirm(`Delete header ${name}? Projects that #include it will stop compiling.`)) return;
+            deleteHeader(name);
+            if (editingHeader === name) {
+                editingHeader = null;
+                setCompileBtnLabel();
+                if (monacoEditor) loadFromLocalStorage(currentSpriteContext);
+            }
+            renderHeadersList();
+        });
+        list.appendChild(item);
+    }
+}
+
+function setupHeadersPanel() {
+    document.getElementById('sp-headers-new')?.addEventListener('click', () => {
+        showCreateDialog('New header name (e.g. utils.h)', (name) => {
+            if (!name.endsWith('.h')) name += '.h';
+            try { writeHeader(name, `// ${name} — define / scratchroutine / enum / struct declarations\n`); }
+            catch (err) { updateStatus(err.message); return; }
+            renderHeadersList();
+            openHeaderInEditor(name);
+        });
+    });
+    renderHeadersList();
+}
+
+// Check a header in place: save it, then validate via a synthetic #include.
+function checkCurrentHeader() {
+    const name = editingHeader;
+    try { writeHeader(name, monacoEditor.getValue()); }
+    catch (err) { updateStatus(err.message); flashCompileBtn(false); return; }
+    const ex = expand(`#include <${name}>`);
+    const markers = ex.errors.map(e => {
+        // errors carry `name.h:LINE[:COL]: message` — point markers at the real header line
+        const m = e.message.match(/^[\w-]+\.h:(\d+)(?::(\d+))?:? ?(.*)$/s);
+        return {
+            startLineNumber: m ? +m[1] : 1, startColumn: m && m[2] ? +m[2] : 1,
+            endLineNumber: m ? +m[1] : 1, endColumn: (m && m[2] ? +m[2] : 1) + 40,
+            message: m ? m[3] : e.message,
+            severity: monaco.MarkerSeverity.Error,
+        };
+    });
+    monaco.editor.setModelMarkers(monacoEditor.getModel(), LANG_ID, markers);
+    if (ex.errors.length > 0) {
+        ex.errors.forEach(er => logToOutput(`${name}: ${er.message}`, 'error'));
+        updateStatus(`${ex.errors.length} problem(s) in ${name}`);
+        flashCompileBtn(false);
+    } else {
+        updateStatus(`✓ ${name} saved — no problems`);
+        flashCompileBtn(true);
+    }
+}
+
 function saveToLocalStorage(spriteName) {
     if (!monacoEditor) return;
+    // Header-editing mode: the editor holds header text — save it to header
+    // storage instead (covers autosave, close, and search-replace paths).
+    if (editingHeader) {
+        try { writeHeader(editingHeader, monacoEditor.getValue()); } catch (_) {}
+        return;
+    }
     const key = spriteName ? `scratchpiler-content-${spriteName}` : LS_KEY;
     const val = monacoEditor.getValue();
     // Don't cache empty/whitespace-only content — it poisons future
@@ -1255,6 +1392,7 @@ export function bootstrap() {
     });
 
     setupActivityBar();
+    setupHeadersPanel();
     setupOutputPanel();
     setupSpritePicker();
     setupSidebarResize();
@@ -1406,8 +1544,9 @@ export function bootstrap() {
             }, 350);
         });
 
-        // Compile & Inject button
+        // Compile & Inject button (doubles as "Check Header" in header mode)
         document.getElementById('scratchpiler-compile-btn').addEventListener('click', (e) => {
+            if (editingHeader) { checkCurrentHeader(); return; }
             if (!currentVM) { updateStatus('Error: VM not available'); return; }
             const spriteName = currentSpriteContext;
             const source = monacoEditor.getValue();
@@ -1415,7 +1554,7 @@ export function bootstrap() {
             updateStatus(minify ? 'Compiling (minify)...' : 'Compiling...');
 
             let result;
-            try { result = compileSource(source, currentVM, spriteName); }
+            try { result = compileSourceWithHeaders(source, currentVM, spriteName); }
             catch (e) {
                 updateStatus('Compile error: ' + e.message);
                 logToOutput('Compile error: ' + e.message, 'error');
@@ -1447,7 +1586,7 @@ export function bootstrap() {
                 logToOutput(`Minified: ${renamed} variable(s) renamed to gibberish 🙈`, 'ok');
             }
 
-            injectBlocks(result.blocks, currentVM, spriteName);
+            injectBlocks(result.blocks, currentVM, spriteName, result.headerRoots);
             flashCompileBtn(true);
             const blockCount = Object.keys(result.blocks).length;
             const label = spriteName === '__stage__' ? 'Stage' : spriteName;

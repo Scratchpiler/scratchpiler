@@ -56,6 +56,10 @@ export const KEYWORDS = [
     'down','up',
     // else-if alias
     'elif',
+    // Return-value functions
+    'returns','return',
+    // Control-flow sugar
+    'match','switch','case','default','do','break','continue',
     // Scratchroutines
     'scratchroutine','launch','await','cancel','isRunning','checkCancel',
     // Struct declarations and debug

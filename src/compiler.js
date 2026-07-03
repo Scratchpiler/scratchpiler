@@ -1,17 +1,19 @@
 import { KEYWORDS } from "./constants.js";
-import { scratchIndex } from "./vm.js";
+import { scratchIndex } from "./scratch-index.js";
 import { ASM_OPCODES } from "./asm-opcodes.js";
+import { lowerAST } from "./lower.js";
 
 // [L] DSL Compiler
 
 // --- Lexer ---
 
 const TT = {
-    NUM: 'NUM', STR: 'STR', IDENT: 'IDENT', VAR: 'VAR',
+    NUM: 'NUM', STR: 'STR', ISTR: 'ISTR', IDENT: 'IDENT', VAR: 'VAR',
     LBRACE: '{', RBRACE: '}', LPAREN: '(', RPAREN: ')',
     COMMA: ',', COLON: ':', HASH: '#', HEX: 'HEX', DOT: '.',
     LT: '<', GT: '>', EQ: '=', PLUS: '+', MINUS: '-',
     STAR: '*', SLASH: '/', SEMI: ';', EOF: 'EOF',
+    NEQ: '!=', LE: '<=', GE: '>=', BANG: '!', QUESTION: '?', AMP: '&',
 };
 
 const KW_SET = new Set(KEYWORDS);
@@ -37,13 +39,44 @@ export function tokenize(src) {
         const startLine = line, startCol = col;
         const c = src[i];
 
-        // String literal
+        // String literal — with {expr} interpolation ({{ and }} are literal braces)
         if (c === '"') {
             advance();
             let s = '';
-            while (i < src.length && src[i] !== '"') s += advance();
+            const parts = [];  // {kind:'str',text} | {kind:'expr',src,line,col}
+            while (i < src.length && src[i] !== '"') {
+                if (src[i] === '{' && src[i+1] === '{') { advance(); advance(); s += '{'; continue; }
+                if (src[i] === '}' && src[i+1] === '}') { advance(); advance(); s += '}'; continue; }
+                if (src[i] === '{') {
+                    advance(); // consume '{'
+                    const eLine = line, eCol = col;
+                    let depth = 1, esrc = '';
+                    while (i < src.length) {
+                        if (src[i] === '"') {
+                            // nested string literal inside the interpolated expression
+                            esrc += advance();
+                            while (i < src.length && src[i] !== '"') esrc += advance();
+                            if (i < src.length) esrc += advance();
+                            continue;
+                        }
+                        if (src[i] === '{') depth++;
+                        else if (src[i] === '}') { depth--; if (depth === 0) break; }
+                        esrc += advance();
+                    }
+                    if (src[i] === '}') advance();
+                    parts.push({ kind: 'str', text: s }); s = '';
+                    parts.push({ kind: 'expr', src: esrc, line: eLine, col: eCol });
+                    continue;
+                }
+                s += advance();
+            }
             if (src[i] === '"') advance();
-            tokens.push({ type: TT.STR, value: s, line: startLine, col: startCol, endLine: line, endCol: col });
+            if (parts.length === 0) {
+                tokens.push({ type: TT.STR, value: s, line: startLine, col: startCol, endLine: line, endCol: col });
+            } else {
+                if (s !== '') parts.push({ kind: 'str', text: s });
+                tokens.push({ type: TT.ISTR, parts, value: '', line: startLine, col: startCol, endLine: line, endCol: col });
+            }
             continue;
         }
 
@@ -84,11 +117,25 @@ export function tokenize(src) {
             }
         }
 
+        // Two-char comparison operators
+        const two = c + (src[i + 1] || '');
+        if (two === '!=' || two === '<=' || two === '>=') {
+            advance(); advance();
+            tokens.push({ type: two, value: two, line: startLine, col: startCol, endLine: line, endCol: col });
+            continue;
+        }
+        if (c === '!' || c === '?') {
+            advance();
+            tokens.push({ type: c === '!' ? TT.BANG : TT.QUESTION, value: c, line: startLine, col: startCol, endLine: line, endCol: col });
+            continue;
+        }
+
         // Single-char tokens
         const SINGLE = { '{': TT.LBRACE, '}': TT.RBRACE, '(': TT.LPAREN, ')': TT.RPAREN,
                           ',': TT.COMMA,  ':': TT.COLON, '<': TT.LT, '>': TT.GT,
                           '=': TT.EQ, '+': TT.PLUS, '-': TT.MINUS, '*': TT.STAR,
-                          '/': TT.SLASH, '#': TT.HASH, '.': TT.DOT, ';': TT.SEMI };
+                          '/': TT.SLASH, '#': TT.HASH, '.': TT.DOT, ';': TT.SEMI,
+                          '&': TT.AMP };
         if (SINGLE[c]) {
             advance();
             tokens.push({ type: SINGLE[c], value: c, line: startLine, col: startCol, endLine: line, endCol: col });
@@ -246,14 +293,14 @@ export const CALL_SIGS = {
 
 // Returns up to `max` candidates whose spelling is close to `name` (prefix/substring heuristics).
 export function fuzzyMatch(name, candidates, max = 3) {
-    const vl = name.toLowerCase();
+    const vl = String(name).toLowerCase();
     return candidates.filter(k => {
         const kl = k.toLowerCase();
         return kl.startsWith(vl) || vl.startsWith(kl.slice(0, 3)) || kl.includes(vl) || vl.includes(kl.slice(0, 4));
     }).slice(0, max);
 }
 
-export function parse(tokens) {
+export function parse(tokens, opts = {}) {
     let pos = 0;
     let callCtx = '';  // set before args helpers; picked up automatically by eat()
     const errors = [];
@@ -326,8 +373,10 @@ export function parse(tokens) {
                 if (!tryEat(TT.COMMA)) break;
             }
             eat(TT.RPAREN, '`define name(params)`: expected `)` to close the parameter list');
+            let returns = false;
+            if (checkV('returns')) { pos++; returns = true; }
             const body = parseBody();
-            return { type: 'DefineBlock', name: nameT.value, params, body,
+            return { type: 'DefineBlock', name: nameT.value, params, body, returns,
                      line: nameT.line, col: nameT.col,
                      nameEndLine: nameT.endLine, nameEndCol: nameT.endCol, paramSpans };
         }
@@ -380,8 +429,62 @@ export function parse(tokens) {
         if (v === 'cancel')        return parseCancel();
         if (v === 'breakpoint')    return parseBreakpoint();
         if (v === '__asm__')      return parseAsmStmt();
+        if (v === 'return') {
+            pos++;
+            const value = (check(TT.RBRACE) || check(TT.EOF)) ? null : parseExpr();
+            return { type: 'ReturnStmt', value, line: t.line, col: t.col };
+        }
+        if (v === 'match' || v === 'switch') return parseMatch();
+        if (v === 'do')            return parseDoWhile();
+        if (v === 'break')    { pos++; return { type: 'BreakStmt',    line: t.line, col: t.col }; }
+        if (v === 'continue') { pos++; return { type: 'ContinueStmt', line: t.line, col: t.col }; }
 
         return parseSimpleStatement();
+    }
+
+    // match expr { case v1, v2 { ... } case v3 { ... } default { ... } }
+    function parseMatch() {
+        const t = peek(); pos++;
+        const subject = parseExpr();
+        eat(TT.LBRACE, '`match expr { … }`: expected `{` after the match subject');
+        const cases = [];
+        let defaultBody = null;
+        while (!check(TT.RBRACE) && !check(TT.EOF)) {
+            if (checkV('case')) {
+                const ct = peek(); pos++;
+                const values = [parseExpr()];
+                while (tryEat(TT.COMMA)) values.push(parseExpr());
+                const body = parseBody();
+                cases.push({ values, body, line: ct.line, col: ct.col });
+            } else if (checkV('default')) {
+                pos++;
+                defaultBody = parseBody();
+            } else {
+                const bad = peek();
+                errors.push({ line: bad.line, col: bad.col, len: Math.max(String(bad.value).length, 1),
+                    message: `Inside \`match\`: expected \`case <value> { … }\` or \`default { … }\` — got ${tok(bad)}` });
+                pos++;
+            }
+        }
+        eat(TT.RBRACE, '`match`: expected `}` to close the match block');
+        if (cases.length === 0) {
+            errors.push({ line: t.line, col: t.col, len: t.value.length,
+                message: '`match` needs at least one `case <value> { … }` arm' });
+        }
+        return { type: 'MatchStmt', subject, cases, defaultBody, line: t.line, col: t.col };
+    }
+
+    // do { ... } while cond
+    function parseDoWhile() {
+        const t = peek(); pos++;
+        const body = parseBody();
+        if (!checkV('while')) {
+            const bad = peek();
+            errors.push({ line: bad.line, col: bad.col, len: Math.max(String(bad.value).length, 1),
+                message: '`do { … } while cond`: expected `while` after the body' });
+        } else pos++;
+        const cond = parseExpr();
+        return { type: 'DoWhileStmt', cond, body, line: t.line, col: t.col };
     }
 
     function parseIf() {
@@ -940,6 +1043,13 @@ export function parse(tokens) {
 
         // Variables
         if (v === 'set') {
+            // Pointer write: `set *[p] to v` / `set *(expr) to v`
+            if (check(TT.STAR)) {
+                pos++;
+                const addr = parsePrimaryExpr();
+                tryEatV('to');
+                return { type: 'DerefSetStmt', addr, value: parseExpr(), line: ln, col: cl };
+            }
             if (!check(TT.VAR)) {
                 errors.push({ line: ln, col: cl, len: v.length,
                     message: `\`set\` must be followed by a [variable], e.g. \`set [score] to 0\` — got ${tok(peek())}` });
@@ -1061,7 +1171,17 @@ export function parse(tokens) {
     }
 
     // Expression parser
-    function parseExpr()        { return parseOrExpr(); }
+    function parseExpr()        { return parseTernaryExpr(); }
+    function parseTernaryExpr() {
+        const t = peek();
+        const cond = parseOrExpr();
+        if (!check(TT.QUESTION)) return cond;
+        pos++;
+        const thenE = parseTernaryExpr();
+        eat(TT.COLON, '`cond ? a : b` ternary: expected `:` between the two result values');
+        const altE = parseTernaryExpr();
+        return { type: 'TernaryExpr', cond, then: thenE, alt: altE, line: t.line, col: t.col };
+    }
     function parseOrExpr() {
         let left = parseAndExpr();
         while (checkV('or')) { pos++; const right = parseAndExpr(); left = { type: 'BinOp', op: 'or', left, right }; }
@@ -1078,12 +1198,33 @@ export function parse(tokens) {
     }
     function parseCompareExpr() {
         let left = parseAddExpr();
-        if (check(TT.LT) || check(TT.GT) || check(TT.EQ)) {
+        // Collect (op, operand) pairs so chained comparisons work: a < b < c
+        const pairs = [];
+        while (check(TT.LT) || check(TT.GT) || check(TT.EQ) ||
+               check(TT.NEQ) || check(TT.LE) || check(TT.GE)) {
             const op = peek().type; pos++;
-            const right = parseAddExpr();
-            left = { type: 'BinOp', op, left, right };
+            pairs.push({ op, right: parseAddExpr() });
         }
-        return left;
+        if (pairs.length === 0) return left;
+
+        // Desugar: != → not(=), <= → not(>), >= → not(<)  (Scratch has only < > =)
+        function cmp(op, l, r) {
+            switch (op) {
+                case TT.NEQ: return { type: 'UnaryOp', op: 'not', operand: { type: 'BinOp', op: TT.EQ, left: l, right: r } };
+                case TT.LE:  return { type: 'UnaryOp', op: 'not', operand: { type: 'BinOp', op: TT.GT, left: l, right: r } };
+                case TT.GE:  return { type: 'UnaryOp', op: 'not', operand: { type: 'BinOp', op: TT.LT, left: l, right: r } };
+                default:     return { type: 'BinOp', op, left: l, right: r };
+            }
+        }
+        // a < b < c → (a < b) and (b < c); middle operands are re-evaluated.
+        let result = cmp(pairs[0].op, left, pairs[0].right);
+        let prev = pairs[0].right;
+        for (let k = 1; k < pairs.length; k++) {
+            result = { type: 'BinOp', op: 'and', left: result,
+                       right: cmp(pairs[k].op, structuredClone(prev), pairs[k].right) };
+            prev = pairs[k].right;
+        }
+        return result;
     }
     function parseAddExpr() {
         let left = parseMulExpr();
@@ -1106,6 +1247,29 @@ export function parse(tokens) {
     }
     function parseUnaryExpr() {
         if (check(TT.MINUS)) { pos++; return { type: 'UnaryOp', op: '-', operand: parseUnaryExpr() }; }
+        // Pointer sugar: `*[p]` / `*(expr)` dereference, `&[x]` address-of
+        if (check(TT.STAR)) {
+            const t = peek(); pos++;
+            return { type: 'DerefExpr', addr: parseUnaryExpr(), line: t.line, col: t.col };
+        }
+        if (check(TT.AMP)) {
+            const t = peek(); pos++;
+            if (!check(TT.VAR)) {
+                errors.push({ line: t.line, col: t.col, len: 1,
+                    message: '`&` takes the address of a variable: `&[x]`' });
+                return { type: 'Num', value: 0, line: t.line, col: t.col };
+            }
+            const varT = eat(TT.VAR);
+            return { type: 'AddrExpr', varName: varT.value, line: t.line, col: t.col,
+                     varSpan: { line: varT.line, col: varT.col, endLine: varT.endLine, endCol: varT.endCol } };
+        }
+        if (check(TT.BANG)) {
+            const t = peek();
+            errors.push({ line: t.line, col: t.col, len: 1,
+                message: 'Use `not` for boolean negation — `!` is only valid as part of `!=`' });
+            pos++;
+            return { type: 'UnaryOp', op: 'not', operand: parseUnaryExpr() };
+        }
         return parseCallExpr();
     }
     function parseCallExpr() {
@@ -1122,6 +1286,10 @@ export function parse(tokens) {
                 eat(TT.RPAREN, `\`${t.value}(...)\`: expected \`)\` to close the argument list`);
                 return { type: 'CallExpr', name: t.value, args, line: t.line, col: t.col };
             }
+            // Boolean literals
+            if (t.value === 'true' || t.value === 'false') {
+                return { type: 'Bool', value: t.value === 'true', line: t.line, col: t.col };
+            }
             // Bare reporter keywords
             return { type: 'Reporter', name: t.value, line: t.line, col: t.col };
         }
@@ -1131,6 +1299,39 @@ export function parse(tokens) {
         const t = peek();
         if (check(TT.NUM)) { pos++; return { type: 'Num', value: t.value, line: t.line, col: t.col }; }
         if (check(TT.STR)) { pos++; return { type: 'Str', value: t.value, line: t.line, col: t.col }; }
+        if (check(TT.ISTR)) {
+            pos++;
+            // Interpolated string: parse each {expr} fragment, fold into joins
+            const exprs = [];
+            for (const part of t.parts) {
+                if (part.kind === 'str') {
+                    if (part.text !== '') exprs.push({ type: 'Str', value: part.text, line: t.line, col: t.col });
+                    continue;
+                }
+                if (!part.src.trim()) {
+                    errors.push({ line: part.line, col: part.col, len: 2,
+                        message: 'Empty `{}` in string — put an expression inside, or write `{{`/`}}` for literal braces' });
+                    continue;
+                }
+                const fragTokens = tokenize(part.src);
+                for (const ft of fragTokens) {
+                    if (ft.line === 1) { ft.col = part.col + ft.col - 1; if (ft.endLine === 1) ft.endCol = part.col + (ft.endCol || ft.col) - 1; }
+                    ft.line = part.line;
+                    if (ft.endLine !== undefined) ft.endLine = part.line;
+                }
+                const sub = parse(fragTokens, { entry: 'expr' });
+                for (const e of sub.errors) {
+                    errors.push({ ...e, message: `In \`{…}\` inside string: ${e.message}  (use \`{{\` for a literal brace)` });
+                }
+                if (sub.expr) exprs.push(sub.expr);
+            }
+            if (exprs.length === 0) return { type: 'Str', value: '', line: t.line, col: t.col };
+            let node = exprs[exprs.length - 1];
+            for (let k = exprs.length - 2; k >= 0; k--) {
+                node = { type: 'CallExpr', name: 'join', args: [exprs[k], node], line: t.line, col: t.col };
+            }
+            return node;
+        }
         if (check(TT.HEX)) { pos++; return { type: 'Hex', value: t.value, line: t.line, col: t.col }; }
         if (check(TT.VAR)) {
             pos++;
@@ -1181,6 +1382,7 @@ export function parse(tokens) {
         return { type: 'Num', value: 0 };
     }
 
+    if (opts.entry === 'expr') return { expr: parseExpr(), errors };
     return { ast: parseScript(), errors };
 }
 
@@ -1419,6 +1621,9 @@ function compile(ast, vm, spriteName) {
     const routineScope = {};
     // Name of the currently-compiling scratchroutine (for checkCancel)
     let currentRoutineName = null;
+    // Set of param names while compiling a define body — references compile to
+    // argument_reporter blocks so call arguments actually bind (incl. recursion)
+    let defineParamScope = null;
 
     // Resolve variable/list id by name (searches sprite then stage/globals)
     function resolveVar(name) {
@@ -1458,11 +1663,12 @@ function compile(ast, vm, spriteName) {
     function numInput(expr, parentId) {
         expr = resolveEnum(expr);
         const shadowId = uid();
-        const val = expr.type === 'Num' ? String(expr.value) : expr.type === 'Str' ? expr.value : '0';
+        const val = expr.type === 'Num' ? String(expr.value) : expr.type === 'Str' ? expr.value
+                  : expr.type === 'Bool' ? (expr.value ? '1' : '0') : '0';
         addBlock({ id: shadowId, opcode: 'math_number', next: null, parent: parentId,
             inputs: {}, fields: { NUM: { name: 'NUM', value: val } },
             shadow: true, topLevel: false });
-        if (expr.type === 'Num' || expr.type === 'Str') return inp(shadowId, shadowId);
+        if (expr.type === 'Num' || expr.type === 'Str' || expr.type === 'Bool') return inp(shadowId, shadowId);
         const exprId = genExpr(expr, parentId);
         return inp(exprId !== null ? exprId : shadowId, shadowId);
     }
@@ -1477,11 +1683,12 @@ function compile(ast, vm, spriteName) {
             return inp(hexId, hexId);
         }
         const shadowId = uid();
-        const val = expr.type === 'Str' ? expr.value : expr.type === 'Num' ? String(expr.value) : '';
+        const val = expr.type === 'Str' ? expr.value : expr.type === 'Num' ? String(expr.value)
+                  : expr.type === 'Bool' ? (expr.value ? '1' : '0') : '';
         addBlock({ id: shadowId, opcode: 'text', next: null, parent: parentId,
             inputs: {}, fields: { TEXT: { name: 'TEXT', value: val } },
             shadow: true, topLevel: false });
-        if (expr.type === 'Str' || expr.type === 'Num') return inp(shadowId, shadowId);
+        if (expr.type === 'Str' || expr.type === 'Num' || expr.type === 'Bool') return inp(shadowId, shadowId);
         const exprId = genExpr(expr, parentId);
         return inp(exprId !== null ? exprId : shadowId, shadowId);
     }
@@ -1495,6 +1702,17 @@ function compile(ast, vm, spriteName) {
     function genExpr(expr, parentId) {
         expr = resolveEnum(expr);
         if (expr.type === 'Num' || expr.type === 'Str') return null;
+        if (expr.type === 'Bool') {
+            // Boolean literal in a boolean slot: `1 = 1` / `1 = 0`
+            const id = uid();
+            addBlock({ id, opcode: 'operator_equals', next: null, parent: parentId,
+                inputs: {
+                    OPERAND1: strInput({ type: 'Str', value: '1' }, id),
+                    OPERAND2: strInput({ type: 'Str', value: expr.value ? '1' : '0' }, id),
+                },
+                fields: {}, shadow: false, topLevel: false });
+            return id;
+        }
         if (expr.type === 'Hex') {
             const id = uid();
             addBlock({ id, opcode: 'colour_picker', next: null, parent: parentId,
@@ -1503,6 +1721,24 @@ function compile(ast, vm, spriteName) {
             return id;
         }
         if (expr.type === 'Var') {
+            // Define params: read via argument_reporter so the call's arguments bind
+            if (defineParamScope && defineParamScope.has(expr.name) &&
+                !forScope[expr.name] && !routineScope[expr.name]) {
+                const id = uid();
+                addBlock({ id, opcode: 'argument_reporter_string_number', next: null, parent: parentId,
+                    inputs: {}, fields: { VALUE: { name: 'VALUE', value: expr.name } },
+                    shadow: false, topLevel: false });
+                return id;
+            }
+            // Address-taken variables live in a fixed __heap slot
+            if (isPromoted(expr.name)) {
+                const id = uid();
+                addBlock({ id, opcode: 'data_itemoflist', next: null, parent: parentId,
+                    inputs: { INDEX: numInput({ type: 'Num', value: promotedSlots.get(expr.name) }, id) },
+                    fields: { LIST: { name: 'LIST', value: heapRef.name, id: heapRef.id } },
+                    shadow: false, topLevel: false });
+                return id;
+            }
             const v = resolveVar(expr.name);
             if (!v) {
                 errors.push({ line: expr.line || 1, col: expr.col || 1, len: expr.name.length,
@@ -1512,6 +1748,29 @@ function compile(ast, vm, spriteName) {
             const id = uid();
             addBlock({ id, opcode: 'data_variable', next: null, parent: parentId,
                 inputs: {}, fields: { VARIABLE: { name: 'VARIABLE', value: v.name, id: v.id } },
+                shadow: false, topLevel: false });
+            return id;
+        }
+        if (expr.type === 'DerefExpr') {
+            if (!heapRef) return null;
+            const id = uid();
+            addBlock({ id, opcode: 'data_itemoflist', next: null, parent: parentId,
+                inputs: { INDEX: numInput(expr.addr, id) },
+                fields: { LIST: { name: 'LIST', value: heapRef.name, id: heapRef.id } },
+                shadow: false, topLevel: false });
+            return id;
+        }
+        if (expr.type === 'AddrExpr') {
+            if (defineParamScope && defineParamScope.has(expr.varName) || forScope[expr.varName] || routineScope[expr.varName]) {
+                errors.push({ line: expr.line || 1, col: expr.col || 1, len: expr.varName.length + 3,
+                    message: `\`&[${expr.varName}]\` — parameters and loop variables have no address; copy the value into a global variable first` });
+                return null;
+            }
+            if (!promotedSlots.has(expr.varName) || !ptabRef) return null; // promotion error already reported
+            const id = uid();
+            addBlock({ id, opcode: 'data_itemnumoflist', next: null, parent: parentId,
+                inputs: { ITEM: strInput({ type: 'Str', value: expr.varName }, id) },
+                fields: { LIST: { name: 'LIST', value: ptabRef.name, id: ptabRef.id } },
                 shadow: false, topLevel: false });
             return id;
         }
@@ -1590,6 +1849,17 @@ function compile(ast, vm, spriteName) {
         // item(index)
         if (m === 'item') {
             const idx = expr.args[0] || { type: 'Num', value: 1 };
+            // `[p][i]` / `[p].item(i)` where p is a scalar variable: pointer
+            // indexing — read __heap item (p + i)
+            if (v.type !== 'list' && heapRef) {
+                const at = { line: expr.line || 1, col: expr.col || 1 };
+                const sum = { type: 'BinOp', op: '+', left: obj, right: idx, ...at };
+                addBlock({ id, opcode: 'data_itemoflist', next: null, parent: parentId,
+                    inputs: { INDEX: numInput(sum, id) },
+                    fields: { LIST: { name: 'LIST', value: heapRef.name, id: heapRef.id } },
+                    shadow: false, topLevel: false });
+                return id;
+            }
             addBlock({ id, opcode: 'data_itemoflist', next: null, parent: parentId,
                 inputs: { INDEX: numInput(idx, id) },
                 fields: { LIST: { name: 'LIST', value: v.name, id: v.id } },
@@ -1661,6 +1931,13 @@ function compile(ast, vm, spriteName) {
     function genReporter(expr, parentId) {
         const id = uid();
         const name = expr.name;
+        // Bare define-param reference (e.g. `n` instead of `[n]`)
+        if (defineParamScope && defineParamScope.has(name)) {
+            addBlock({ id, opcode: 'argument_reporter_string_number', next: null, parent: parentId,
+                inputs: {}, fields: { VALUE: { name: 'VALUE', value: name } },
+                shadow: false, topLevel: false });
+            return id;
+        }
         const reporterMap = {
             'xPos':        'motion_xposition',
             'yPos':        'motion_yposition',
@@ -2987,6 +3264,13 @@ function compile(ast, vm, spriteName) {
 
             // Variables
             case 'SetVarStmt': {
+                if (isPromoted(node.varName)) {
+                    addBlock({ id, opcode: 'data_replaceitemoflist', next: null, parent: parentId,
+                        inputs: { INDEX: numInput({ type: 'Num', value: promotedSlots.get(node.varName) }, id),
+                                  ITEM: strInput(node.value, id) },
+                        fields: { LIST: { name: 'LIST', value: heapRef.name, id: heapRef.id } }, shadow: false, topLevel: false });
+                    return id;
+                }
                 let v = resolveVar(node.varName);
                 if (!v) {
                     errors.push({ line: node.line || 1, col: node.col || 1, len: node.varName.length,
@@ -2999,6 +3283,19 @@ function compile(ast, vm, spriteName) {
                 return id;
             }
             case 'ChangeVarStmt': {
+                if (isPromoted(node.varName)) {
+                    // change → replace slot with item(slot) + value
+                    const slot = promotedSlots.get(node.varName);
+                    const at = { line: node.line || 1, col: node.col || 1 };
+                    const sum = { type: 'BinOp', op: '+',
+                        left: { type: 'Var', name: node.varName, ...at },
+                        right: node.value, ...at };
+                    addBlock({ id, opcode: 'data_replaceitemoflist', next: null, parent: parentId,
+                        inputs: { INDEX: numInput({ type: 'Num', value: slot }, id),
+                                  ITEM: strInput(sum, id) },
+                        fields: { LIST: { name: 'LIST', value: heapRef.name, id: heapRef.id } }, shadow: false, topLevel: false });
+                    return id;
+                }
                 const v = resolveVar(node.varName);
                 if (!v) {
                     errors.push({ line: node.line || 1, col: node.col || 1, len: node.varName.length,
@@ -3008,6 +3305,17 @@ function compile(ast, vm, spriteName) {
                 addBlock({ id, opcode: 'data_changevariableby', next: null, parent: parentId,
                     inputs: { VALUE: numInput(node.value, id) },
                     fields: { VARIABLE: { name: 'VARIABLE', value: v.name, id: v.id } }, shadow: false, topLevel: false });
+                return id;
+            }
+            case 'DerefSetStmt': {
+                if (!heapRef) {
+                    errors.push({ line: node.line || 1, col: node.col || 1, len: 1,
+                                  message: 'Pointer write without a heap — this should not happen; report a bug' });
+                    return null;
+                }
+                addBlock({ id, opcode: 'data_replaceitemoflist', next: null, parent: parentId,
+                    inputs: { INDEX: numInput(node.addr, id), ITEM: strInput(node.value, id) },
+                    fields: { LIST: { name: 'LIST', value: heapRef.name, id: heapRef.id } }, shadow: false, topLevel: false });
                 return id;
             }
             case 'ListAddStmt': {
@@ -3282,43 +3590,53 @@ function compile(ast, vm, spriteName) {
                     return id;
                 }
 
-                // Find the procedure definition to get the proccode and arg IDs
-                const target = spriteName === '__stage__'
-                    ? vm.runtime.targets.find(t => t.isStage)
-                    : vm.runtime.targets.find(t => !t.isStage && t.sprite.name === spriteName);
-                if (target) {
-                    const protoBlock = Object.values(target.blocks._blocks).find(b =>
+                // Resolve the procedure signature: defines compiled in this same
+                // pass take precedence (they may not exist in the VM yet), then
+                // fall back to prototypes already present in the live VM.
+                let sig = defineTable.get(node.name) || null;
+                if (!sig) {
+                    const target = spriteName === '__stage__'
+                        ? vm.runtime.targets.find(t => t.isStage)
+                        : vm.runtime.targets.find(t => !t.isStage && t.sprite.name === spriteName);
+                    const protoBlock = target && Object.values(target.blocks._blocks).find(b =>
                         b.opcode === 'procedures_prototype' &&
                         b.mutation && b.mutation.proccode &&
                         b.mutation.proccode.split(' %')[0].trim() === node.name
                     );
                     if (protoBlock) {
-                        const argIds = JSON.parse(protoBlock.mutation.argumentids || '[]');
-                        const inputs = {};
-                        argIds.forEach((argId, i) => {
-                            if (node.args[i]) {
-                                inputs[argId] = strInput(node.args[i], id);
-                            } else {
-                                const emptyId = uid();
-                                addBlock({ id: emptyId, opcode: 'text', next: null, parent: id,
-                                    inputs: {}, fields: { TEXT: { name: 'TEXT', value: '' } },
-                                    shadow: true, topLevel: false });
-                                inputs[argId] = inp(emptyId, emptyId);
-                            }
-                        });
-                        addBlock({ id, opcode: 'procedures_call', next: null, parent: parentId,
-                            inputs,
-                            fields: {},
-                            mutation: {
-                                tagName: 'mutation',
-                                children: [],
-                                proccode: protoBlock.mutation.proccode,
-                                argumentids: protoBlock.mutation.argumentids,
-                                warp: protoBlock.mutation.warp,
-                            },
-                            shadow: false, topLevel: false });
-                        return id;
+                        sig = {
+                            proccode: protoBlock.mutation.proccode,
+                            argumentids: protoBlock.mutation.argumentids || '[]',
+                            warp: protoBlock.mutation.warp,
+                        };
                     }
+                }
+                if (sig) {
+                    const argIds = JSON.parse(sig.argumentids || '[]');
+                    const inputs = {};
+                    argIds.forEach((argId, i) => {
+                        if (node.args[i]) {
+                            inputs[argId] = strInput(node.args[i], id);
+                        } else {
+                            const emptyId = uid();
+                            addBlock({ id: emptyId, opcode: 'text', next: null, parent: id,
+                                inputs: {}, fields: { TEXT: { name: 'TEXT', value: '' } },
+                                shadow: true, topLevel: false });
+                            inputs[argId] = inp(emptyId, emptyId);
+                        }
+                    });
+                    addBlock({ id, opcode: 'procedures_call', next: null, parent: parentId,
+                        inputs,
+                        fields: {},
+                        mutation: {
+                            tagName: 'mutation',
+                            children: [],
+                            proccode: sig.proccode,
+                            argumentids: sig.argumentids,
+                            warp: sig.warp,
+                        },
+                        shadow: false, topLevel: false });
+                    return id;
                 }
                 errors.push({ line: node.line || 1, col: node.col || 1, len: node.name.length,
                               message: `Custom block not found: ${node.name}` });
@@ -3328,6 +3646,24 @@ function compile(ast, vm, spriteName) {
             default:
                 return null;
         }
+    }
+
+    // Define signature table (pass 0): pre-generate prototype ids/proccodes for
+    // every DefineBlock in this AST so CallStmt can resolve custom blocks that
+    // are declared in the same compile — before they exist in the live VM.
+    const defineTable = new Map();
+    for (const block of ast.blocks) {
+        if (block.type !== 'DefineBlock') continue;
+        const argIds = block.params.map(() => uid());
+        const proccode = block.name + (block.params.length > 0 ? ' ' + block.params.map(() => '%s').join(' ') : '');
+        defineTable.set(block.name, {
+            proccode,
+            argumentids: JSON.stringify(argIds),
+            argumentnames: JSON.stringify(block.params),
+            // Returns-defines run warp (no screen refresh) so a call followed by
+            // reading __ret_<fn> is atomic with respect to other scripts.
+            warp: (block.returns || block._forceWarp) ? 'true' : 'false',
+        });
     }
 
     // Build enum constant table from all EnumDecl nodes in the AST.
@@ -3370,6 +3706,88 @@ function compile(ast, vm, spriteName) {
         }
     }
 
+    // Pass 1b: create hidden temp variables introduced by the lowering pass
+    // (ternary results, hoisted call values, …). Rolled back with struct vars.
+    for (const varName of (ast._internalVars || [])) {
+        const stage = vm.runtime.targets.find(t => t.isStage);
+        if (!stage) break;
+        const exists = Object.values(stage.variables).some(v => v.name === varName);
+        if (!exists) {
+            const varId = uid();
+            stage.createVariable(varId, varName, '');
+            newStructVarIds.push({ stage, id: varId });
+        }
+    }
+
+    // Pass 1c: pointer/heap machinery — ensure the stage lists `__heap` and
+    // `__ptab` exist, and promote every address-taken variable to a fixed heap
+    // slot (slot i holds the value; `__ptab` item i holds the name). Appended
+    // slots are rolled back with the created vars if compilation fails.
+    const promotedSlots = new Map(); // var name → 1-based __heap slot
+    let heapRef = null, ptabRef = null;
+    let ptabLenBefore = 0;
+    if (ast._usesHeap) {
+        const stage = vm.runtime.targets.find(t => t.isStage);
+        if (stage) {
+            const ensureList = (name) => {
+                let v = Object.values(stage.variables).find(v => v.name === name && v.type === 'list');
+                if (!v) {
+                    const id = uid();
+                    stage.createVariable(id, name, 'list');
+                    newStructVarIds.push({ stage, id });
+                    v = Object.values(stage.variables).find(x => x.name === name && x.type === 'list');
+                }
+                if (v && !Array.isArray(v.value)) v.value = [];
+                return v ? { id: v.id, name: v.name, raw: v } : null;
+            };
+            heapRef = ensureList('__heap');
+            ptabRef = ensureList('__ptab');
+            // The first HEAP_STATIC_SLOTS cells are reserved for promoted
+            // variables; the allocator's grow path only ever appends, so
+            // dynamic pointers are always > HEAP_STATIC_SLOTS.
+            if (heapRef) {
+                while (heapRef.raw.value.length < HEAP_STATIC_SLOTS) heapRef.raw.value.push('');
+            }
+        }
+        if (heapRef && ptabRef) {
+            ptabLenBefore = ptabRef.raw.value.length;
+            const stage2 = vm.runtime.targets.find(t => t.isStage);
+            const addrTaken = new Map(); // name → first AddrExpr node (for errors)
+            (function walk(n) {
+                if (!n || typeof n !== 'object') return;
+                if (Array.isArray(n)) { n.forEach(walk); return; }
+                if (n.type === 'AddrExpr' && !addrTaken.has(n.varName)) addrTaken.set(n.varName, n);
+                for (const k of Object.keys(n)) { const v = n[k]; if (v && typeof v === 'object') walk(v); }
+            })(ast.blocks);
+            for (const [name, at] of addrTaken) {
+                const sv = Object.values(stage2.variables).find(v => v.name === name && (v.type === '' || v.type === undefined));
+                if (!sv) {
+                    errors.push({ line: at.line || 1, col: at.col || 1, len: name.length + 3,
+                        message: `\`&[${name}]\` requires a global scalar variable (stage, "For all sprites") — ` +
+                                 `sprite-local variables, lists, parameters and loop variables have no address` });
+                    continue;
+                }
+                let slot = ptabRef.raw.value.indexOf(name) + 1;
+                if (slot === 0) {
+                    if (ptabRef.raw.value.length >= HEAP_STATIC_SLOTS) {
+                        errors.push({ line: at.line || 1, col: at.col || 1, len: name.length + 3,
+                            message: `Too many address-taken variables — the heap reserves ${HEAP_STATIC_SLOTS} slots for \`&[…]\`` });
+                        continue;
+                    }
+                    ptabRef.raw.value.push(name);
+                    slot = ptabRef.raw.value.length;
+                    heapRef.raw.value[slot - 1] = sv.value ?? ''; // migrate current value
+                }
+                promotedSlots.set(name, slot);
+            }
+        } else if (ast._usesHeap) {
+            errors.push({ line: 1, col: 1, len: 1, message: 'Pointer features need a stage target to hold the heap lists' });
+        }
+    }
+    // Promoted reads/writes must not hijack for-loop/routine locals of the same name
+    const isPromoted = (name) => promotedSlots.has(name) && !forScope[name] && !routineScope[name] &&
+                                 !(defineParamScope && defineParamScope.has(name));
+
     // Generate hat blocks
     let scriptX = 50;
     for (const block of ast.blocks) {
@@ -3409,8 +3827,11 @@ function compile(ast, vm, spriteName) {
         const defId   = uid();
         const protoId = uid();
         const argNames = node.params;
-        const argIds   = argNames.map(() => uid());
-        const proccode = node.name + (argNames.length > 0 ? ' ' + argNames.map(() => '%s').join(' ') : '');
+        // Use the pass-0 signature so call sites and the prototype agree on ids.
+        const sig      = defineTable.get(node.name);
+        const argIds   = sig ? JSON.parse(sig.argumentids) : argNames.map(() => uid());
+        const proccode = sig ? sig.proccode
+            : node.name + (argNames.length > 0 ? ' ' + argNames.map(() => '%s').join(' ') : '');
 
         const argInputs = {};
         argIds.forEach((argId, i) => {
@@ -3434,7 +3855,7 @@ function compile(ast, vm, spriteName) {
                 argumentids: JSON.stringify(argIds),
                 argumentnames: JSON.stringify(argNames),
                 argumentdefaults: JSON.stringify(argNames.map(() => '')),
-                warp: 'false',
+                warp: sig ? sig.warp : (node.returns ? 'true' : 'false'),
             },
         };
 
@@ -3445,7 +3866,9 @@ function compile(ast, vm, spriteName) {
             fields: {}, shadow: false, topLevel: true, x: scriptX, y: 50,
         };
 
+        defineParamScope = new Set(argNames);
         const bodyFirst = genBody(node.body, defId);
+        defineParamScope = null;
         if (bodyFirst) {
             blocks[defId].next     = bodyFirst;
             blocks[bodyFirst].parent = defId;
@@ -3460,6 +3883,14 @@ function compile(ast, vm, spriteName) {
                 if (typeof stage.deleteVariable === 'function') stage.deleteVariable(id);
                 else delete stage.variables[id];
             } catch (_) {}
+        }
+        // Undo heap-slot promotions made this compile (lists themselves are
+        // rolled back above if they were created here).
+        if (ptabRef && ptabRef.raw.value.length > ptabLenBefore) {
+            for (let i = ptabLenBefore; i < ptabRef.raw.value.length; i++) {
+                if (heapRef && i < heapRef.raw.value.length) heapRef.raw.value[i] = '';
+            }
+            ptabRef.raw.value.length = ptabLenBefore;
         }
     }
 
@@ -3497,10 +3928,92 @@ function genHat(hat, id, scriptX, isStage) {
 }
 
 
+// --- Pointer/heap support ------------------------------------------------------
+// `&[x]` promotes x to a fixed slot of the stage list `__heap` (slot i named by
+// `__ptab` item i). `*(e)` reads `__heap` item e; `set *(e) to v` writes it.
+// `alloc(n)`/`free(p)` are hidden warp defines spliced in below: first-fit
+// free-list allocator with a size header at p-1, grow-on-exhaustion, no
+// coalescing. `__heap_free` is the free-list head (0/empty = null).
+const PTR_HELPERS_SRC = `
+define alloc(n) returns {
+    set [__alloc_prev] to 0
+    set [__alloc_cur] to [__heap_free]
+    while ([__alloc_cur] > 0) {
+        if [__heap].item([__alloc_cur] - 1) >= n {
+            set [__alloc_next] to [__heap].item([__alloc_cur])
+            if [__alloc_prev] = 0 {
+                set [__heap_free] to [__alloc_next]
+            } else {
+                listReplace([__alloc_prev], [__heap], [__alloc_next])
+            }
+            if [__heap].item([__alloc_cur] - 1) >= n + 2 {
+                listReplace([__alloc_cur] + n, [__heap], [__heap].item([__alloc_cur] - 1) - n - 1)
+                listReplace([__alloc_cur] + n + 1, [__heap], [__heap_free])
+                set [__heap_free] to [__alloc_cur] + n + 1
+                listReplace([__alloc_cur] - 1, [__heap], n)
+            }
+            return [__alloc_cur]
+        }
+        set [__alloc_prev] to [__alloc_cur]
+        set [__alloc_cur] to [__heap].item([__alloc_cur])
+    }
+    listAdd(n, [__heap])
+    set [__alloc_cur] to [__heap].length() + 1
+    repeat n {
+        listAdd(0, [__heap])
+    }
+    return [__alloc_cur]
+}
+
+define free(p) {
+    listReplace(p, [__heap], [__heap_free])
+    set [__heap_free] to p
+}
+`;
+const PTR_TEMP_VARS = ['__alloc_prev', '__alloc_cur', '__alloc_next', '__heap_free'];
+const HEAP_STATIC_SLOTS = 64;
+
+function scanPointerUse(ast) {
+    const use = { ptr: false, allocFree: false };
+    (function walk(n) {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(walk); return; }
+        if (n.type === 'AddrExpr' || n.type === 'DerefExpr' || n.type === 'DerefSetStmt') use.ptr = true;
+        if ((n.type === 'CallExpr' || n.type === 'CallStmt') && (n.name === 'alloc' || n.name === 'free')) use.allocFree = true;
+        for (const k of Object.keys(n)) {
+            const v = n[k];
+            if (v && typeof v === 'object') walk(v);
+        }
+    })(ast.blocks);
+    return use;
+}
+
 export function compileSource(source, vm, spriteName) {
     const tokens = tokenize(source);
     const { ast, errors: parseErrors } = parse(tokens);
     if (parseErrors.length > 0) return { blocks: {}, errors: parseErrors };
+
+    // Pointer preprocessing: splice the hidden allocator defines when used
+    const ptrUse = scanPointerUse(ast);
+    let helperInjected = false;
+    if (ptrUse.allocFree) {
+        const userDefines = new Set(ast.blocks.filter(b => b.type === 'DefineBlock').map(b => b.name));
+        if (!userDefines.has('alloc') && !userDefines.has('free')) {
+            const helper = parse(tokenize(PTR_HELPERS_SRC));
+            for (const b of helper.ast.blocks) {
+                b._synthetic = true;
+                if (b.name === 'free') b._forceWarp = true; // atomic free-list update
+            }
+            ast.blocks.push(...helper.ast.blocks);
+            helperInjected = true;
+        }
+    }
+    if (ptrUse.ptr || helperInjected) ast._usesHeap = true;
+
+    const { errors: lowerErrors } = lowerAST(ast);
+    if (lowerErrors.length > 0) return { blocks: {}, errors: lowerErrors };
+    if (helperInjected) ast._internalVars.push(...PTR_TEMP_VARS);
+    else if (ast._usesHeap) ast._internalVars.push('__heap_free');
     const { blocks, errors: codeErrors } = compile(ast, vm, spriteName);
     return { blocks, errors: codeErrors };
 }

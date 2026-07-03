@@ -1,29 +1,11 @@
 import { updateStatus } from "./editor.js";
 import { injectedBlockIds, persistInjectedIds, restoreInjectedIds } from "./inject-state.js";
 
-// [L3] Source Formatter
-
-export function formatSource(src) {
-    try {
-        const lines = src.split('\n');
-        const result = [];
-        let indent = 0;
-        for (let raw of lines) {
-            const trimmed = raw.trim();
-            if (!trimmed) { result.push(''); continue; }
-            // Decrease indent BEFORE lines that start with }
-            if (trimmed.startsWith('}')) indent = Math.max(0, indent - 1);
-            result.push('    '.repeat(indent) + trimmed);
-            // Increase indent AFTER lines that end with {
-            if (trimmed.endsWith('{')) indent++;
-        }
-        return result.join('\n');
-    } catch (_) { return null; }
-}
+export { formatSource } from "./format.js";
 
 // [M] Block Injector
 
-export function injectBlocks(blockMap, vm, spriteName) {
+export function injectBlocks(blockMap, vm, spriteName, headerRoots) {
     const target = spriteName === '__stage__'
         ? vm.runtime.targets.find(t => t.isStage)
         : (vm.runtime.targets.find(t => !t.isStage && t.sprite.name === spriteName) || vm.editingTarget);
@@ -92,6 +74,16 @@ export function injectBlocks(blockMap, vm, spriteName) {
         try { target.blocks.deleteBlock(id); } catch (_) {}
     }
 
+    // Drop stale header-marker comments (their block is gone or being replaced)
+    if (target.comments) {
+        for (const [cid, c] of Object.entries(target.comments)) {
+            if (typeof c?.text === 'string' && c.text.startsWith('scratchpiler:include=') &&
+                (!c.blockId || idsToDelete.has(c.blockId) || !target.blocks._blocks?.[c.blockId])) {
+                try { delete target.comments[cid]; } catch (_) {}
+            }
+        }
+    }
+
     // Collect the top-level hat/define block IDs from the new blockMap so we
     // can persist them for cleanup on the next injection (even after a reload).
     const newTopLevelIds = new Set(
@@ -107,6 +99,42 @@ export function injectBlocks(blockMap, vm, spriteName) {
             count++;
         } catch (e) {
             console.warn('[scratchpiler] block create failed', block.id, e);
+        }
+    }
+
+    // Mark header-origin scripts with a workspace comment so the decompiler
+    // can collapse them back to `#include <name.h>`.
+    if (headerRoots && Object.keys(headerRoots).length > 0) {
+        const rootHeader = (b) => {
+            if (b.opcode === 'procedures_definition') {
+                const inp = b.inputs?.custom_block;
+                const protoId = inp ? (Array.isArray(inp) ? inp[1] : (inp.block ?? inp.shadow)) : null;
+                const name = ((blockMap[protoId]?.mutation?.proccode) || '').split(' ')[0];
+                return headerRoots[name] || null;
+            }
+            if (b.opcode === 'event_whenbroadcastreceived') {
+                const m = (b.fields?.BROADCAST_OPTION?.value ?? '').match(/^__sroutine_(.+)$/);
+                return m ? (headerRoots[m[1]] || null) : null;
+            }
+            return null;
+        };
+        for (const b of Object.values(blockMap)) {
+            if (!b.topLevel || b.shadow) continue;
+            const hdr = rootHeader(b);
+            if (!hdr) continue;
+            const cid = b.id + '_hdr';
+            try {
+                if (typeof target.createComment === 'function') {
+                    target.createComment(cid, b.id, `scratchpiler:include=${hdr}`,
+                        (b.x ?? 50), Math.max((b.y ?? 50) - 60, 0), 220, 48, true);
+                } else {
+                    target.comments = target.comments || {};
+                    target.comments[cid] = { id: cid, blockId: b.id, text: `scratchpiler:include=${hdr}`,
+                        x: b.x ?? 50, y: Math.max((b.y ?? 50) - 60, 0), width: 220, height: 48, minimized: true };
+                }
+                const created = target.blocks._blocks?.[b.id];
+                if (created) created.comment = cid;
+            } catch (_) {}
         }
     }
 

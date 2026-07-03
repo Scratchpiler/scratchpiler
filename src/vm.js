@@ -1,4 +1,7 @@
 import { updateStatus } from "./editor.js";
+import { setScratchIndex } from "./scratch-index.js";
+
+export { scratchIndex } from "./scratch-index.js";
 
 function getFiberRoot() {
     const candidates = [
@@ -79,14 +82,6 @@ export function acquireVM(onFound, onTimeout) {
 
 // Index project
 
-export let scratchIndex = {
-    sprites:         [],  // [{ name, costumes: string[], sounds: string[] }]
-    stage:           { backdrops: [], sounds: [] },
-    globalVariables: [],  // [{ name, id, type }]
-    spriteVariables: {},  // { spriteName: [{ name, id, type }] }
-    customBlocks:    {},  // { spriteName: string[] }
-};
-
 export function reindex(vm) {
     const idx = {
         sprites: [], stage: { backdrops: [], sounds: [] },
@@ -112,6 +107,6 @@ export function reindex(vm) {
                 .filter(Boolean);
         }
     }
-    scratchIndex = idx;
+    setScratchIndex(idx);
     updateStatus(`Index: ${idx.sprites.length} sprites, ${idx.globalVariables.length} globals`);
 }

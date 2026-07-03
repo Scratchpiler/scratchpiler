@@ -1,0 +1,55 @@
+// Control-Flow Sugar
+// match/switch, do..while, break and continue — all desugar to plain Scratch
+// blocks through hidden flag variables and round-trip through the decompiler.
+//
+// Requires: variables [score], [grade], [n], [total], [tries]
+
+on flag {
+    // match: compare one subject against several cases (switch is an alias)
+    match [score] {
+        case 100 {
+            set [grade] to "perfect"
+        }
+        case 90, 95 {
+            set [grade] to "A"
+        }
+        default {
+            set [grade] to "F"
+        }
+    }
+
+    // do..while: body always runs once, condition checked at the end
+    set [tries] to 0
+    do {
+        change [tries] by 1
+        askAndWait("password?")
+    } while ([tries] < 3)
+
+    // break: leave the loop early
+    set [n] to 0
+    forever {
+        change [n] by 1
+        if [n] > 10 {
+            break
+        }
+    }
+
+    // continue: skip to the next iteration
+    set [total] to 0
+    repeat 10 {
+        change [n] by 1
+        if ([n] mod 2) = 1 {
+            continue
+        }
+        change [total] by [n]
+    }
+
+    // break works in while / repeat until loops too
+    while ([total] > 0) {
+        change [total] by -1
+        if [total] = 5 {
+            break
+        }
+    }
+    say("done: {[total]}")
+}

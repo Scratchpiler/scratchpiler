@@ -1,5 +1,6 @@
 import { tokenize, parse, fuzzyMatch, CALL_SIGS } from "./compiler.js";
-import { scratchIndex } from "./vm.js";
+import { scratchIndex } from "./scratch-index.js";
+import { expand, mapExpandedError } from "./preprocess.js";
 
 // [A] Semantic analyzer — symbol table, occurrence index, scope-aware lookups,
 // semantic diagnostics and code-smell lints. Pure module: no Monaco imports,
@@ -23,9 +24,10 @@ const EXPR_FN_BUILTINS = new Set([
     'asin', 'acos', 'atan', 'ln', 'log', 'exp', 'pow10',
     'xOf', 'yOf', 'directionOf', 'costumeNumOf', 'costumeNameOf',
     'sizeOf', 'volumeOf',
+    'alloc', // hidden heap allocator define spliced in by the compiler
 ]);
 
-const STMT_BUILTINS = new Set(Object.keys(CALL_SIGS));
+const STMT_BUILTINS = new Set([...Object.keys(CALL_SIGS), 'alloc', 'free']);
 
 // Statements that yield/block — used by the busy-wait smell
 const BLOCKING_STMTS = new Set([
@@ -77,8 +79,20 @@ function posInScope(scope, line, col) {
 // --- Core analysis -------------------------------------------------------
 
 export function analyze(src, spriteName) {
+    // #include expansion: header declarations are appended after the user's
+    // text (line numbers stay 1:1); appended-region positions are mapped back
+    // onto the include line before anything reaches the editor.
+    let _expand = null;
+    if (src.includes('#include')) {
+        const ex = expand(src);
+        if (ex.segments.length > 0 || ex.errors.length > 0) {
+            _expand = ex;
+            src = ex.text;
+        }
+    }
     const tokens = tokenize(src);
     const { ast, errors: parseErrors } = parse(tokens);
+    if (_expand) parseErrors.push(..._expand.errors);
 
     const symbols = [];          // all symbols
     const byKey = new Map();     // "kind:name" → symbol (document scope)
@@ -127,7 +141,7 @@ export function analyze(src, spriteName) {
                 { line: block.line, col: block.col,
                   endLine: block.nameEndLine || block.line,
                   endCol: block.nameEndCol || block.col + block.name.length },
-                { params: block.params, node: block });
+                { params: block.params, node: block, returns: !!block.returns });
         } else if (block.type === 'ScratchroutineStmt') {
             docSymbol(block.name, 'routine', block.nameSpan ||
                 { line: block.line, col: block.col, endLine: block.line,
@@ -235,7 +249,11 @@ export function analyze(src, spriteName) {
                 resolveVarName(e.name, spanOf(e), 'variable');
                 return;
             case 'Reporter': {
-                if (byKey.has('enumMember:' + e.name)) {
+                // Bare define-param / loop-var reference (e.g. `n` instead of `[n]`)
+                const local = lookupLocal(e.name);
+                if (local) {
+                    addOcc(local, spanOf(e), false);
+                } else if (byKey.has('enumMember:' + e.name)) {
                     addOcc(byKey.get('enumMember:' + e.name), spanOf(e), false);
                 } else if (!REPORTER_BUILTINS.has(e.name) && e.name !== '_err_') {
                     unresolved.push({ name: e.name, kindGuess: 'reporter', ...spanOf(e) });
@@ -243,7 +261,10 @@ export function analyze(src, spriteName) {
                 return;
             }
             case 'CallExpr': {
-                if (!EXPR_FN_BUILTINS.has(e.name) && e.name !== '_err_') {
+                const defineSym = byKey.get('define:' + e.name);
+                if (defineSym) {
+                    addOcc(defineSym, spanOf(e), false);
+                } else if (!EXPR_FN_BUILTINS.has(e.name) && e.name !== '_err_') {
                     unresolved.push({ name: e.name, kindGuess: 'exprFn', ...spanOf(e) });
                 }
                 (e.args || []).forEach(visitExpr);
@@ -257,7 +278,12 @@ export function analyze(src, spriteName) {
                 return;
             case 'BinOp':  visitExpr(e.left); visitExpr(e.right); return;
             case 'UnaryOp': case 'UnOp': visitExpr(e.operand); return;
-            default: return; // Num / Str / Hex / synthetic
+            case 'TernaryExpr': visitExpr(e.cond); visitExpr(e.then); visitExpr(e.alt); return;
+            case 'DerefExpr': visitExpr(e.addr); return;
+            case 'AddrExpr':
+                resolveVarName(e.varName, e.varSpan || spanOf(e), 'variable');
+                return;
+            default: return; // Num / Str / Hex / Bool / synthetic
         }
     }
 
@@ -304,6 +330,14 @@ export function analyze(src, spriteName) {
                 scopeStack.pop();
                 return;
             }
+            case 'MatchStmt':
+                visitExpr(stmt.subject);
+                for (const c of (stmt.cases || [])) {
+                    (c.values || []).forEach(visitExpr);
+                    (c.body || []).forEach(visitStmt);
+                }
+                (stmt.defaultBody || []).forEach(visitStmt);
+                return;
             default: {
                 // Generic: recurse into expression-valued fields and body arrays
                 for (const k of Object.keys(stmt)) {
@@ -342,9 +376,30 @@ export function analyze(src, spriteName) {
 
     occurrences.sort((a, b) => a.line - b.line || a.col - b.col);
 
+    // Header-origin cleanup: occurrences/scopes inside the appended region
+    // would point past the end of the editor document — drop them, and pin
+    // header symbols' definitions onto their include line.
+    let outOccurrences = occurrences, outScopes = scopes;
+    if (_expand) {
+        const segFor = (line) => _expand.segments.find(s => line >= s.startLine && line < s.startLine + s.lineCount);
+        outOccurrences = occurrences.filter(o => o.line <= _expand.userLineCount);
+        outScopes = scopes.filter(s => (s.startLine ?? 0) <= _expand.userLineCount);
+        for (const sym of symbols) {
+            if (sym.defRange && sym.defRange.line > _expand.userLineCount) {
+                const seg = segFor(sym.defRange.line);
+                sym.headerOrigin = seg ? seg.header : 'header';
+                sym.defRange = seg
+                    ? { line: seg.includeLine, col: 1, endLine: seg.includeLine, endCol: 2 }
+                    : { line: _expand.userLineCount, col: 1, endLine: _expand.userLineCount, endCol: 2 };
+            }
+        }
+    }
+
     return {
-        src, tokens, ast, parseErrors, symbols, byKey, occurrences, scopes,
+        src, tokens, ast, parseErrors, symbols, byKey,
+        occurrences: outOccurrences, scopes: outScopes,
         unresolved, duplicates, spriteName, projectVars, projectLists, projectIndexed,
+        _expand,
     };
 }
 
@@ -441,6 +496,15 @@ export function semanticDiagnostics(analysis) {
         if (n.type === 'CallStmt') {
             const d = byKey.get('define:' + n.name);
             if (d) arity(n, d, 'define');
+        } else if (n.type === 'CallExpr') {
+            const d = byKey.get('define:' + n.name);
+            if (d) {
+                arity(n, d, 'define');
+                if (!d.meta.returns) {
+                    push(n.line, n.col, (n.name || '').length,
+                        `Semantic: \`${n.name}\` has no return value — declare it \`define ${n.name}(...) returns { }\` to use it in an expression`);
+                }
+            }
         } else if (n.type === 'LaunchStmt' || n.type === 'AwaitStmt') {
             const r = byKey.get('routine:' + n.name);
             if (r) arity(n, r, 'scratchroutine');
@@ -450,6 +514,23 @@ export function semanticDiagnostics(analysis) {
             if (v && typeof v === 'object') walk(v);
         }
     })(ast.blocks);
+
+    // Returns-defines should actually return something
+    for (const block of (ast.blocks || [])) {
+        if (block.type !== 'DefineBlock' || !block.returns) continue;
+        let hasReturn = false;
+        (function scan(n) {
+            if (hasReturn || !n) return;
+            if (Array.isArray(n)) { n.forEach(scan); return; }
+            if (typeof n !== 'object') return;
+            if (n.type === 'ReturnStmt' && n.value !== null && n.value !== undefined) { hasReturn = true; return; }
+            for (const k of Object.keys(n)) { const v = n[k]; if (v && typeof v === 'object') scan(v); }
+        })(block.body);
+        if (!hasReturn) {
+            push(block.line, block.col, block.name.length,
+                `Semantic: \`${block.name}\` is declared \`returns\` but has no \`return <value>\` statement`);
+        }
+    }
 
     // Shadowing
     for (const sym of analysis.symbols) {
@@ -464,7 +545,7 @@ export function semanticDiagnostics(analysis) {
         }
     }
 
-    return items;
+    return analysis._expand ? items.map(d => mapExpandedError(analysis._expand, d)) : items;
 }
 
 // --- Code-smell lints (category: "Smell") ---------------------------------
@@ -576,12 +657,17 @@ export function smellDiagnostics(analysis) {
         if (stmt.then) { lastSet = null; checkBody(stmt.then, nested); }
         if (stmt.alt)  { lastSet = null; checkBody(stmt.alt, nested); }
         if (stmt.body) { lastSet = null; checkBody(stmt.body, nested); }
+        if (stmt.type === 'MatchStmt') {
+            for (const c of (stmt.cases || [])) { lastSet = null; checkBody(c.body, nested); }
+            if (stmt.defaultBody) { lastSet = null; checkBody(stmt.defaultBody, nested); }
+        }
         lastSet = saved;
     }
 
     function isNesting(t) {
         return t === 'IfStmt' || t === 'ForeverStmt' || t === 'RepeatStmt' ||
-               t === 'RepeatUntilStmt' || t === 'WhileStmt' || t === 'ForStmt' || t === 'PyForStmt';
+               t === 'RepeatUntilStmt' || t === 'WhileStmt' || t === 'ForStmt' || t === 'PyForStmt' ||
+               t === 'MatchStmt' || t === 'DoWhileStmt';
     }
 
     function exprReadsVar(e, name) {
@@ -601,7 +687,7 @@ export function smellDiagnostics(analysis) {
     function collectNums(stmt) {
         // Only count literals in expression positions of this statement (not bodies)
         for (const k of Object.keys(stmt)) {
-            if (k === 'body' || k === 'then' || k === 'alt') continue;
+            if (k === 'body' || k === 'then' || k === 'alt' || k === 'cases' || k === 'defaultBody') continue;
             (function walk(n) {
                 if (!n || typeof n !== 'object') return;
                 if (Array.isArray(n)) { n.forEach(walk); return; }
@@ -640,7 +726,7 @@ export function smellDiagnostics(analysis) {
         }
     }
 
-    return items;
+    return analysis._expand ? items.map(d => mapExpandedError(analysis._expand, d)) : items;
 }
 
 // --- Semantic tokens ------------------------------------------------------

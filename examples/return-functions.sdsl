@@ -1,0 +1,37 @@
+// Return-Value Functions
+// `define name(...) returns { ... }` creates a custom block usable in
+// expressions. Behind the scenes: the result is passed through a hidden
+// global `__ret_<name>` variable and the block runs warp (no screen
+// refresh), so `call → read result` is atomic.
+//
+// Requires: variables [area], [msg]
+
+define rectArea(w, h) returns {
+    return w * h
+}
+
+// Recursion works: the result is captured immediately after each call
+// returns, so deeper calls never clobber an outer caller's value.
+define fact(n) returns {
+    if n < 2 {
+        return 1
+    }
+    return n * fact(n - 1)
+}
+
+define greet(who) returns {
+    return join("hello, ", who)
+}
+
+on flag {
+    set [area] to rectArea(6, 7)
+    say("area = {[area]}")
+
+    // Calls compose: nested and repeated calls in one expression are fine.
+    set [msg] to greet("world")
+    say("{[msg]} — fact(5) = {fact(5)}")
+
+    if rectArea(3, 4) + rectArea(2, 5) = 22 {
+        sayFor("arithmetic checks out", 2)
+    }
+}

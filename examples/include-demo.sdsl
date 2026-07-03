@@ -1,0 +1,21 @@
+// #include headers
+// `#include <name.h>` splices in a header stored in the Headers panel
+// (Tampermonkey storage, shared across ALL your Scratch projects). Headers
+// may contain `define`, `scratchroutine`, `enum` and `struct` declarations.
+//
+// This example expects a header named mathutils.h with:
+//
+//   define square(v) returns {
+//       return v * v
+//   }
+//
+// Create it via the Headers panel (activity bar → Headers → + New), then
+// compile this file. Decompiling collapses the header's scripts back into
+// the #include line.
+
+#include <mathutils.h>
+
+on flag {
+    set [result] to square(7)
+    say("7 squared is {[result]}")
+}

@@ -374,6 +374,100 @@ on flag {
 
 ---
 
+## match / switch
+
+A multi-branch comparison block. `match` and `switch` are aliases for each other.
+
+```
+match [score] {
+    case 100 {
+        say("perfect")
+    }
+    case 90, 95 {
+        say("A")
+    }
+    default {
+        say("F")
+    }
+}
+```
+
+The subject (`[score]`) is compared against each case using Scratch's loose `=` equality (like Scratch's "=" comparison block). Cases can list multiple comma-separated values — the body runs if the subject matches any of them. A `default` clause is optional and runs if no cases match.
+
+Compilation: Each case desugars to a chain of `if ... else if ... else` blocks with a hidden temporary variable tracking which branch was taken.
+
+Decompilation: On re-import from Scratch, the `if ... else if` chains are reconstructed back to the original `match` syntax, preserving readability.
+
+---
+
+## do..while
+
+A loop that always runs the body at least once, then tests a condition at the end.
+
+```
+set [tries] to 0
+do {
+    change [tries] by 1
+    askAndWait("password?")
+} while ([tries] < 3)
+```
+
+The body executes unconditionally. Then, if the condition is true, the loop repeats. If false, execution exits. This ensures the body always runs at least once, unlike a `while` loop that checks the condition first.
+
+Compilation: Desugars to a hidden flag variable plus a `repeat until (not condition)` loop that wraps the body. The decompiler recognizes this pattern and reconstructs it as `do..while`.
+
+---
+
+## break
+
+Exit the innermost enclosing loop immediately.
+
+```
+set [n] to 0
+forever {
+    change [n] by 1
+    if [n] > 10 {
+        break
+    }
+}
+say("n = {[n]}")  // runs after break exits the loop
+```
+
+Supported inside: `forever`, `repeat N`, `while`, `repeat until`, and `do..while`.
+
+**Not supported inside:** `for` and `pyfor` loops (compile error).
+
+**Not supported outside any loop:** compile error.
+
+Compilation: Desugars to a hidden flag variable set to 1, and a `repeat until` wrapper that detects the flag and exits. The decompiler reconstructs it as a bare `break` statement.
+
+---
+
+## continue
+
+Skip to the next iteration of the innermost enclosing loop.
+
+```
+set [total] to 0
+repeat 10 {
+    change [n] by 1
+    if ([n] mod 2) = 1 {
+        continue  // skip to next iteration if n is odd
+    }
+    change [total] by [n]  // only runs if n is even
+}
+```
+
+Supported inside: `forever`, `repeat N`, `while`, `repeat until`, and `do..while`.
+
+**Not supported inside:** `for` and `pyfor` loops (compile error).
+
+**Not supported outside any loop:** compile error.
+
+Compilation: Desugars to a hidden flag variable, which the enclosing loop's generated code checks before executing the body's trailing increment. The decompiler recognizes this pattern and reconstructs it as a bare `continue` statement.
+
+---
+
 ## Scratchroutines
 
 Scratchroutines are named concurrent tasks that compile to broadcast-based pseudo-coroutines. They support parameters, cancellation, and lifecycle queries.

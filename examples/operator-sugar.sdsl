@@ -1,0 +1,39 @@
+// Operator Sugar
+// !=, <=, >= comparisons, chained comparisons, ternary ?:,
+// boolean literals, and string interpolation.
+//
+// Requires: variables [score], [grade], [hp]
+
+on flag {
+    set [score] to 73
+    set [hp] to 100
+
+    // Desugared comparisons — Scratch only has < > =, the compiler
+    // rewrites these to not(...) forms.
+    if [score] != 0 {
+        say("nonzero!")
+    }
+    if [score] >= 60 and [score] <= 79 {
+        set [grade] to "C"
+    }
+
+    // Chained comparison: same as ([score] > 59) and (59 < ... wait, no —
+    // a < b < c means (a < b) and (b < c). Middle operand evaluated twice.
+    if 59 < [score] < 80 {
+        say("passing, not great")
+    }
+
+    // Ternary: compiles to a hidden if/else + temp variable.
+    set [grade] to [score] >= 60 ? "pass" : "fail"
+
+    // String interpolation: {expr} inside any string becomes join(...).
+    // Use {{ and }} for literal braces.
+    say("score={[score]}, grade={[grade]}, half={[score] / 2}")
+    sayFor("literal braces: {{not interpolated}}", 2)
+
+    // Boolean literals — handy for flags and wait-until conditions.
+    wait until true
+    if false {
+        say("unreachable")
+    }
+}

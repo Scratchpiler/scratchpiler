@@ -29,6 +29,11 @@ Full example programs demonstrating scratchpiler features. Paste any `.sdsl` fil
 | `spaghetti-goto.sdsl` | Broadcast abuse, simulating `GOTO` statements |
 | `bogosort.sdsl` | Terrible time complexity, `while`, list mutation |
 | `unsafe-asm.sdsl` | Fake segmentation faults, `__asm__ volatile unsafe` |
+| `pointers-linkedlist.sdsl` | `&[x]`, `*[p]`, `alloc`, `free`, building and walking a linked list |
+| `include-demo.sdsl` | `#include <name.h>`, header storage, cross-project code reuse |
+| `control-flow-sugar.sdsl` | `elif`, `do..while`, `break`, `continue`, syntactic sugar control flow |
+| `return-functions.sdsl` | `define name() returns`, custom blocks that return values |
+| `operator-sugar.sdsl` | `+=`, `-=`, `*=`, `/=`, `++`, `--`, compound assignment operators |
 
 ---
 

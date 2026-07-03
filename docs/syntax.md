@@ -72,15 +72,58 @@ move(10)  // This comment also disappears. It had so much to say.
 
 ### Comparison
 
-Scratch has exactly three comparison operators. All three produce boolean values.
-
 ```
 [x] < 10       // less than
 [x] > 10       // greater than
 [x] = "hello"  // equal (works for both numbers and strings)
+[x] != [y]     // not equal (desugars to `not ([x] = [y])`)
+[x] <= [y]     // less than or equal (desugars to `not ([x] > [y])`)
+[x] >= [y]     // greater than or equal (desugars to `not ([x] < [y])`)
 ```
 
-Note: there is no `!=`, `<=`, or `>=`. Scratch's block palette doesn't have them, so neither do we. To check "not equal", use `not ([x] = [y])`. To check "greater than or equal to", use `not ([x] < [y])` or write `[x] > [y] - 1` and question your life choices. We make these compromises to survive in this environment.
+Note: `!=`, `<=`, and `>=` are syntactic sugar that desugar to their `not(...)` equivalents. While Scratch only has `<`, `>`, and `=` natively, scratchpiler converts the convenience operators for you at compile time.
+
+**Chained comparisons** like `a < b < c` work and compile to `(a < b) and (b < c)`. The middle operand is evaluated twice — there's no optimization.
+
+### Boolean literals
+
+```
+true           // boolean true (compiles to "1" = "1" in boolean slots, or 1 in numeric slots)
+false          // boolean false (compiles to "1" = "0" in boolean slots, or 0 in numeric slots)
+```
+
+In boolean contexts (inside `if`, `while`, `not(...)`), `true` and `false` compile to simple equality checks. In numeric or string contexts, they compile to the literals `1` and `0` respectively.
+
+### Ternary conditional
+
+```
+cond ? valueIfTrue : valueIfFalse
+```
+
+The ternary operator compiles to an internal if/else with a temporary variable. The temp variable is named `_scratchpiler_internal_*_tern*` and is hidden from view. When decompiled, ternaries are parenthesized:
+
+```
+// Source
+set [x] to ([health] > 0) ? "alive" : "dead"
+
+// Decompiled (with internal temp variable visible)
+set [x] to [_scratchpiler_internal_1_tern]
+```
+
+### String interpolation
+
+```
+"score is {[score]}, double {[score] * 2}"
+```
+
+Expressions inside `{...}` within a double-quoted string are interpolated. The result is a nested `join(...)` call. To include a literal brace, use `{{` for `{` and `}}` for `}`.
+
+```
+"Health: {[hp]}"              // becomes: join("Health: ", [hp])
+"Current: {{[x]}} = {[x]}"    // becomes: join("Current: {", [x], "} = ", [x])
+```
+
+An empty `{}` is an error. A bare `!` outside of `!=` is also an error (suggesting you meant `not`).
 
 ### Boolean
 
