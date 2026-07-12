@@ -10,6 +10,8 @@ Navigate to any Scratch project in the editor (`scratch.mit.edu/projects/*/edito
 
 If nothing happens, check that Tampermonkey is active, the script is enabled, and your browser hasn't silently blocked our userscript. If it's still nothing, the Scratch project may not have loaded yet — give the browser a moment to process the massive heap of scripts it's carrying.
 
+If the "Open Scratchpiler" button simply is not there, verify that your URL is something along the lines of `scratch.mit.edu/projects/*/editor`, and refresh the page. This is a known limitation of Tampermonkey when interacting/injecting into SPAs (Single Page Applications) like Scratch's.
+
 ---
 
 ## Step 2 — Pick a sprite
