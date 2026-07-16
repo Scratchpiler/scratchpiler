@@ -213,7 +213,7 @@ A: Because Scratch's variable names are case-sensitive and you'll be mixing DSL 
 A: Scratch's original block editor uses a grey rounded-rectangle pill shape for variable references. Square brackets are the closest ASCII approximation to a grey pill that doesn't require a special character. This is the story. We're sticking to it.
 
 **Q: Can I use this for a production project?**
-A: Define "production." If you mean "a Scratch project that will be played by real users on scratch.mit.edu," then yes, absolutely. If you mean a production web application, you have taken a profoundly wrong turn somewhere and we cannot help you retrace your steps.
+A: Define "production." If you mean "a Scratch project that will be played by real users on scratch.mit.edu," then yes, absolutely. If you mean a production SaaS SPA web application with the Scratch Stage as your viewport, you have taken a profoundly wrong turn somewhere and we cannot help you retrace your steps.
 
 **Q: Will Scratch ban me for using this?**
 A: Scratchpiler only modifies the local VM state in your browser. It does not submit API requests to Scratch's servers on your behalf, does not modify saved projects, and does not interact with the Scratch backend in any way. Whether saving a Scratch project that contains scratchpiler-compiled blocks violates any terms of service is a legal question we are not qualified to answer and are actively avoiding.
