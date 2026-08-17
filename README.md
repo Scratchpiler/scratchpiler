@@ -80,6 +80,7 @@ Blocks are injected into the selected sprite. Variables must already exist in Sc
 | `Alt+Shift+F` | Format / auto-indent |
 | `Esc` | Close the editor |
 | `Ctrl+Space` | Trigger autocomplete |
+| `Shift+Click Compile` | Minimize code & compile & inject |
 
 ---
 
