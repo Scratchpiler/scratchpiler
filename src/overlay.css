@@ -1,616 +1,442 @@
+#scratchpiler-overlay, #sp-sn-backdrop, #scratchpiler-trigger, #sp-tooltip {
+    --ink-0: #0c1320;
+    --ink-1: #111a2b;
+    --ink-2: #14203a;
+    --ink-3: #1b2945;
+    --line: #223251;
+    --line-soft: #1a2742;
+    --line-strong: #2e4268;
+    --text: #d7dfee;
+    --muted: #8593ad;
+    --faint: #4f5e7c;
+    --accent: #ff9a1f;
+    --accent-ink: #1d1104;
+    --ok: #5fd3a2;
+    --warn: #ecc15e;
+    --err: #f27583;
+    --info: #7fb2ff;
+    --c-var: #ff8c1a;
+    --c-list: #ff661a;
+    --c-myblocks: #ff6680;
+    --c-looks: #9966ff;
+    --c-sound: #cf63cf;
+    --s-kw: #c7a2ff;
+    --s-var: #ffbb82;
+    --s-num: #7fd8e3;
+    --s-pre: #ff8fb0;
+    --ui: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --code: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-lg: 15px;
+    --r-sm: 4px; --r-md: 6px; --r-lg: 10px;
+}
 
-        #scratchpiler-overlay {
-            position: fixed; top: 0; left: 0;
-            width: 100vw; height: 100vh;
-            z-index: 99999; display: none; flex-direction: column;
-            background: #00152b;
-            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }
-        #scratchpiler-header {
-            display: flex; align-items: center;
-            background: #001d3d;
-            border-top: 2px solid #ff8c00;
-            border-bottom: 1px solid #002e5a;
-            flex-shrink: 0; height: 42px; padding: 0 12px;
-            box-sizing: border-box;
-        }
-        #scratchpiler-logo {
-            width: 20px; height: 20px; object-fit: contain; flex-shrink: 0;
-        }
-        #scratchpiler-wordmark {
-            display: flex; align-items: center; gap: 8px;
-            padding-right: 14px; flex-shrink: 0;
-            font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
-            text-transform: uppercase; color: #e8f4ff;
-            border-right: 1px solid #002e5a; height: 100%;
-            user-select: none;
-        }
-        #scratchpiler-menubar {
-            display: flex; align-items: center; gap: 2px;
-            padding-left: 12px; height: 100%;
-            position: relative;
-        }
-        .sp-menu-btn {
-            background: transparent; border: none; color: #7285b7;
-            font-family: inherit; font-size: 11px; letter-spacing: 0.03em;
-            padding: 0 12px; height: 28px; cursor: pointer; border-radius: 3px;
-            transition: color 0.1s, background 0.1s;
-            white-space: nowrap;
-        }
-        .sp-menu-btn:hover, .sp-menu-btn.sp-menu-active { color: #e8f4ff; background: #002e5a; }
+#scratchpiler-overlay {
+    position: fixed; inset: 0; z-index: 99999;
+    display: none;
+    background: var(--ink-0); color: var(--text);
+    font: 400 var(--fs-md)/1.4 var(--ui);
+    color-scheme: dark;
+    -webkit-font-smoothing: antialiased;
+}
+#scratchpiler-overlay *, #scratchpiler-overlay *::before, #scratchpiler-overlay *::after { box-sizing: border-box; }
+#scratchpiler-overlay button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; margin: 0; text-transform: none; letter-spacing: normal; }
+#scratchpiler-overlay input, #scratchpiler-overlay select, #scratchpiler-overlay textarea { font: inherit; color: inherit; margin: 0; }
+#scratchpiler-overlay [hidden] { display: none !important; }
+#scratchpiler-overlay :focus-visible { outline: 2px solid var(--info); outline-offset: 1px; }
+#scratchpiler-overlay kbd { font: 500 10.5px/1 var(--ui); color: var(--muted); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 2px 5px; background: var(--ink-1); white-space: nowrap; }
+#scratchpiler-overlay code { font-family: var(--code); font-size: 0.92em; color: var(--s-pre); }
+#scratchpiler-overlay svg { flex-shrink: 0; }
+#scratchpiler-overlay h3, #scratchpiler-overlay h4, #scratchpiler-overlay p { margin: 0; }
 
-        #scratchpiler-header-center {
-            flex: 1; display: flex; justify-content: center;
-            overflow: hidden; text-overflow: ellipsis; padding: 0 12px;
-        }
-        #scratchpiler-status {
-            color: #7285b7; font-size: 11px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-            font-family: ui-monospace, 'SF Mono', Consolas, monospace;
-        }
+#scratchpiler-overlay .sp-app { height: 100%; display: grid; grid-template-rows: 44px auto minmax(0, 1fr) 26px; }
+#scratchpiler-overlay .sp-grow { flex: 1; }
 
-        #scratchpiler-header-actions {
-            display: flex; align-items: center; gap: 8px; flex-shrink: 0;
-        }
-        #scratchpiler-compile-btn {
-            height: 26px; background: #ff8c00; color: #001a38;
-            border: 1px solid #ff8c00; border-radius: 3px;
-            font-family: inherit; font-size: 11px; font-weight: 700;
-            letter-spacing: 0.06em; padding: 0 14px; cursor: pointer;
-            white-space: nowrap; transition: background 0.15s, box-shadow 0.15s;
-        }
-        #scratchpiler-compile-btn:hover {
-            background: #ffaa33; border-color: #ffaa33;
-            box-shadow: 0 0 16px rgba(255,140,0,0.4);
-        }
-        #scratchpiler-close-btn {
-            width: 26px; height: 26px; display: flex;
-            align-items: center; justify-content: center;
-            background: transparent; border: none; border-radius: 3px;
-            color: #7285b7; font-size: 14px; cursor: pointer;
-            transition: color 0.15s, background 0.15s; flex-shrink: 0; padding: 0;
-        }
-        #scratchpiler-close-btn:hover { color: #e8f4ff; background: #002e5a; }
+#scratchpiler-overlay .sp-top { grid-row: 1; display: flex; align-items: center; gap: 12px; padding: 0 10px 0 8px; background: var(--ink-0); border-bottom: 1px solid var(--line-soft); min-width: 0; }
+#scratchpiler-overlay .sp-brand { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 6px; border-radius: var(--r-md); min-width: 0; }
+#scratchpiler-overlay .sp-brand:hover, #scratchpiler-overlay .sp-brand[aria-expanded="true"] { background: var(--ink-3); }
+#scratchpiler-overlay .sp-logo { width: 22px; height: 22px; border-radius: 6px; object-fit: contain; }
+#scratchpiler-overlay .sp-crumbs { display: flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; min-width: 0; }
+#scratchpiler-overlay .sp-crumbs b { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+#scratchpiler-overlay .sp-crumb-sep, #scratchpiler-overlay .sp-brand-chev { color: var(--faint); }
+#scratchpiler-overlay .sp-palette-btn { flex: 1; max-width: 460px; margin: 0 auto; height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--ink-1); color: var(--faint); font-size: var(--fs-sm); min-width: 0; }
+#scratchpiler-overlay .sp-palette-btn span { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#scratchpiler-overlay .sp-palette-btn:hover { border-color: var(--line-strong); color: var(--muted); }
+#scratchpiler-overlay .sp-top-right { display: flex; align-items: center; gap: 10px; }
+#scratchpiler-overlay .sp-sync { display: flex; align-items: center; gap: 7px; font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; }
+#scratchpiler-overlay .sp-sync i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+#scratchpiler-overlay .sp-sync.sp-clean i { background: var(--ok); box-shadow: 0 0 0 3px rgba(95,211,162,.15); }
+#scratchpiler-overlay .sp-sync.sp-dirty i { background: var(--warn); box-shadow: 0 0 0 3px rgba(236,193,94,.15); }
+#scratchpiler-overlay .sp-run { display: flex; height: 30px; border-radius: var(--r-md); background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+#scratchpiler-overlay .sp-run > button { display: flex; align-items: center; gap: 7px; padding: 0 12px 0 11px; border-radius: var(--r-md) 0 0 var(--r-md); white-space: nowrap; }
+#scratchpiler-overlay .sp-run > button + button { padding: 0 8px; border-left: 1px solid rgba(29,17,4,.25); border-radius: 0 var(--r-md) var(--r-md) 0; }
+#scratchpiler-overlay .sp-run > button:hover { background: rgba(255,255,255,.14); }
+#scratchpiler-overlay .sp-run.sp-flash-ok { animation: sp-flash-ok .7s ease-out; }
+#scratchpiler-overlay .sp-run.sp-flash-err { animation: sp-flash-err .7s ease-out; }
+@keyframes sp-flash-ok { 0% { box-shadow: 0 0 0 0 rgba(95,211,162,.7); } 100% { box-shadow: 0 0 0 12px rgba(95,211,162,0); } }
+@keyframes sp-flash-err { 0%, 40% { background: var(--err); box-shadow: 0 0 0 0 rgba(242,117,131,.7); } 100% { box-shadow: 0 0 0 12px rgba(242,117,131,0); } }
+#scratchpiler-overlay .sp-icon-btn { width: 30px; height: 30px; display: grid; place-items: center; border-radius: var(--r-md); color: var(--muted); position: relative; }
+#scratchpiler-overlay .sp-icon-btn.sp-small { width: 26px; height: 26px; }
+#scratchpiler-overlay .sp-icon-btn:hover { background: var(--ink-3); color: var(--text); }
+#scratchpiler-overlay .sp-dock-toggle[aria-pressed="true"] { background: var(--ink-3); color: var(--text); }
+#scratchpiler-overlay .sp-dock-toggle .sp-live-dot { position: absolute; top: 6px; right: 6px; box-shadow: 0 0 0 2px var(--ink-0); }
+#scratchpiler-overlay .sp-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); display: inline-block; }
+#scratchpiler-overlay .sp-live-dot.sp-paused { background: var(--warn); }
+#scratchpiler-overlay .sp-live-dot.sp-stopped { background: var(--faint); }
 
-        #scratchpiler-workspace {
-            display: flex; flex: 1; min-height: 0; width: 100%;
-        }
+#scratchpiler-overlay .sp-debug { grid-row: 2; display: none; align-items: center; gap: 12px; padding: 7px 14px; background: rgba(236,193,94,.12); border-bottom: 1px solid rgba(236,193,94,.35); color: var(--warn); }
+#scratchpiler-overlay .sp-debug.sp-on { display: flex; }
+#scratchpiler-overlay .sp-debug span { flex: 1; color: var(--text); }
+#scratchpiler-overlay .sp-debug code { color: var(--s-kw); }
+#scratchpiler-overlay .sp-debug button { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 10px; border-radius: var(--r-sm); background: var(--warn); color: #231a03; font-weight: 600; font-size: var(--fs-sm); }
+#scratchpiler-overlay .sp-debug kbd { background: none; border-color: rgba(35,26,3,.3); color: #231a03; }
 
-        #scratchpiler-activitybar {
-            width: 48px; background: #001326;
-            display: flex; flex-direction: column; align-items: center;
-            padding-top: 8px; gap: 12px; border-right: 1px solid #002e5a;
-            flex-shrink: 0;
-        }
-        .sp-activity-btn {
-            width: 36px; height: 36px; display: flex;
-            align-items: center; justify-content: center;
-            background: transparent; border: none; border-radius: 6px;
-            color: #567399; cursor: pointer; transition: color 0.15s, background 0.15s;
-            position: relative;
-        }
-        .sp-activity-btn:hover { color: #bbdaff; background: #001d3d; }
-        .sp-activity-btn.sp-active { color: #ffffff; background: #002447; }
-        .sp-activity-btn.sp-active::before {
-            content: ''; position: absolute; left: 0; top: 8px; bottom: 8px;
-            width: 2px; background: #ff8c00; border-radius: 0 2px 2px 0;
-        }
+#scratchpiler-overlay .sp-main { --sp-side-col: var(--sp-side-w, 264px); --sp-dock-col: var(--sp-dock-w, 320px); grid-row: 3; display: grid; grid-template-columns: 48px var(--sp-side-col) minmax(0, 1fr) var(--sp-dock-col); min-height: 0; }
+#scratchpiler-overlay .sp-main.sp-no-side { --sp-side-col: 0px; }
+#scratchpiler-overlay .sp-main.sp-no-side .sp-side { display: none; }
+#scratchpiler-overlay .sp-main.sp-no-dock { --sp-dock-col: 0px; }
+#scratchpiler-overlay .sp-main.sp-no-dock .sp-dock { display: none; }
 
-        #scratchpiler-sidebar {
-            width: 250px; background: #001a35;
-            border-right: 1px solid #002e5a; display: flex; flex-direction: column;
-            flex-shrink: 0; min-height: 0;
-        }
-        #scratchpiler-sidebar-title {
-            padding: 10px 14px; font-size: 10px; font-weight: 700;
-            letter-spacing: 0.08em; text-transform: uppercase;
-            color: #567399; border-bottom: 1px solid #002e5a;
-            user-select: none;
-        }
-        #scratchpiler-sidebar-content {
-            flex: 1; overflow-y: auto; display: flex; flex-direction: column;
-        }
+#scratchpiler-overlay .sp-rail { background: var(--ink-0); border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; }
+#scratchpiler-overlay .sp-rail button { width: 36px; height: 36px; display: grid; place-items: center; border-radius: var(--r-md); color: var(--faint); position: relative; }
+#scratchpiler-overlay .sp-rail button:hover { color: var(--text); }
+#scratchpiler-overlay .sp-rail button[aria-pressed="true"] { color: var(--text); background: var(--ink-3); }
+#scratchpiler-overlay .sp-rail-spacer { flex: 1; }
+#scratchpiler-overlay .sp-badge { position: absolute; top: 4px; right: 3px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--warn); color: #231a03; font: 600 9px/14px var(--ui); }
+#scratchpiler-overlay .sp-badge.sp-err { background: var(--err); }
 
-        .sp-sidebar-panel { display: none !important; flex-direction: column; height: 100%; }
-        .sp-sidebar-panel.active { display: flex !important; }
+#scratchpiler-overlay .sp-side { position: relative; background: var(--ink-1); border-right: 1px solid var(--line-soft); min-width: 0; min-height: 0; }
+#scratchpiler-overlay .sp-side-scroll { position: absolute; inset: 0; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+#scratchpiler-overlay .sp-side-resize, #scratchpiler-overlay .sp-dock-resize { position: absolute; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 3; }
+#scratchpiler-overlay .sp-side-resize { right: -3px; }
+#scratchpiler-overlay .sp-dock-resize { left: -3px; }
+#scratchpiler-overlay .sp-side-resize:hover, #scratchpiler-overlay .sp-dock-resize:hover, #scratchpiler-overlay .sp-bottom-resize:hover,
+#scratchpiler-overlay .sp-resizing { background: rgba(127,178,255,.35); }
+#scratchpiler-overlay .sp-panel { display: none; padding-bottom: 16px; }
+#scratchpiler-overlay .sp-panel.sp-on { display: block; }
+#scratchpiler-overlay .sp-panel-title { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 10px 0 14px; font-weight: 600; }
+#scratchpiler-overlay .sp-panel-note { margin: 0 14px 12px; font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; }
 
-        /* Accordion */
-        .sp-accordion {
-            border-bottom: 1px solid #002e5a; display: flex; flex-direction: column;
-        }
-        .sp-accordion-header {
-            padding: 8px 12px; font-size: 11px; font-weight: 700;
-            letter-spacing: 0.06em; text-transform: uppercase;
-            color: #bbdaff; background: #002247; cursor: pointer;
-            user-select: none; display: flex; align-items: center; gap: 8px;
-        }
-        .sp-accordion-header:hover { background: #002c5c; }
-        .sp-accordion-content { display: none; padding: 4px 0; }
-        .sp-accordion-content.active { display: block; }
-        .sp-chevron { font-size: 8px; color: #567399; transition: transform 0.15s; }
+#scratchpiler-overlay .sp-sec-h { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px 0 10px; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); user-select: none; cursor: pointer; }
+#scratchpiler-overlay .sp-sec-h .sp-chev { transition: transform .12s; color: var(--faint); }
+#scratchpiler-overlay .sp-sec-h.sp-closed .sp-chev { transform: rotate(-90deg); }
+#scratchpiler-overlay .sp-sec-h.sp-closed + .sp-sec-b { display: none; }
+#scratchpiler-overlay .sp-n { font-weight: 500; color: var(--faint); }
+#scratchpiler-overlay .sp-add { width: 22px; height: 22px; display: grid; place-items: center; border-radius: var(--r-sm); color: var(--faint); }
+#scratchpiler-overlay .sp-add:hover { background: var(--ink-3); color: var(--text); }
+#scratchpiler-overlay .sp-sec-b { padding: 0 6px 6px; }
+#scratchpiler-overlay .sp-subgroup { padding: 4px 8px 2px; font-size: var(--fs-xs); color: var(--faint); }
 
-        /* Sub-accordion inside Explorer */
-        .sp-sub-accordion {
-            margin: 2px 0;
-        }
-        .sp-sub-accordion-header {
-            padding: 6px 14px; font-size: 11px; font-weight: 600;
-            color: #7285b7; cursor: pointer; user-select: none;
-        }
-        .sp-sub-accordion-header:hover { color: #bbdaff; }
-        .sp-sub-accordion-content { display: none; padding: 2px 0; }
-        .sp-sub-accordion-content.active { display: block; }
+#scratchpiler-overlay .sp-row { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 6px 0 8px; border-radius: var(--r-sm); position: relative; min-width: 0; }
+#scratchpiler-overlay .sp-row:hover { background: rgba(27,41,69,.6); }
+#scratchpiler-overlay .sp-row.sp-clickable { cursor: pointer; }
+#scratchpiler-overlay .sp-row .sp-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#scratchpiler-overlay .sp-row .sp-mono { font-family: var(--code); font-size: 12.5px; }
+#scratchpiler-overlay .sp-row .sp-meta { font-size: var(--fs-xs); color: var(--faint); white-space: nowrap; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
+#scratchpiler-overlay .sp-row .sp-meta.sp-live { font-family: var(--code); color: var(--s-num); opacity: .85; }
+#scratchpiler-overlay .sp-row .sp-acts { display: none; gap: 2px; }
+#scratchpiler-overlay .sp-row:hover .sp-acts, #scratchpiler-overlay .sp-row:focus-within .sp-acts { display: flex; }
+#scratchpiler-overlay .sp-row:hover .sp-meta, #scratchpiler-overlay .sp-row:focus-within .sp-meta { display: none; }
+#scratchpiler-overlay .sp-acts button { width: 22px; height: 22px; display: grid; place-items: center; border-radius: var(--r-sm); color: var(--muted); }
+#scratchpiler-overlay .sp-acts button:hover { background: var(--ink-3); color: var(--text); }
+#scratchpiler-overlay .sp-acts button.sp-danger:hover { color: var(--err); }
+#scratchpiler-overlay .sp-row.sp-empty-row { color: var(--faint); cursor: default; }
+#scratchpiler-overlay .sp-row.sp-empty-row:hover { background: none; }
+#scratchpiler-overlay .sp-row input.sp-inline-input { flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 1px solid var(--info); border-radius: var(--r-sm); background: var(--ink-2); outline: none; font-family: var(--code); font-size: 12.5px; }
 
-        /* Explorer lists */
-        .sp-sidebar-list { display: flex; flex-direction: column; }
-        .sp-list-item {
-            display: flex; align-items: center; gap: 8px;
-            padding: 6px 16px; color: #8ba3c7; font-size: 12px;
-            cursor: pointer; user-select: none;
-        }
-        .sp-list-item:hover { background: #002852; color: #bbdaff; }
-        .sp-list-item.active { background: #00366f; color: #ffffff; font-weight: 600; }
-        .sp-item-icon { color: #567399; }
-        .sp-list-item.active .sp-item-icon { color: #ff8c00; }
+#scratchpiler-overlay .sp-sprite { cursor: pointer; height: 32px; }
+#scratchpiler-overlay .sp-sprite.sp-on { background: var(--ink-3); }
+#scratchpiler-overlay .sp-sprite.sp-on::before { content: ""; position: absolute; left: -6px; top: 7px; bottom: 7px; width: 2px; border-radius: 2px; background: var(--accent); }
+#scratchpiler-overlay .sp-thumb { width: 22px; height: 22px; border-radius: 5px; display: grid; place-items: center; font: 600 10px/1 var(--ui); color: var(--ink-0); background: var(--line-strong); overflow: hidden; flex-shrink: 0; }
+#scratchpiler-overlay .sp-thumb img { width: 100%; height: 100%; object-fit: contain; background: #e9eef7; }
+#scratchpiler-overlay .sp-thumb.sp-stage { background: transparent; border: 1.5px solid var(--faint); }
+#scratchpiler-overlay .sp-state { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); flex-shrink: 0; }
+#scratchpiler-overlay .sp-pcount { font: 600 10px/16px var(--ui); padding: 0 5px; border-radius: 8px; background: rgba(236,193,94,.15); color: var(--warn); }
+#scratchpiler-overlay .sp-pcount.sp-err { background: rgba(242,117,131,.15); color: var(--err); }
+#scratchpiler-overlay .sp-detail-h { margin: 10px 14px 4px; padding-top: 12px; border-top: 1px solid var(--line-soft); display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+#scratchpiler-overlay .sp-detail-h b { font-size: var(--fs-lg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#scratchpiler-overlay .sp-detail-h span { font-size: var(--fs-xs); color: var(--faint); white-space: nowrap; }
 
-        /* Details list */
-        .sp-detail-item {
-            padding: 4px 26px; font-size: 11px; color: #bbdaff;
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .sp-detail-empty {
-            padding: 4px 26px; font-size: 11px; color: #567399; font-style: italic;
-        }
+#scratchpiler-overlay .sp-glyph { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+#scratchpiler-overlay .sp-g-var { background: var(--c-var); }
+#scratchpiler-overlay .sp-g-list { background: var(--c-list); border-radius: 2px; box-shadow: inset 0 -3px 0 rgba(0,0,0,.25); }
+#scratchpiler-overlay .sp-g-block { background: var(--c-myblocks); border-radius: 2px 5px 5px 2px; }
+#scratchpiler-overlay .sp-g-header { background: var(--s-pre); border-radius: 2px 5px 5px 2px; }
+#scratchpiler-overlay .sp-g-look { background: var(--c-looks); border-radius: 50%; }
+#scratchpiler-overlay .sp-g-sound { background: var(--c-sound); clip-path: polygon(0 30%, 40% 30%, 100% 0, 100% 100%, 40% 70%, 0 70%); border-radius: 0; }
+#scratchpiler-overlay .sp-g-cloud { color: var(--info); display: grid; place-items: center; width: 12px; }
 
-        /* Search Panel */
-        .sp-search-container {
-            padding: 12px; display: flex; flex-direction: column; gap: 8px;
-            border-bottom: 1px solid #002e5a;
-        }
-        .sp-search-container input {
-            background: #001021; border: 1px solid #002e5a; border-radius: 3px;
-            color: #ffffff; font-family: inherit; font-size: 12px;
-            padding: 6px 10px; width: 100%; box-sizing: border-box; outline: none;
-        }
-        .sp-search-container input:focus { border-color: #ff8c00; }
-        .sp-search-actions { display: flex; gap: 6px; }
-        .sp-search-actions button {
-            flex: 1; background: #002e5a; color: #bbdaff; border: none;
-            border-radius: 3px; padding: 6px; font-family: inherit; font-size: 11px;
-            cursor: pointer; transition: background 0.15s, color 0.15s;
-        }
-        .sp-search-actions button:hover { background: #003e7a; color: #ffffff; }
-        #scratchpiler-search-results { flex: 1; overflow-y: auto; padding: 8px 0; }
+#scratchpiler-overlay .sp-inline-new { margin: 2px 2px 6px; padding: 8px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--ink-2); display: grid; gap: 8px; }
+#scratchpiler-overlay .sp-inline-new input { height: 28px; padding: 0 8px; border-radius: var(--r-sm); border: 1px solid var(--line-strong); background: var(--ink-1); outline: none; font-family: var(--code); font-size: var(--fs-sm); }
+#scratchpiler-overlay .sp-inline-new input:focus { border-color: var(--info); }
+#scratchpiler-overlay .sp-inline-new .sp-hint { font-size: var(--fs-xs); color: var(--faint); display: flex; justify-content: space-between; gap: 6px; }
+#scratchpiler-overlay .sp-seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: var(--r-md); background: var(--ink-0); border: 1px solid var(--line-soft); flex-shrink: 0; }
+#scratchpiler-overlay .sp-seg button { padding: 3px 9px; border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--muted); }
+#scratchpiler-overlay .sp-seg button[aria-pressed="true"] { background: var(--ink-3); color: var(--text); }
 
-        .sp-search-no-results {
-            padding: 12px; text-align: center; color: #567399; font-size: 12px;
-        }
-        .sp-search-group-header {
-            padding: 6px 12px; background: #002247; font-size: 11px;
-            font-weight: 700; color: #bbdaff; border-top: 1px solid #002e5a;
-            border-bottom: 1px solid #002e5a;
-        }
-        .sp-search-result-item {
-            padding: 6px 16px; font-size: 11px; color: #8ba3c7; cursor: pointer;
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-            font-family: ui-monospace, 'SF Mono', Consolas, monospace;
-        }
-        .sp-search-result-item:hover { background: #002852; color: #ffffff; }
-        .sp-search-line-num { color: #ff8c00; font-weight: 700; margin-right: 4px; }
+#scratchpiler-overlay .sp-field { margin: 0 12px 8px; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 6px 0 9px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--ink-2); color: var(--faint); }
+#scratchpiler-overlay .sp-field:focus-within { border-color: var(--info); }
+#scratchpiler-overlay .sp-field input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-family: var(--code); font-size: var(--fs-sm); color: var(--text); height: 100%; padding: 0; }
+#scratchpiler-overlay .sp-field input::placeholder { color: var(--faint); }
+#scratchpiler-overlay .sp-tog { padding: 2px 5px; border-radius: 3px; font-size: var(--fs-xs); color: var(--faint); }
+#scratchpiler-overlay .sp-tog u { text-decoration-thickness: 1px; text-underline-offset: 2px; }
+#scratchpiler-overlay .sp-tog[aria-pressed="true"] { background: var(--ink-3); color: var(--text); }
+#scratchpiler-overlay .sp-search-acts { display: flex; gap: 6px; margin: 0 12px 12px; }
+#scratchpiler-overlay .sp-btn { height: 28px; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--line); font-size: var(--fs-sm); display: inline-flex; align-items: center; gap: 6px; }
+#scratchpiler-overlay .sp-btn:hover { background: var(--ink-3); }
+#scratchpiler-overlay .sp-btn.sp-btn-primary { background: var(--ink-3); border-color: var(--line-strong); }
+#scratchpiler-overlay .sp-btn:disabled { opacity: .45; cursor: default; background: none; }
+#scratchpiler-overlay .sp-sr-summary { margin: 0 14px 6px; font-size: var(--fs-xs); color: var(--faint); }
+#scratchpiler-overlay .sp-sr-summary .sp-hint { display: block; margin-top: 2px; }
+#scratchpiler-overlay .sp-sr-file { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px 0 12px; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+#scratchpiler-overlay .sp-sr-file .sp-rep { display: none; }
+#scratchpiler-overlay .sp-sr-file:hover .sp-rep { display: grid; }
+#scratchpiler-overlay .sp-hit { display: flex; gap: 10px; align-items: baseline; padding: 4px 8px 4px 28px; border-radius: var(--r-sm); font: 400 var(--fs-sm)/1.5 var(--code); color: var(--muted); cursor: pointer; white-space: nowrap; overflow: hidden; position: relative; }
+#scratchpiler-overlay .sp-hit:hover { background: var(--ink-3); color: var(--text); }
+#scratchpiler-overlay .sp-hit .sp-l { color: var(--faint); min-width: 22px; text-align: right; font-variant-numeric: tabular-nums; }
+#scratchpiler-overlay .sp-hit mark { background: rgba(255,154,31,.28); color: var(--text); border-radius: 2px; }
+#scratchpiler-overlay .sp-hit del { background: rgba(242,117,131,.22); color: var(--text); text-decoration: line-through; text-decoration-color: rgba(242,117,131,.8); border-radius: 2px; }
+#scratchpiler-overlay .sp-hit ins { background: rgba(95,211,162,.2); color: var(--text); text-decoration: none; border-radius: 2px; }
+#scratchpiler-overlay .sp-hit .sp-rep { position: absolute; right: 6px; top: 2px; display: none; }
+#scratchpiler-overlay .sp-hit:hover .sp-rep { display: grid; }
+#scratchpiler-overlay .sp-mini { width: 22px; height: 22px; display: grid; place-items: center; border-radius: var(--r-sm); color: var(--muted); background: var(--ink-1); }
+#scratchpiler-overlay .sp-mini:hover { background: var(--ink-3); color: var(--text); }
 
-        /* Settings Panel */
-        #sp-panel-settings { padding: 12px; display: flex; flex-direction: column; gap: 14px; }
-        .sp-settings-group { display: flex; flex-direction: column; gap: 6px; }
-        .sp-settings-group label { font-size: 11px; color: #bbdaff; font-weight: 600; }
-        .sp-settings-group select {
-            background: #001021; border: 1px solid #002e5a; border-radius: 3px;
-            color: #ffffff; font-family: inherit; font-size: 12px;
-            padding: 6px 10px; cursor: pointer; outline: none;
-        }
-        .sp-settings-group select:focus { border-color: #ff8c00; }
-        .sp-settings-group.checkbox { flex-direction: row; align-items: center; gap: 8px; cursor: pointer; }
-        .sp-settings-group.checkbox input { cursor: pointer; }
-        .sp-settings-group.checkbox label { cursor: pointer; }
+#scratchpiler-overlay .sp-set-group { padding: 4px 14px 14px; display: grid; gap: 12px; }
+#scratchpiler-overlay .sp-set-group + .sp-set-group { border-top: 1px solid var(--line-soft); padding-top: 14px; }
+#scratchpiler-overlay .sp-set-group h3 { font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+#scratchpiler-overlay .sp-set { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#scratchpiler-overlay .sp-set small { display: block; font-size: var(--fs-xs); color: var(--faint); margin-top: 1px; }
+#scratchpiler-overlay .sp-set select { height: 28px; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--ink-2); padding: 0 6px; font-size: var(--fs-sm); flex-shrink: 0; }
+#scratchpiler-overlay .sp-switch { position: relative; width: 30px; height: 18px; flex-shrink: 0; display: inline-block; }
+#scratchpiler-overlay .sp-switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; width: 100%; height: 100%; }
+#scratchpiler-overlay .sp-switch span { position: absolute; inset: 0; border-radius: 9px; background: var(--line); transition: background .15s; pointer-events: none; }
+#scratchpiler-overlay .sp-switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s; }
+#scratchpiler-overlay .sp-switch input:checked + span { background: #2b5a8f; }
+#scratchpiler-overlay .sp-switch input:checked + span::after { transform: translateX(12px); background: #e8f0ff; }
+#scratchpiler-overlay .sp-switch input:focus-visible + span { outline: 2px solid var(--info); outline-offset: 1px; }
+#scratchpiler-overlay .sp-stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: var(--r-sm); flex-shrink: 0; }
+#scratchpiler-overlay .sp-stepper button { width: 24px; height: 26px; color: var(--muted); }
+#scratchpiler-overlay .sp-stepper button:hover { color: var(--text); }
+#scratchpiler-overlay .sp-stepper output { min-width: 30px; text-align: center; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+#scratchpiler-overlay .sp-maint { display: flex; gap: 10px; align-items: flex-start; padding: 8px; margin: 0 -8px; border-radius: var(--r-md); text-align: left; width: calc(100% + 16px); }
+#scratchpiler-overlay .sp-maint:hover { background: var(--ink-3); }
+#scratchpiler-overlay .sp-maint b { display: block; font-weight: 500; }
+#scratchpiler-overlay .sp-maint small { display: block; font-size: var(--fs-xs); color: var(--faint); margin-top: 2px; line-height: 1.35; }
+#scratchpiler-overlay .sp-maint svg { margin-top: 2px; color: var(--muted); }
+#scratchpiler-overlay .sp-maint.sp-danger b, #scratchpiler-overlay .sp-maint.sp-danger svg { color: var(--err); }
+#scratchpiler-overlay .sp-maint.sp-armed { background: rgba(242,117,131,.12); }
 
-        /* Fixes Panel */
-        #sp-panel-fixes { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-        .sp-fix-action {
-            display: flex; align-items: center; gap: 10px;
-            background: #001021; border: 1px solid #002e5a; border-radius: 6px;
-            padding: 12px 14px; cursor: pointer; transition: all 0.15s ease;
-            text-align: left; width: 100%; box-sizing: border-box;
-        }
-        .sp-fix-action:hover { background: #002852; border-color: #ff8c00; }
-        .sp-fix-action-icon {
-            flex-shrink: 0; width: 28px; height: 28px; border-radius: 6px;
-            display: flex; align-items: center; justify-content: center;
-            background: rgba(255,140,0,0.1); color: #ff8c00;
-        }
-        .sp-fix-action-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-        .sp-fix-action-title { font-size: 12px; font-weight: 600; color: #e8f4ff; }
-        .sp-fix-action-desc { font-size: 10px; color: #6b8db5; line-height: 1.4; }
-        .sp-fix-action.destructive .sp-fix-action-icon { background: rgba(255,60,60,0.1); color: #ff5555; }
-        .sp-fix-action.destructive:hover { border-color: #ff5555; }
+#scratchpiler-overlay .sp-ed { display: grid; grid-template-rows: 36px minmax(0, 1fr) auto; min-width: 0; min-height: 0; background: var(--ink-2); }
+#scratchpiler-overlay #scratchpiler-editor-container { min-height: 0; min-width: 0; }
+#scratchpiler-overlay .sp-tabs { display: flex; background: var(--ink-1); border-bottom: 1px solid var(--line-soft); overflow-x: auto; scrollbar-width: none; }
+#scratchpiler-overlay .sp-tab { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 12px; border-right: 1px solid var(--line-soft); color: var(--muted); white-space: nowrap; cursor: pointer; position: relative; }
+#scratchpiler-overlay .sp-tab:hover { color: var(--text); }
+#scratchpiler-overlay .sp-tab.sp-on { background: var(--ink-2); color: var(--text); }
+#scratchpiler-overlay .sp-tab.sp-on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: var(--ink-2); }
+#scratchpiler-overlay .sp-tab .sp-kind { font-size: var(--fs-xs); color: var(--faint); }
+#scratchpiler-overlay .sp-tab .sp-x { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 3px; color: var(--faint); }
+#scratchpiler-overlay .sp-tab .sp-x:hover { background: var(--ink-3); color: var(--text); }
+#scratchpiler-overlay .sp-tab .sp-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); margin: 0 5px; display: none; }
+#scratchpiler-overlay .sp-tab.sp-dirty .sp-dot { display: block; }
+#scratchpiler-overlay .sp-tab.sp-dirty .sp-x { display: none; }
+#scratchpiler-overlay .sp-tab.sp-dirty:hover .sp-dot { display: none; }
+#scratchpiler-overlay .sp-tab.sp-dirty:hover .sp-x { display: grid; }
 
-        #scratchpiler-editor-pane {
-            flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0;
-        }
-        #scratchpiler-editor-container { flex: 1; min-height: 0; }
+#scratchpiler-overlay .sp-bottom { position: relative; border-top: 1px solid var(--line); background: var(--ink-1); display: grid; grid-template-rows: 32px auto; }
+#scratchpiler-overlay .sp-bottom-resize { position: absolute; left: 0; right: 0; top: -3px; height: 6px; cursor: row-resize; z-index: 3; }
+#scratchpiler-overlay .sp-bottom.sp-closed .sp-bottom-body, #scratchpiler-overlay .sp-bottom.sp-closed .sp-bottom-resize { display: none; }
+#scratchpiler-overlay .sp-bottom.sp-closed .sp-bottom-chev { transform: rotate(180deg); }
+#scratchpiler-overlay .sp-bottom-h { display: flex; align-items: center; gap: 2px; padding: 0 6px 0 8px; }
+#scratchpiler-overlay .sp-btab { height: 32px; padding: 0 10px; font-size: var(--fs-sm); color: var(--muted); display: flex; align-items: center; gap: 6px; position: relative; }
+#scratchpiler-overlay .sp-btab:hover, #scratchpiler-overlay .sp-btab[aria-selected="true"] { color: var(--text); }
+#scratchpiler-overlay .sp-btab[aria-selected="true"]::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px; border-radius: 2px; background: var(--text); }
+#scratchpiler-overlay .sp-bottom.sp-closed .sp-btab::after { display: none; }
+#scratchpiler-overlay .sp-cnt { font: 600 10px/16px var(--ui); padding: 0 5px; border-radius: 8px; background: var(--ink-3); color: var(--muted); }
+#scratchpiler-overlay .sp-bottom-body { height: var(--sp-bottom-h, 180px); overflow: auto; padding: 4px 0 8px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+#scratchpiler-overlay .sp-prob-file { padding: 8px 14px 2px; font-size: var(--fs-xs); font-weight: 600; color: var(--muted); }
+#scratchpiler-overlay .sp-prob { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 5px 14px; cursor: pointer; }
+#scratchpiler-overlay .sp-prob:hover { background: var(--ink-3); }
+#scratchpiler-overlay .sp-sev { width: 8px; height: 8px; border-radius: 50%; align-self: center; }
+#scratchpiler-overlay .sp-sev.sp-error { background: var(--err); }
+#scratchpiler-overlay .sp-sev.sp-warning { background: var(--warn); }
+#scratchpiler-overlay .sp-sev.sp-info { background: var(--info); }
+#scratchpiler-overlay .sp-prob .sp-loc { color: var(--faint); font-size: var(--fs-sm); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#scratchpiler-overlay .sp-out-entry { display: flex; gap: 12px; padding: 3px 14px; font: 400 12px/1.55 var(--code); }
+#scratchpiler-overlay .sp-out-entry time { color: var(--faint); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+#scratchpiler-overlay .sp-out-entry.info span { color: var(--muted); }
+#scratchpiler-overlay .sp-out-entry.ok span { color: var(--ok); }
+#scratchpiler-overlay .sp-out-entry.warn span { color: var(--warn); }
+#scratchpiler-overlay .sp-out-entry.error span { color: var(--err); }
+#scratchpiler-overlay .sp-empty { padding: 18px 14px; color: var(--faint); }
 
-        .sp-dropdown {
-            position: absolute; top: 100%; left: 0;
-            background: #001d36; border: 1px solid #002e5a; border-radius: 4px;
-            min-width: 220px; z-index: 100001;
-            box-shadow: 0 6px 24px rgba(0,12,40,0.6); padding: 4px 0;
-        }
-        .sp-dropdown-item {
-            display: block; width: 100%; background: none; border: none;
-            color: #e8f4ff; font-family: inherit; font-size: 12px;
-            padding: 7px 16px; cursor: pointer; text-align: left;
-            transition: background 0.1s; box-sizing: border-box;
-        }
-        .sp-dropdown-item:hover { background: #002e5a; }
-        .sp-dropdown-sep { height: 1px; background: #002e5a; margin: 3px 0; }
+#scratchpiler-overlay .sp-dock { position: relative; background: var(--ink-1); border-left: 1px solid var(--line-soft); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+#scratchpiler-overlay .sp-dock-h { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px 0 14px; flex-shrink: 0; }
+#scratchpiler-overlay .sp-dock-h b { font-weight: 600; }
+#scratchpiler-overlay .sp-vars-state { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--muted); }
+#scratchpiler-overlay .sp-dock-note { margin: -4px 14px 8px; font-size: var(--fs-xs); color: var(--faint); }
+#scratchpiler-overlay .sp-dock .sp-field { margin: 0 12px 6px; height: 28px; flex-shrink: 0; }
+#scratchpiler-overlay .sp-dock-body { flex: 1; min-height: 0; overflow: auto; padding-bottom: 12px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+#scratchpiler-overlay .sp-dock-foot { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--line-soft); font-size: var(--fs-xs); color: var(--faint); cursor: pointer; flex-shrink: 0; }
+#scratchpiler-overlay .sp-vgroup { padding: 8px 14px 2px; font-size: var(--fs-xs); font-weight: 600; color: var(--faint); }
+#scratchpiler-overlay .sp-vrow { display: grid; grid-template-columns: 12px minmax(0, 1fr) minmax(0, 1.15fr) 22px; gap: 6px; align-items: center; padding: 1px 8px 1px 14px; min-height: 30px; }
+#scratchpiler-overlay .sp-vrow:hover { background: rgba(27,41,69,.45); }
+#scratchpiler-overlay .sp-vrow.sp-hl { background: rgba(255,154,31,.1); }
+#scratchpiler-overlay .sp-vrow input { width: 100%; height: 26px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--r-sm); background: none; outline: none; font: 400 12.5px/1 var(--code); min-width: 0; }
+#scratchpiler-overlay .sp-vrow input:hover { border-color: var(--line); }
+#scratchpiler-overlay .sp-vrow input:focus { border-color: var(--info); background: var(--ink-2); }
+#scratchpiler-overlay .sp-vrow .sp-vval { color: var(--s-num); background: var(--ink-2); border-color: var(--line-soft); }
+#scratchpiler-overlay .sp-vrow .sp-vval.sp-flash { animation: sp-vflash .5s ease-out; }
+@keyframes sp-vflash { from { background: rgba(95,211,162,.16); } }
+#scratchpiler-overlay .sp-vrow .sp-vdel { width: 22px; height: 22px; display: grid; place-items: center; border-radius: var(--r-sm); color: var(--faint); opacity: 0; }
+#scratchpiler-overlay .sp-vrow:hover .sp-vdel, #scratchpiler-overlay .sp-vrow .sp-vdel:focus-visible { opacity: 1; }
+#scratchpiler-overlay .sp-vrow .sp-vdel:hover { color: var(--err); background: var(--ink-3); }
+#scratchpiler-overlay .sp-vlist-btn { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 26px; padding: 0 6px 0 8px; border: 1px solid var(--line-soft); border-radius: var(--r-sm); background: var(--ink-2); min-width: 0; text-align: left; }
+#scratchpiler-overlay .sp-vlist-btn:hover { border-color: var(--line); }
+#scratchpiler-overlay .sp-vlist-btn b { font-weight: 500; font-size: var(--fs-sm); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#scratchpiler-overlay .sp-vlist-btn svg { color: var(--faint); transition: transform .12s; }
+#scratchpiler-overlay .sp-vlist-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+#scratchpiler-overlay .sp-vlist-ed { margin: 2px 8px 8px 32px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--ink-2); overflow: hidden; }
+#scratchpiler-overlay .sp-vlist-body { display: flex; max-height: calc(1.6em * 16 + 12px); overflow: auto; font: 400 12.5px/1.6 var(--code); }
+#scratchpiler-overlay .sp-vlist-gutter { padding: 6px 8px 6px 10px; text-align: right; color: var(--faint); user-select: none; font-variant-numeric: tabular-nums; background: var(--ink-2); position: sticky; left: 0; }
+#scratchpiler-overlay .sp-vlist-body textarea { flex: 1; min-width: 0; border: 0; outline: none; resize: none; background: none; padding: 6px 10px 6px 4px; font: inherit; color: var(--s-num); white-space: pre; overflow: hidden; }
+#scratchpiler-overlay .sp-vlist-foot { display: flex; justify-content: space-between; gap: 10px; padding: 5px 10px; border-top: 1px solid var(--line-soft); font-size: var(--fs-xs); color: var(--faint); flex-wrap: wrap; }
+#scratchpiler-overlay .sp-vlist-big { padding: 12px; color: var(--muted); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
-        #scratchpiler-dialog {
-            position: absolute; inset: 0; z-index: 100002;
-            display: flex; align-items: center; justify-content: center;
-            background: rgba(0,10,25,0.75); backdrop-filter: blur(3px);
-        }
-        #scratchpiler-dialog-box {
-            background: #001d3d; border: 1px solid #002e5a; border-radius: 6px;
-            padding: 20px 22px; min-width: 280px;
-            box-shadow: 0 8px 40px rgba(0,10,36,0.6);
-        }
-        #scratchpiler-dialog-title {
-            color: #e8f4ff; font-size: 12px; font-weight: 700;
-            letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 12px;
-        }
-        #scratchpiler-dialog-input {
-            width: 100%; box-sizing: border-box;
-            background: #001021; color: #e8f4ff;
-            border: 1px solid #002e5a; border-radius: 3px;
-            padding: 7px 10px; font-family: inherit; font-size: 12px;
-            margin-bottom: 14px; outline: none;
-        }
-        #scratchpiler-dialog-input:focus { border-color: #ff8c00; }
-        #scratchpiler-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
-        .sp-dialog-btn {
-            background: transparent; color: #7285b7; border: 1px solid #002e5a;
-            border-radius: 3px; font-family: inherit; font-size: 11px;
-            padding: 5px 14px; cursor: pointer;
-            transition: color 0.1s, border-color 0.1s, background 0.1s;
-        }
-        .sp-dialog-btn:hover { color: #e8f4ff; border-color: #bbdaff; }
-        .sp-dialog-btn.sp-primary {
-            background: #ff8c00; color: #001a38; border-color: #ff8c00; font-weight: 700;
-        }
-        .sp-dialog-btn.sp-primary:hover { background: #ffaa33; border-color: #ffaa33; }
+#scratchpiler-overlay .sp-status { grid-row: 4; display: flex; align-items: center; gap: 2px; padding: 0 6px; background: var(--ink-0); border-top: 1px solid var(--line-soft); font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; overflow: hidden; }
+#scratchpiler-overlay .sp-it { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 3px; }
+#scratchpiler-overlay button.sp-it:hover { background: var(--ink-3); color: var(--text); }
+#scratchpiler-overlay .sp-num { font-variant-numeric: tabular-nums; }
+#scratchpiler-overlay .sp-vm-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+#scratchpiler-overlay .sp-vm-dot.sp-pending { background: var(--warn); }
+#scratchpiler-overlay .sp-vm-dot.sp-error { background: var(--err); }
+#scratchpiler-overlay #sp-sb-err-count { color: var(--err); }
+#scratchpiler-overlay #sp-sb-warn-count { color: var(--warn); }
+#scratchpiler-overlay #sp-sb-err-count.sp-zero, #scratchpiler-overlay #sp-sb-warn-count.sp-zero { color: var(--faint); }
+#scratchpiler-overlay .sp-sb-message { color: var(--faint); overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; transition: opacity .3s; }
+#scratchpiler-overlay .sp-sb-message.sp-fade { opacity: 0; }
 
-        #scratchpiler-trigger {
-            position: fixed; bottom: 20px; left: 16px; z-index: 9998;
-            display: flex; align-items: center; gap: 8px;
-            background: #001d3d; color: #bbdaff;
-            border: 1px solid #002e5a; border-radius: 6px;
-            padding: 8px 14px; cursor: pointer;
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            font-size: 12px; letter-spacing: 0.04em;
-            transition: border-color 0.15s, box-shadow 0.15s, color 0.15s;
-            user-select: none;
-        }
-        #scratchpiler-trigger:hover {
-            border-color: #ff8c00; color: #e8f4ff;
-            box-shadow: 0 0 12px rgba(255,140,0,0.25);
-        }
-        @media (prefers-reduced-motion: reduce) {
-            #scratchpiler-close-btn, #scratchpiler-trigger,
-            .sp-menu-btn, .sp-dialog-btn { transition: none; }
-        }
+#scratchpiler-overlay .sp-scrim { position: fixed; inset: 0; background: rgba(5,9,16,.55); display: none; align-items: flex-start; justify-content: center; padding: 72px 16px 16px; z-index: 50; }
+#scratchpiler-overlay .sp-scrim.sp-on { display: flex; }
+#scratchpiler-overlay .sp-modal { width: min(600px, 100%); background: var(--ink-1); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: 0 24px 60px rgba(0,0,0,.5); overflow: hidden; animation: sp-drop .14s ease-out; }
+#scratchpiler-overlay .sp-modal-wide { width: min(640px, 100%); }
+@keyframes sp-drop { from { transform: translateY(-6px); opacity: 0; } }
+#scratchpiler-overlay .sp-modal-in { display: flex; align-items: center; gap: 10px; padding: 0 14px; height: 48px; border-bottom: 1px solid var(--line-soft); color: var(--faint); }
+#scratchpiler-overlay .sp-modal-in b { color: var(--text); font-weight: 600; }
+#scratchpiler-overlay .sp-modal-in input { flex: 1; border: 0; background: none; outline: none; font-size: var(--fs-lg); min-width: 0; color: var(--text); height: 100%; padding: 0; }
+#scratchpiler-overlay .sp-modal-in input::placeholder { color: var(--faint); }
+#scratchpiler-overlay .sp-results { max-height: min(420px, 60vh); overflow: auto; padding: 6px; }
+#scratchpiler-overlay .sp-grp { padding: 8px 10px 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--faint); }
+#scratchpiler-overlay .sp-res { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: var(--r-md); cursor: pointer; }
+#scratchpiler-overlay .sp-res .sp-ic { width: 18px; display: grid; place-items: center; color: var(--muted); }
+#scratchpiler-overlay .sp-res .sp-lb { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#scratchpiler-overlay .sp-res .sp-lb em { font-style: normal; color: var(--accent); }
+#scratchpiler-overlay .sp-res .sp-sub { color: var(--faint); font-size: var(--fs-sm); white-space: nowrap; }
+#scratchpiler-overlay .sp-res.sp-on { background: var(--ink-3); }
+#scratchpiler-overlay .sp-res.sp-on .sp-ic { color: var(--text); }
+#scratchpiler-overlay .sp-modal-foot { display: flex; gap: 14px; padding: 8px 14px; border-top: 1px solid var(--line-soft); font-size: var(--fs-xs); color: var(--faint); flex-wrap: wrap; }
+#scratchpiler-overlay .sp-modal-foot span { display: flex; gap: 5px; align-items: center; }
+#scratchpiler-overlay .sp-keys { padding: 14px 18px 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 28px; }
+#scratchpiler-overlay .sp-keys h4 { grid-column: 1 / -1; margin: 10px 0 2px; font-size: var(--fs-xs); color: var(--faint); font-weight: 600; }
+#scratchpiler-overlay .sp-keys div { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 3px 0; }
 
-        /* Search Nowhere */
-        #sp-sn-backdrop {
-            position: fixed; inset: 0; z-index: 999999;
-            display: flex; align-items: flex-start; justify-content: center;
-            padding-top: 72px;
-            background: rgba(0,6,18,0.65); backdrop-filter: blur(3px);
-        }
-        #sp-sn-modal {
-            width: min(680px, 90vw); background: #191e2d;
-            border: 1px solid #2a3550; border-radius: 8px;
-            box-shadow: 0 20px 70px rgba(0,0,0,0.75);
-            display: flex; flex-direction: column; overflow: hidden;
-            max-height: 72vh;
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        }
-        #sp-sn-header {
-            display: flex; align-items: center; gap: 10px;
-            padding: 11px 16px; border-bottom: 1px solid #212a3f;
-            background: #1c2236; flex-shrink: 0;
-        }
-        #sp-sn-icon { color: #ff8c00; flex-shrink: 0; }
-        #sp-sn-input {
-            flex: 1; background: transparent; border: none; outline: none;
-            color: #e0eeff; font-family: inherit; font-size: 15px;
-            caret-color: #ff8c00; min-width: 0;
-        }
-        #sp-sn-input::placeholder { color: #35486a; }
-        #sp-sn-hint { font-size: 10px; color: #2d3f58; font-family: ui-monospace, monospace; flex-shrink: 0; white-space: nowrap; }
-        #sp-sn-tabs {
-            display: flex; border-bottom: 1px solid #212a3f;
-            background: #191e2d; padding: 0 8px; gap: 2px; flex-shrink: 0;
-        }
-        .sp-sn-tab {
-            background: transparent; border: none; color: #4d6588;
-            font-family: inherit; font-size: 12px; padding: 8px 14px;
-            cursor: pointer; border-bottom: 2px solid transparent;
-            transition: color 0.1s, border-color 0.1s; margin-bottom: -1px;
-            white-space: nowrap;
-        }
-        .sp-sn-tab:hover { color: #8fafd4; }
-        .sp-sn-tab.sp-sn-active { color: #ddeeff; border-bottom-color: #ff8c00; }
-        .sp-sn-tab-void { color: #7a4a8a !important; }
-        .sp-sn-tab-void:hover { color: #b07ac0 !important; }
-        .sp-sn-tab-void.sp-sn-active { color: #c898d8 !important; border-bottom-color: #9b59b6 !important; }
-        #sp-sn-results { flex: 1; overflow-y: auto; min-height: 0; }
-        .sp-sn-group-header {
-            padding: 5px 16px; font-size: 10px; font-weight: 700;
-            letter-spacing: 0.1em; text-transform: uppercase;
-            color: #3d5270; background: #141824;
-            border-top: 1px solid #1c2236; border-bottom: 1px solid #1c2236;
-            user-select: none; position: sticky; top: 0;
-        }
-        .sp-sn-result {
-            display: flex; align-items: center; gap: 10px;
-            padding: 6px 16px; cursor: pointer; min-height: 34px;
-            transition: background 0.07s;
-        }
-        .sp-sn-result:hover, .sp-sn-result.sp-sn-focused { background: #223050; }
-        .sp-sn-result.sp-sn-void:hover, .sp-sn-result.sp-sn-void.sp-sn-focused { background: #1e1028; }
-        .sp-sn-result-icon { flex-shrink: 0; font-size: 12px; width: 18px; text-align: center; color: #4d6588; }
-        .sp-sn-result.sp-sn-void .sp-sn-result-icon { color: #7a4a8a; }
-        .sp-sn-result-main { flex: 1; min-width: 0; }
-        .sp-sn-result-label { font-size: 13px; color: #bdd4ee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-        .sp-sn-result-label em { color: #ff8c00; font-style: normal; font-weight: 600; }
-        .sp-sn-result.sp-sn-void .sp-sn-result-label { color: #9070a8; }
-        .sp-sn-result-sub { font-size: 11px; color: #3d5270; font-family: ui-monospace, 'SF Mono', Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; display: block; }
-        .sp-sn-result.sp-sn-void .sp-sn-result-sub { color: #4a2d5a; }
-        .sp-sn-result-badge { font-size: 10px; color: #3d5270; flex-shrink: 0; background: #141824; padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, monospace; }
-        .sp-sn-pro { font-size: 9px; background: linear-gradient(90deg,#b8860b,#daa520); color: #100800; padding: 1px 4px; border-radius: 2px; font-weight: 800; vertical-align: middle; margin-left: 4px; letter-spacing: 0.04em; }
-        .sp-sn-empty { padding: 32px 16px; text-align: center; color: #35486a; font-size: 13px; line-height: 1.6; }
-        .sp-sn-empty-icon { font-size: 26px; margin-bottom: 8px; }
-        #sp-sn-footer {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 5px 16px; border-top: 1px solid #1c2236;
-            background: #141824; flex-shrink: 0;
-        }
-        #sp-sn-status { font-size: 11px; color: #3d5270; }
-        #sp-sn-tip { font-size: 10px; color: #263040; font-family: ui-monospace, monospace; }
+#scratchpiler-overlay .sp-menu { position: fixed; z-index: 60; min-width: 232px; max-width: 360px; background: var(--ink-1); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: 0 12px 36px rgba(0,0,0,.45); padding: 4px; display: none; }
+#scratchpiler-overlay .sp-menu.sp-on { display: block; animation: sp-drop .1s ease-out; }
+#scratchpiler-overlay .sp-menu button { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 28px; padding: 0 10px; border-radius: var(--r-sm); text-align: left; white-space: nowrap; }
+#scratchpiler-overlay .sp-menu button:hover:not(:disabled), #scratchpiler-overlay .sp-menu button:focus-visible { background: var(--ink-3); outline: none; }
+#scratchpiler-overlay .sp-menu button:disabled { opacity: .4; cursor: default; }
+#scratchpiler-overlay .sp-menu button.sp-danger { color: var(--err); }
+#scratchpiler-overlay .sp-menu hr { border: 0; border-top: 1px solid var(--line-soft); margin: 4px 2px; }
+#scratchpiler-overlay .sp-menu .sp-lbl { padding: 6px 10px 2px; font-size: var(--fs-xs); color: var(--faint); font-weight: 600; }
 
-        /* Compile button flash */
-        @keyframes sp-flash-success {
-            0%   { background: #ff8c00; border-color: #ff8c00; box-shadow: none; }
-            35%  { background: #22c55e; border-color: #22c55e; box-shadow: 0 0 20px rgba(34,197,94,0.55); }
-            100% { background: #ff8c00; border-color: #ff8c00; box-shadow: none; }
-        }
-        @keyframes sp-flash-error {
-            0%   { background: #ff8c00; border-color: #ff8c00; box-shadow: none; }
-            35%  { background: #ef4444; border-color: #ef4444; box-shadow: 0 0 20px rgba(239,68,68,0.55); }
-            100% { background: #ff8c00; border-color: #ff8c00; box-shadow: none; }
-        }
-        #scratchpiler-compile-btn.sp-flash-ok  { animation: sp-flash-success 0.65s ease forwards; }
-        #scratchpiler-compile-btn.sp-flash-err { animation: sp-flash-error  0.65s ease forwards; }
+#scratchpiler-overlay .sp-toasts { position: fixed; right: 14px; bottom: 38px; display: grid; gap: 8px; z-index: 70; }
+#scratchpiler-overlay .sp-toast { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--ink-3); border: 1px solid var(--line-strong); border-radius: var(--r-md); box-shadow: 0 10px 30px rgba(0,0,0,.4); animation: sp-drop .16s ease-out; max-width: min(460px, calc(100vw - 28px)); }
+#scratchpiler-overlay .sp-toast i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+#scratchpiler-overlay .sp-toast.sp-warn i { background: var(--warn); }
+#scratchpiler-overlay .sp-toast.sp-error i { background: var(--err); }
+#scratchpiler-overlay .sp-toast .sp-act { margin-left: 6px; padding: 3px 8px; border-radius: var(--r-sm); border: 1px solid #3a5280; font-size: var(--fs-sm); font-weight: 600; }
+#scratchpiler-overlay .sp-toast .sp-act:hover { background: var(--ink-1); }
 
-        /* Sidebar resize handle */
-        #sp-sidebar-resize {
-            width: 4px; cursor: col-resize; background: transparent;
-            flex-shrink: 0; transition: background 0.15s; z-index: 1;
-        }
-        #sp-sidebar-resize:hover, #sp-sidebar-resize.sp-resizing { background: #ff8c0066; }
+@media (max-width: 860px) {
+    #scratchpiler-overlay .sp-crumb-project, #scratchpiler-overlay .sp-crumb-sep, #scratchpiler-overlay .sp-sync span, #scratchpiler-overlay .sp-hide-sm { display: none; }
+    #scratchpiler-overlay .sp-main, #scratchpiler-overlay .sp-main.sp-no-side, #scratchpiler-overlay .sp-main.sp-no-dock { grid-template-columns: 48px minmax(0, 1fr); }
+    #scratchpiler-overlay .sp-main .sp-side { position: fixed; left: 48px; top: 44px; bottom: 26px; width: min(300px, calc(100vw - 64px)); z-index: 20; box-shadow: 12px 0 30px rgba(0,0,0,.4); }
+    #scratchpiler-overlay .sp-main .sp-dock { position: fixed; right: 0; top: 44px; bottom: 26px; width: min(340px, calc(100vw - 48px)); z-index: 20; box-shadow: -12px 0 30px rgba(0,0,0,.4); }
+    #scratchpiler-overlay .sp-main .sp-ed { grid-column: 2; }
+}
+@media (max-width: 560px) {
+    #scratchpiler-overlay .sp-palette-btn span, #scratchpiler-overlay .sp-palette-btn kbd, #scratchpiler-overlay .sp-run-label, #scratchpiler-overlay .sp-crumbs { display: none; }
+    #scratchpiler-overlay .sp-palette-btn { flex: 0 0 auto; width: 30px; padding: 0; justify-content: center; margin: 0 0 0 auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #scratchpiler-overlay *, #scratchpiler-overlay *::before, #scratchpiler-overlay *::after, #scratchpiler-trigger { animation: none !important; transition: none !important; }
+}
 
-        /* Output panel */
-        #sp-output-panel {
-            border-top: 1px solid #002e5a; background: #001021;
-            display: flex; flex-direction: column; flex-shrink: 0;
-            overflow: hidden; height: 26px; transition: height 0.15s ease;
-        }
-        #sp-output-panel.sp-expanded { height: 160px; }
-        #sp-output-header {
-            display: flex; align-items: center; gap: 4px; flex-shrink: 0;
-            padding: 0 8px; height: 26px; cursor: pointer;
-            border-bottom: 1px solid #002e5a; user-select: none;
-        }
-        #sp-output-header:hover { background: #001d3d; }
-        #sp-output-header-title {
-            font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
-            text-transform: uppercase; color: #567399; flex: 1;
-        }
-        .sp-out-hdr-btn {
-            background: transparent; border: none; color: #567399;
-            font-family: inherit; font-size: 10px; cursor: pointer; padding: 2px 6px;
-            border-radius: 3px; line-height: 1;
-            transition: color 0.1s, background 0.1s;
-        }
-        .sp-out-hdr-btn:hover { color: #bbdaff; background: #002247; }
-        #sp-output-log {
-            flex: 1; overflow-y: auto; padding: 2px 0; min-height: 0;
-            font-family: ui-monospace, 'SF Mono', Consolas, monospace; font-size: 11px;
-            display: none;
-        }
-        #sp-output-panel.sp-expanded #sp-output-log { display: block; }
-        .sp-out-entry {
-            padding: 1px 10px; line-height: 1.55;
-            display: flex; gap: 8px; align-items: baseline;
-        }
-        .sp-out-entry.info  .sp-out-text { color: #8ba3c7; }
-        .sp-out-entry.ok    .sp-out-text { color: #4ade80; }
-        .sp-out-entry.error .sp-out-text { color: #f87171; }
-        .sp-out-entry.warn  .sp-out-text { color: #fbbf24; }
-        .sp-out-time { color: #2d3f58; flex-shrink: 0; }
+#sp-tooltip {
+    position: fixed; z-index: 1000000; pointer-events: none;
+    max-width: 300px; padding: 6px 8px;
+    background: var(--ink-3); color: var(--text);
+    border: 1px solid var(--line-strong); border-radius: var(--r-md);
+    box-shadow: 0 8px 24px rgba(0,0,0,.45);
+    font: 500 12px/1.35 var(--ui);
+    opacity: 0; transform: translateY(-2px);
+    transition: opacity .09s ease-out, transform .09s ease-out;
+}
+#sp-tooltip[hidden] { display: none; }
+#sp-tooltip.sp-on { opacity: 1; transform: none; }
+#sp-tooltip .sp-tip-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#sp-tooltip .sp-tip-keys { display: flex; gap: 3px; flex-shrink: 0; }
+#sp-tooltip kbd { font: 500 10.5px/1 var(--ui); color: var(--muted); border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 4px; padding: 2px 5px; background: var(--ink-1); min-width: 18px; text-align: center; }
+#sp-tooltip .sp-tip-hint { margin-top: 3px; font-weight: 400; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { #sp-tooltip { transition: none; } }
 
-        /* Sprite Picker (Ctrl+P) */
-        #sp-picker-backdrop {
-            position: absolute; inset: 0; z-index: 100003;
-            display: flex; align-items: flex-start; justify-content: center;
-            padding-top: 60px; background: rgba(0,6,18,0.55);
-        }
-        #sp-picker-modal {
-            width: min(440px, 90%); background: #191e2d;
-            border: 1px solid #2a3550; border-radius: 8px;
-            box-shadow: 0 20px 70px rgba(0,0,0,0.75);
-            display: flex; flex-direction: column; overflow: hidden;
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        }
-        #sp-picker-input {
-            width: 100%; background: transparent; border: none;
-            border-bottom: 1px solid #212a3f; outline: none;
-            color: #e0eeff; font-family: inherit; font-size: 14px;
-            caret-color: #ff8c00; padding: 11px 16px; box-sizing: border-box;
-        }
-        #sp-picker-input::placeholder { color: #35486a; }
-        #sp-picker-list { max-height: 280px; overflow-y: auto; padding: 4px 0; }
-        .sp-picker-item {
-            display: flex; align-items: center; gap: 10px;
-            padding: 7px 16px; cursor: pointer; transition: background 0.07s;
-        }
-        .sp-picker-item:hover, .sp-picker-item.sp-picker-focused { background: #223050; }
-        .sp-picker-item-icon { color: #567399; font-size: 11px; flex-shrink: 0; width: 16px; text-align: center; }
-        .sp-picker-item-name { font-size: 13px; color: #bdd4ee; }
-        .sp-picker-item-name em { color: #ff8c00; font-style: normal; font-weight: 600; }
-        .sp-picker-item-sub { font-size: 11px; color: #3d5270; margin-left: auto; flex-shrink: 0; }
-        #sp-picker-empty { padding: 18px 16px; text-align: center; color: #35486a; font-size: 13px; }
-        #sp-picker-footer {
-            padding: 5px 12px; border-top: 1px solid #1c2236;
-            background: #141824; font-size: 10px; color: #263040;
-            font-family: ui-monospace, monospace;
-        }
+#scratchpiler-trigger {
+    position: fixed; bottom: 20px; left: 16px; z-index: 9998;
+    display: flex; align-items: center; gap: 8px;
+    background: var(--ink-1); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; cursor: pointer;
+    font: 500 12px/1 var(--ui);
+    transition: border-color .15s, box-shadow .15s;
+    user-select: none;
+}
+#scratchpiler-trigger:hover { border-color: var(--accent); box-shadow: 0 0 12px rgba(255,154,31,.25); }
 
-        /* Sprite context menu */
-        .sp-ctx-menu {
-            position: fixed; z-index: 999998;
-            background: #001d36; border: 1px solid #002e5a; border-radius: 4px;
-            min-width: 195px; box-shadow: 0 6px 24px rgba(0,12,40,0.65); padding: 4px 0;
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        }
-        .sp-ctx-item {
-            display: flex; align-items: center; justify-content: space-between;
-            width: 100%; background: none; border: none;
-            color: #e8f4ff; font-family: inherit; font-size: 12px;
-            padding: 7px 16px; cursor: pointer; text-align: left;
-            transition: background 0.1s; box-sizing: border-box;
-        }
-        .sp-ctx-item:hover { background: #002e5a; }
-        .sp-ctx-shortcut { color: #567399; font-size: 10px; font-family: ui-monospace, monospace; }
-        .sp-ctx-sep { height: 1px; background: #002e5a; margin: 3px 0; }
-
-        /* Clickable detail items */
-        .sp-detail-item { cursor: pointer; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sp-detail-item:hover { background: #002447; color: #e8f4ff; }
-
-        /* Variable/list item row with action button */
-        .sp-detail-item-row {
-            display: flex; align-items: center;
-            padding: 0; margin: 0;
-        }
-        .sp-detail-item-row .sp-detail-item { padding: 4px 4px 4px 26px; }
-        .sp-detail-action-btn {
-            flex-shrink: 0; width: 22px; height: 22px; margin-right: 4px;
-            background: none; border: none; color: #3a5276; cursor: pointer;
-            border-radius: 3px; font-size: 13px; line-height: 1;
-            display: flex; align-items: center; justify-content: center;
-            opacity: 0; transition: opacity 0.1s, background 0.1s, color 0.1s;
-        }
-        .sp-detail-item-row:hover .sp-detail-action-btn { opacity: 1; }
-        .sp-detail-action-btn:hover { background: #002e5a; color: #e8f4ff; }
-
-        /* Floating context menu (fixed-position) */
-        .sp-context-menu {
-            position: fixed !important;
-            top: auto; left: auto;
-        }
-
-        /* Debug bar */
-        #sp-debug-bar {
-            background: #0d001a; border-top: 2px solid #9b59b6;
-            padding: 7px 14px; display: flex; align-items: center; gap: 12px;
-            flex-shrink: 0; font-size: 12px;
-        }
-        #sp-debug-label { color: #c39bd3; font-family: ui-monospace, 'SF Mono', Consolas, monospace; }
-        #sp-debug-resume-btn {
-            background: #6c3483; border: 1px solid #9b59b6; border-radius: 4px;
-            color: #e8daef; font-family: inherit; font-size: 11px;
-            padding: 4px 12px; cursor: pointer; transition: background 0.1s;
-        }
-        #sp-debug-resume-btn:hover { background: #8e44ad; }
-
-        /* ===== Sprite Tab Bar ===== */
-        #sp-tab-bar {
-            display: flex; align-items: flex-end;
-            height: 35px; background: #001020;
-            border-bottom: 1px solid #001d35;
-            overflow-x: auto; overflow-y: hidden; flex-shrink: 0;
-            scrollbar-width: thin; scrollbar-color: #002e5a transparent;
-        }
-        #sp-tab-bar::-webkit-scrollbar { height: 3px; background: transparent; }
-        #sp-tab-bar::-webkit-scrollbar-thumb { background: #002e5a; border-radius: 2px; }
-
-        .sp-tab {
-            display: flex; align-items: center; gap: 6px;
-            padding: 0 12px 0 10px; height: 34px;
-            background: #001326; color: #567399;
-            font-size: 12px; cursor: pointer;
-            border-right: 1px solid #001d35;
-            border-top: 2px solid transparent;
-            white-space: nowrap; flex-shrink: 0;
-            transition: color 0.1s, background 0.1s;
-            user-select: none;
-        }
-        .sp-tab:hover { color: #bbdaff; background: #001a35; }
-        .sp-tab.sp-tab-active {
-            background: #00152b; color: #e8f4ff;
-            border-top-color: #ff8c00;
-            border-bottom: 1px solid #00152b;
-            margin-bottom: -1px;
-        }
-        .sp-tab-icon { font-size: 12px; color: #567399; flex-shrink: 0; }
-        .sp-tab.sp-tab-active .sp-tab-icon { color: #ff8c00; }
-        .sp-tab-name { font-size: 12px; }
-        .sp-tab-close {
-            width: 14px; height: 14px;
-            display: flex; align-items: center; justify-content: center;
-            border-radius: 3px; color: transparent; font-size: 12px;
-            flex-shrink: 0; background: transparent; border: none;
-            cursor: pointer; padding: 0; line-height: 1; font-family: inherit;
-            transition: background 0.1s, color 0.1s;
-        }
-        .sp-tab:hover .sp-tab-close,
-        .sp-tab.sp-tab-active .sp-tab-close { color: #567399; }
-        .sp-tab-close:hover { background: #003e7a !important; color: #e8f4ff !important; }
-        .sp-tab.sp-tab-active .sp-tab-close:hover {
-            background: rgba(255,140,0,0.12) !important; color: #ff8c00 !important;
-        }
-
-        /* ===== Bottom Status Bar ===== */
-        #sp-status-bar {
-            height: 22px; display: flex; align-items: stretch;
-            background: #001020; border-top: 1px solid #001d35;
-            font-size: 11px; flex-shrink: 0; color: #567399;
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        }
-        .sp-sb-group { display: flex; align-items: center; }
-        .sp-sb-left  { flex: 1; overflow: hidden; }
-        .sp-sb-right { flex-shrink: 0; }
-        .sp-sb-item  {
-            padding: 0 8px; display: flex; align-items: center;
-            gap: 4px; height: 100%; white-space: nowrap;
-        }
-        .sp-sb-clickable { cursor: pointer; }
-        .sp-sb-clickable:hover { background: #002247; color: #bbdaff; }
-        .sp-sb-vsep { color: #001d35; font-size: 13px; line-height: 22px; flex-shrink: 0; }
-        .sp-sb-dot  { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-        .sp-sb-dot-pending { background: #fbbf24; }
-        .sp-sb-dot-ok      { background: #4ade80; }
-        .sp-sb-dot-error   { background: #f87171; }
-        #sp-sb-err-count  { color: #f87171; }
-        #sp-sb-warn-count { color: #fbbf24; margin-left: 4px; }
-        #sp-sb-err-count.sp-sb-zero, #sp-sb-warn-count.sp-sb-zero { color: #567399; }
-        .sp-sb-mono { font-family: ui-monospace, 'SF Mono', Consolas, monospace; }
+#sp-sn-backdrop {
+    position: fixed; inset: 0; z-index: 999999;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 72px 16px 16px;
+    background: rgba(5,4,14,.6); backdrop-filter: blur(3px);
+    font: 400 13px/1.4 var(--ui);
+}
+#sp-sn-backdrop * { box-sizing: border-box; }
+#sp-sn-modal {
+    width: min(680px, 100%); background: #0e0b18;
+    border: 1px solid #2a2140; border-radius: 10px;
+    box-shadow: 0 24px 70px rgba(0,0,0,.7);
+    display: flex; flex-direction: column; overflow: hidden; max-height: 72vh;
+}
+#sp-sn-header { display: flex; align-items: center; gap: 10px; padding: 0 16px; height: 48px; border-bottom: 1px solid #1d1830; flex-shrink: 0; }
+#sp-sn-icon { color: #6e6490; flex-shrink: 0; }
+#sp-sn-input { flex: 1; background: transparent; border: none; outline: none; color: #d8d0f0; font: inherit; font-size: 15px; caret-color: var(--accent); min-width: 0; }
+#sp-sn-input::placeholder { color: #463e60; }
+#sp-sn-hint { font-size: 11px; color: #463e60; flex-shrink: 0; white-space: nowrap; }
+#sp-sn-tabs { display: flex; border-bottom: 1px solid #1d1830; padding: 0 8px; gap: 2px; flex-shrink: 0; overflow-x: auto; }
+.sp-sn-tab { background: transparent; border: none; color: #6e6490; font: inherit; font-size: 12px; padding: 9px 12px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.sp-sn-tab:hover { color: #b0a6d0; }
+.sp-sn-tab.sp-sn-active { color: #e8e0ff; border-bottom-color: var(--accent); }
+.sp-sn-tab-void.sp-sn-active { border-bottom-color: #9b59b6; }
+#sp-sn-results { flex: 1; overflow-y: auto; min-height: 0; padding: 4px 6px; }
+.sp-sn-group-header { padding: 8px 10px 4px; font-size: 11px; font-weight: 600; color: #463e60; user-select: none; }
+.sp-sn-result { display: flex; align-items: center; gap: 10px; padding: 6px 10px; cursor: pointer; min-height: 36px; border-radius: 6px; }
+.sp-sn-result:hover, .sp-sn-result.sp-sn-focused { background: #1b1530; }
+.sp-sn-result-icon { flex-shrink: 0; width: 18px; text-align: center; color: #6e6490; }
+.sp-sn-result-main { flex: 1; min-width: 0; }
+.sp-sn-result-label { font-size: 13px; color: #c8c0e6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.sp-sn-result-label em { color: var(--accent); font-style: normal; }
+.sp-sn-result.sp-sn-void .sp-sn-result-label { color: #6e6490; }
+.sp-sn-result-sub { font-size: 11px; color: #463e60; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; display: block; }
+.sp-sn-result-badge { font-size: 10px; color: #6e6490; flex-shrink: 0; border: 1px solid #2a2140; padding: 1px 6px; border-radius: 8px; }
+.sp-sn-pro { font-size: 9px; background: linear-gradient(90deg, #b8860b, #daa520); color: #100800; padding: 1px 4px; border-radius: 2px; font-weight: 800; vertical-align: middle; margin-left: 4px; }
+.sp-sn-empty { padding: 32px 16px; text-align: center; color: #463e60; line-height: 1.6; }
+.sp-sn-empty-icon { font-size: 26px; margin-bottom: 8px; }
+#sp-sn-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; border-top: 1px solid #1d1830; flex-shrink: 0; font-size: 11px; color: #463e60; flex-wrap: wrap; }

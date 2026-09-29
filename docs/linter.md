@@ -142,7 +142,7 @@ pyfor [x] in [score] {   // ⚠ Warning: [score] is a variable, not a list
 
 ## Configuring lint rules
 
-Lint rules can be toggled individually in **Settings** (the gear icon in the sidebar):
+Lint rules can be toggled individually under **Checks** in **Settings** (the sliders icon at the bottom of the left icon rail, or `Ctrl+,`):
 
 | Setting | Controls |
 |---|---|

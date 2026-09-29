@@ -61,7 +61,7 @@ on flag {
 }
 ```
 
-1. Select a sprite from the dropdown in the toolbar (preferably one you don't mind breaking)
+1. Select a sprite in the Explorer on the left (preferably one you don't mind breaking)
 2. Type (or paste) your script
 3. Press **Ctrl+Enter** (or click **Compile & Inject**)
 4. Watch the blocks appear in Scratch like digital weeds.
@@ -77,10 +77,19 @@ Blocks are injected into the selected sprite. Variables must already exist in Sc
 | `Alt+M` | Open / close the editor |
 | `Ctrl+Enter` | Compile & inject |
 | `Ctrl+S` | Compile & inject (for the muscle-memory crowd) |
+| `Ctrl+Shift+Enter` | Compile & inject minified (same as `Shift+Click` on the button) |
+| `Ctrl+K` | Command palette: sprites, headers, blocks, variables and commands |
+| `Ctrl+P` | Go to sprite or header |
+| `Ctrl+Shift+V` | Show / hide the Variables panel |
+| `Ctrl+Shift+F` | Find and replace across every sprite and header |
+| `Ctrl+B` / `Ctrl+J` | Show / hide the sidebar / the bottom panel |
+| `Alt+Shift+P` | Pull the current sprite's code back from Scratch |
 | `Alt+Shift+F` | Format / auto-indent |
+| `F8` | Resume from a `breakpoint` |
+| `Ctrl+/` | Keyboard shortcuts (outside the editor; inside it, it toggles a comment) |
 | `Esc` | Close the editor |
 | `Ctrl+Space` | Trigger autocomplete |
-| `Shift+Click Compile` | Minimize code & compile & inject |
+| `Shift+Shift` | Search Nowhere. You'll see. |
 
 ---
 
@@ -103,6 +112,11 @@ Blocks are injected into the selected sprite. Variables must already exist in Sc
 - **Type checking** — linter warns when you pass a variable where a list is expected (or vice versa), before the compiler has to deal with you
 - **Configurable linter** — toggle type checking, dead code detection, and orphaned block warnings independently in Settings
 - **Configurable editor** — tab size, auto-save delay, theme, font size, word wrap, minimap
+- **Variables panel** — a live view of every variable and list in the current sprite, docked on the right. Values update while the project runs, freeze at a `breakpoint`, and can be edited in place. Renaming a variable also renames every `[reference]` in your code
+- **Command palette** — `Ctrl+K` jumps to any sprite, header, custom block, script or variable, and runs any command
+- **Shortcut hints** — hover (or Tab to) any button and its tooltip shows the keyboard shortcut, so you can stop clicking things
+- **Tabs that remember** — each open sprite and header keeps its own undo history, cursor and scroll position
+- **Find and replace everywhere** — searches every sprite (opened or not) and every header, previews each replacement, and can undo a Replace All
 - **Linter** — warns about dead code and orphaned blocks before you compile
 - **Decompiler** — import existing Scratch scripts back as text; recognizes compiled `pyfor`, `for`, `.sort()`, and `while` patterns
 - **Per-sprite persistence** — each sprite's code is saved independently to `localStorage`
@@ -124,7 +138,12 @@ The original 7,200-line monolith of despair has been shattered into beautifully 
 | `decompiler.js` | Performs unholy necromancy to pull blocks out of the Scratch VM and stitch them back into readable Scratchpiler text. |
 | `injector.js` | Shoves the compiled AST directly into the VM's memory. It asks no questions and takes no prisoners. |
 | `editor.js` | Handles the Monaco instance, state persistence, project indexing, and the overall lifecycle of the overlay. |
-| `ui-dom.js` | Manipulates the DOM. Creates buttons, sidebars, context menus, and other UI atrocities so you don't have to interact with Scratch's default interface. |
+| `ui-dom.js` | Manipulates the DOM. Builds the overlay, toasts, menus, the bottom panel and resize handles, and hosts Search Nowhere. |
+| `explorer.js` | The left sidebar: sprites with real costume thumbnails, the selected sprite's variables, lists, blocks, costumes and sounds, plus the Headers list. |
+| `variables.js` | Thin, honest wrappers around the Scratch VM's variable API: create, rename, set, delete (with undo), and whether the project is running or paused. |
+| `variables-panel.js` | The docked Variables panel. Watches values live and lets you edit them without touching a single orange block. |
+| `search-panel.js` | Find and replace across every sprite and header, sharing one matcher so what you find is exactly what gets replaced. |
+| `palette.js` | The `Ctrl+K` command palette. |
 | `language.js` | Tells Monaco how to highlight our DSL without crying. |
 | `analyzer.js` | The semantic analyzer. Builds a symbol table and occurrence index from the AST, then judges your code twice: once for correctness (unknown names, wrong arity, shadowing) and once for taste (magic numbers, busy-waits, blocks you defined and then ghosted). |
 | `semantic-providers.js` | The thin Monaco adapter over `analyzer.js` — go-to-definition, rename, find-references, and semantic highlighting. |
@@ -141,12 +160,15 @@ The original 7,200-line monolith of despair has been shattered into beautifully 
 
 **Looking something up?** [docs/quick-reference.md](docs/quick-reference.md) — every function and keyword on one page.
 
+**Lost in the UI?** [docs/editor.md](docs/editor.md) — a tour of every panel, button and shortcut.
+
 ### Full reference
 
 | File | Contents |
 |---|---|
 | [docs/getting-started.md](docs/getting-started.md) | Tutorial: from zero to first program |
 | [docs/quick-reference.md](docs/quick-reference.md) | All syntax and functions on one page |
+| [docs/editor.md](docs/editor.md) | The editor itself: explorer, tabs, Variables panel, command palette, find and replace, shortcuts |
 | [docs/overview.md](docs/overview.md) | How the pipeline works |
 | [docs/syntax.md](docs/syntax.md) | Tokens, operators, expressions |
 | [docs/control-flow.md](docs/control-flow.md) | Hat blocks, loops, conditionals |

@@ -4015,5 +4015,17 @@ export function compileSource(source, vm, spriteName) {
     if (helperInjected) ast._internalVars.push(...PTR_TEMP_VARS);
     else if (ast._usesHeap) ast._internalVars.push('__heap_free');
     const { blocks, errors: codeErrors } = compile(ast, vm, spriteName);
+    prepareForScratchBlocks(blocks);
     return { blocks, errors: codeErrors };
+}
+
+const VARIABLE_FIELD_TYPES = { VARIABLE: '', LIST: 'list', BROADCAST_OPTION: 'broadcast_msg' };
+
+function prepareForScratchBlocks(blocks) {
+    for (const block of Object.values(blocks)) {
+        for (const [key, input] of Object.entries(block.inputs || {})) input.name = key;
+        for (const [key, field] of Object.entries(block.fields || {})) {
+            if (key in VARIABLE_FIELD_TYPES && field.variableType === undefined) field.variableType = VARIABLE_FIELD_TYPES[key];
+        }
+    }
 }

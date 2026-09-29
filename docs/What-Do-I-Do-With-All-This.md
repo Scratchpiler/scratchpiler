@@ -97,7 +97,7 @@ A guide for people who have never written code before, or who have written Scrat
 
 ## Part 1: What Is Even Happening Here
 
-You've installed Scratchpiler. You pressed Alt+M and an overlay appeared on top of your Scratch project. There's an editor, a toolbar, a sprite list, and an output panel at the bottom. It looks like a code editor because it is a code editor. You are now a programmer. Congratulations. The pay is terrible and the feedback loops are long, but the worst-case scenario is that your cat sprite does something unexpected, not that your company loses $40 million.
+You've installed Scratchpiler. You pressed Alt+M and an overlay appeared on top of your Scratch project. There's an editor in the middle, a list of sprites on the left, a Problems and Output panel at the bottom, and a Variables panel you can open on the right. It looks like a code editor because it is a code editor. You are now a programmer. Congratulations. The pay is terrible and the feedback loops are long, but the worst-case scenario is that your cat sprite does something unexpected, not that your company loses $40 million.
 
 ### What Scratchpiler actually does
 
@@ -107,7 +107,7 @@ The text you write is not magical — it maps almost exactly to the blocks you'd
 
 ### The compile button
 
-**Ctrl+Enter** compiles what's in the editor and injects it into the current sprite. You can also click the **Compile** button in the toolbar. If there are errors, they appear in the output panel at the bottom and as red underlines in the editor. If it succeeds, it says so, and the sprite's block stack is replaced.
+**Ctrl+Enter** compiles what's in the editor and injects it into the current sprite. You can also click the orange **Compile & Inject** button in the top right. If there are errors, they appear in the **Problems** panel at the bottom and as red underlines in the editor, and nothing is injected. If it succeeds, a little message says so, and the sprite's block stack is replaced. The indicator next to the button then reads **Scratch is up to date**. Start typing again and it changes to **Changed since last inject**, which is its way of reminding you that Scratch can't read your mind.
 
 This is a **replace**, not a merge. Every time you compile, the old blocks for the scripts you wrote are removed and replaced with the new ones. This means if you want to keep something, it must be in the editor. The editor is the source of truth. Scratch's block view is just a read-only preview of what you compiled last.
 
@@ -157,9 +157,11 @@ In Scratchpiler, variables are written in square brackets: `[score]`, `[playerX]
 
 Variables must exist in Scratch before Scratchpiler can use them. This is one of Scratch's stranger design decisions — variables live in the Scratch project, and Scratchpiler only talks to them by name. If you reference `[score]` and there's no variable named `score`, you'll get a compile error.
 
-To create one: in the Scratchpiler toolbar, click **Variables → New global variable…**, type a name, and click OK. That's it. The variable now exists and you can use it.
+To create one: in the Explorer on the left, click the **+** next to **Variables**, type a name, choose **All sprites**, and press Enter. That's it. The variable now exists and you can use it.
 
-"Global" means all sprites can see it. If you want a variable that only one sprite can see, click **New local variable…** instead. For now, global is fine.
+"All sprites" (global) means every sprite can see it. If you want a variable that only one sprite can see, choose **This sprite only** instead. For now, global is fine.
+
+To see what's actually *in* your variables while the project runs, press **Ctrl+Shift+V**. The Variables panel shows every value live, and you can click one to change it. It's the closest thing to X-ray vision Scratch offers.
 
 ### Setting and changing variables
 
@@ -531,7 +533,7 @@ Scratch calls indexes 1-based: the first item is at index 1, not 0. If you're co
 
 ### Creating a list
 
-In the Scratchpiler toolbar: **Variables → New global list…**, give it a name, OK. It now exists in your project.
+In the Explorer, click the **+** next to **Lists**, give it a name, press Enter. It now exists in your project. Open the Variables panel (**Ctrl+Shift+V**) and click *0 items* to type its contents in, one item per line.
 
 ### Adding items
 
@@ -1024,14 +1026,14 @@ You called something Scratchpiler doesn't know about. Either:
 
 ### Blocks appear in the wrong sprite
 
-You compiled into the wrong sprite. Check the sprite selector in the toolbar before pressing Ctrl+Enter. The name of the active sprite is shown in the toolbar. If you injected into the background by accident, compile the correct code into the background to overwrite it, then compile the correct code into the intended sprite.
+You compiled into the wrong sprite. Check which tab is active before pressing Ctrl+Enter. The name of the active sprite is also shown in the top-left corner, right next to the logo, where it has been silently judging you. If you injected into the background by accident, compile the correct code into the background to overwrite it, then compile the correct code into the intended sprite.
 
 ### The sprite does nothing when the flag is clicked
 
 Possible causes:
 - Your code is inside `on key "..."` or `on receive "..."` instead of `on flag`
 - The compile succeeded but you haven't clicked the green flag
-- The compile had errors and was never injected (check the output panel)
+- The compile had errors and was never injected (check the **Problems** panel, or look for **Changed since last inject** next to the Compile button)
 - The blocks were compiled into a different sprite
 
 ### The sprite does something insane

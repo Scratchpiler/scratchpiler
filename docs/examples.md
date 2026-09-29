@@ -1,6 +1,6 @@
 # Examples
 
-Full example programs demonstrating scratchpiler features. Paste any `.sdsl` file from the `examples/` folder directly into the editor. To avoid making the Scratch VM question its own reality, compile them sprite-by-sprite, making sure you select the correct sprite from the dropdown before injecting.
+Full example programs demonstrating scratchpiler features. Paste any `.sdsl` file from the `examples/` folder directly into the editor. To avoid making the Scratch VM question its own reality, compile them sprite-by-sprite, making sure the correct sprite's tab is active before injecting. (Or use **Open .sdsl file…** in the logo menu, if copy-paste feels too analog.)
 
 ## Example files
 

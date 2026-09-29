@@ -143,13 +143,14 @@ export function injectBlocks(blockMap, vm, spriteName, headerRoots) {
     injectedBlockIds.set(spriteName, newTopLevelIds);
     persistInjectedIds(spriteName);
 
-    // Reload the Blockly workspace from VM state.
+    // Reload the Blockly workspace from VM state. setEditingTarget is a no-op
+    // when the target is already being edited, so emit the update directly —
+    // otherwise Blockly never sees the new blocks and script glows throw.
     try {
-        vm.setEditingTarget(target.id);
-    } catch (_) {
-        try { vm.emitWorkspaceUpdate(); } catch (__) {
-            console.warn('[scratchpiler] workspace refresh failed', __);
-        }
+        if (vm.editingTarget?.id === target.id) vm.emitWorkspaceUpdate();
+        else vm.setEditingTarget(target.id);
+    } catch (e) {
+        console.warn('[scratchpiler] workspace refresh failed', e);
     }
 
     updateStatus(`Injected ${count} blocks into "${spriteName}"`);

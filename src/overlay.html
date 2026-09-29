@@ -1,282 +1,209 @@
-
-        <div id="scratchpiler-header">
-            <div id="scratchpiler-wordmark">
-                <img id="scratchpiler-logo" src="" alt="" />
-                Scratchpiler
+<div class="sp-app">
+    <header class="sp-top">
+        <button class="sp-brand" id="sp-brand" aria-haspopup="menu" aria-expanded="false" title="Files, examples and help">
+            <img id="scratchpiler-logo" class="sp-logo" src="" alt="" />
+            <span class="sp-crumbs"><span class="sp-crumb-project">Scratchpiler</span><span class="sp-crumb-sep">/</span><b id="sp-crumb-file">&mdash;</b></span>
+            <svg class="sp-brand-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <button class="sp-palette-btn" id="sp-palette-btn" title="Command palette (Ctrl+K)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <span>Go to a sprite, block or command</span><kbd>Ctrl K</kbd>
+        </button>
+        <div class="sp-top-right">
+            <button class="sp-icon-btn sp-dock-toggle" id="sp-dock-toggle" aria-pressed="false" title="Variables panel (Ctrl+Shift+V)">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M14.5 4v16M7 9h4M7 13h4"/></svg>
+                <span class="sp-live-dot sp-stopped" id="sp-live-dot"></span>
+            </button>
+            <div class="sp-sync" id="sp-sync"><i></i><span id="sp-sync-text">Not injected yet</span></div>
+            <div class="sp-run" id="sp-run">
+                <button id="scratchpiler-compile-btn" title="Compile and inject into Scratch (Ctrl+Enter). Shift+click to minify.">
+                    <svg width="11" height="11" viewBox="0 0 12 12"><path d="M2.5 1.5v9l8-4.5z" fill="currentColor"/></svg><span class="sp-run-label" id="sp-run-label">Compile &amp; Inject</span>
+                </button>
+                <button id="sp-run-more" aria-haspopup="menu" aria-expanded="false" title="More compile options"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
             </div>
-            <div id="scratchpiler-menubar">
-                <button class="sp-menu-btn" id="sp-menu-file">File</button>
-                <button class="sp-menu-btn" id="sp-menu-edit">Edit</button>
-                <button class="sp-menu-btn" id="sp-menu-variables">Variables</button>
-                <button class="sp-menu-btn" id="sp-menu-lists">Lists</button>
-                <button class="sp-menu-btn" id="sp-menu-help">Help</button>
-            </div>
-            <div id="scratchpiler-header-center">
-                <span id="scratchpiler-status">&mdash;</span>
-            </div>
-            <div id="scratchpiler-header-actions">
-                <button id="scratchpiler-compile-btn">Compile &amp; Inject</button>
-                <button id="scratchpiler-close-btn" title="Close (Escape)">✕</button>
-
-                <!-- Hidden compat buttons -->
-                <button id="scratchpiler-import-btn" style="display:none"></button>
-                <button id="scratchpiler-format-btn" style="display:none"></button>
-            </div>
+            <button class="sp-icon-btn" id="scratchpiler-close-btn" title="Close Scratchpiler (Esc)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         </div>
-        <div id="scratchpiler-workspace">
-            <div id="scratchpiler-activitybar">
-                <button class="sp-activity-btn sp-active" id="sp-activity-explorer" title="Explorer">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4H4v16h16v-12l-4-4z"/><path d="M16 4v4h4"/></svg>
-                </button>
-                <button class="sp-activity-btn" id="sp-activity-search" title="Search">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                </button>
-                <button class="sp-activity-btn" id="sp-activity-settings" title="Settings">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                </button>
-                <button class="sp-activity-btn" id="sp-activity-fixes" title="Fixes">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                </button>
-                <button class="sp-activity-btn" id="sp-activity-headers" title="Headers (#include)">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="10 12 8 14 10 16"/><polyline points="14 12 16 14 14 16"/></svg>
-                </button>
-            </div>
-            <div id="scratchpiler-sidebar">
-                <div id="scratchpiler-sidebar-title">Explorer</div>
-                <div id="scratchpiler-sidebar-content">
-                    <!-- Explorer Panel -->
-                    <div class="sp-sidebar-panel active" id="sp-panel-explorer">
-                        <!-- Sprites Accordion -->
-                        <div class="sp-accordion">
-                            <div class="sp-accordion-header active" id="sp-acc-sprites-header">
-                                <span class="sp-chevron">▼</span> Sprites
-                            </div>
-                            <div class="sp-accordion-content active" id="sp-acc-sprites-content">
-                                <div class="sp-sidebar-list" id="scratchpiler-sprites-list"></div>
-                            </div>
-                        </div>
-                        <!-- Sprite Details Accordion -->
-                        <div class="sp-accordion">
-                            <div class="sp-accordion-header active" id="sp-acc-details-header">
-                                <span class="sp-chevron">▼</span> Sprite Details: <span id="scratchpiler-detail-spritename">-</span>
-                            </div>
-                            <div class="sp-accordion-content active" id="sp-acc-details-content">
-                                <!-- Costumes sub-accordion -->
-                                <div class="sp-sub-accordion">
-                                    <div class="sp-sub-accordion-header active" id="sp-subacc-costumes-header">▼ Costumes</div>
-                                    <div class="sp-sub-accordion-content active" id="sp-subacc-costumes-content"></div>
-                                </div>
-                                <!-- Sounds sub-accordion -->
-                                <div class="sp-sub-accordion">
-                                    <div class="sp-sub-accordion-header active" id="sp-subacc-sounds-header">▼ Sounds</div>
-                                    <div class="sp-sub-accordion-content active" id="sp-subacc-sounds-content"></div>
-                                </div>
-                                <!-- Variables sub-accordion -->
-                                <div class="sp-sub-accordion">
-                                    <div class="sp-sub-accordion-header active" id="sp-subacc-variables-header">▼ Local Variables</div>
-                                    <div class="sp-sub-accordion-content active" id="sp-subacc-variables-content"></div>
-                                </div>
-                                <!-- Custom Blocks sub-accordion -->
-                                <div class="sp-sub-accordion">
-                                    <div class="sp-sub-accordion-header active" id="sp-subacc-customblocks-header">▼ Custom Blocks</div>
-                                    <div class="sp-sub-accordion-content active" id="sp-subacc-customblocks-content"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+    </header>
 
-                    <!-- Search Panel -->
-                    <div class="sp-sidebar-panel" id="sp-panel-search">
-                        <div class="sp-search-container">
-                            <input type="text" id="scratchpiler-search-input" placeholder="Search..." autocomplete="off" />
-                            <input type="text" id="scratchpiler-replace-input" placeholder="Replace" autocomplete="off" />
-                            <div class="sp-search-actions">
-                                <button id="scratchpiler-search-btn" title="Search">Find</button>
-                                <button id="scratchpiler-replace-btn" title="Replace Current">Replace</button>
-                                <button id="scratchpiler-replace-all-btn" title="Replace All">All</button>
-                            </div>
-                        </div>
-                        <div id="scratchpiler-search-results"></div>
-                    </div>
+    <div class="sp-debug" id="sp-debug-bar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+        <span>Paused at a <code>breakpoint</code>. The project is waiting for you.</span>
+        <button id="sp-debug-resume-btn" title="Continue running the project (F8)">Resume <kbd>F8</kbd></button>
+    </div>
 
-                    <!-- Settings Panel -->
-                    <div class="sp-sidebar-panel" id="sp-panel-settings">
-                        <div class="sp-settings-group">
-                            <label for="sp-setting-theme">Editor Theme</label>
+    <div class="sp-main sp-no-dock" id="sp-main">
+        <nav class="sp-rail" aria-label="Views">
+            <button data-view="explorer" aria-pressed="true" title="Explorer (Ctrl+Shift+E)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="3.5" y="4" width="7" height="7" rx="1.5"/><rect x="13.5" y="4" width="7" height="7" rx="1.5"/><rect x="3.5" y="14" width="7" height="7" rx="1.5"/><rect x="13.5" y="14" width="7" height="7" rx="1.5"/></svg></button>
+            <button data-view="search" aria-pressed="false" title="Find in all sprites (Ctrl+Shift+F)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
+            <button data-view="headers" aria-pressed="false" title="Headers (#include)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H7a2 2 0 0 0-2 2v4l-2 2 2 2v4a2 2 0 0 0 2 2h2M15 4h2a2 2 0 0 1 2 2v4l2 2-2 2v4a2 2 0 0 1-2 2h-2"/></svg></button>
+            <div class="sp-rail-spacer"></div>
+            <button id="sp-rail-problems" title="Problems (Ctrl+Shift+M)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 3l9.5 17h-19z" stroke-linejoin="round"/><path d="M12 10v4M12 17.2v.1"/></svg><span class="sp-badge" id="sp-rail-badge" hidden>0</span></button>
+            <button data-view="settings" aria-pressed="false" title="Settings (Ctrl+,)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+        </nav>
+
+        <aside class="sp-side" id="scratchpiler-sidebar">
+            <div class="sp-side-scroll">
+                <section class="sp-panel sp-on" data-panel="explorer">
+                    <div class="sp-sec-h" data-sec="Sprites">
+                        <svg class="sp-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>Sprites<span class="sp-n" id="sp-sprite-count"></span><span class="sp-grow"></span>
+                        <button class="sp-add" id="sp-reindex-mini" title="Re-index project from Scratch"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg></button>
+                    </div>
+                    <div class="sp-sec-b" id="scratchpiler-sprites-list"></div>
+                    <div class="sp-detail-h"><b id="scratchpiler-detail-spritename">&mdash;</b><span id="sp-detail-sub"></span></div>
+                    <div id="sp-details"></div>
+                </section>
+
+                <section class="sp-panel" data-panel="search">
+                    <div class="sp-panel-title">Find in all sprites</div>
+                    <div class="sp-field">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                        <input id="scratchpiler-search-input" placeholder="Find" spellcheck="false" autocomplete="off" aria-label="Find" />
+                        <button class="sp-tog" id="sp-opt-case" aria-pressed="false" title="Match case">Aa</button>
+                        <button class="sp-tog" id="sp-opt-word" aria-pressed="false" title="Match whole word"><u>ab</u></button>
+                    </div>
+                    <div class="sp-field">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h11a4 4 0 0 1 0 8H8M8 15l3-3M8 15l3 3"/></svg>
+                        <input id="scratchpiler-replace-input" placeholder="Replace with" spellcheck="false" autocomplete="off" aria-label="Replace with" />
+                    </div>
+                    <div class="sp-search-acts">
+                        <button class="sp-btn sp-btn-primary" id="scratchpiler-replace-all-btn" disabled>Replace all</button>
+                        <button class="sp-btn" id="scratchpiler-replace-btn" disabled>Replace next</button>
+                    </div>
+                    <div class="sp-sr-summary" id="sp-sr-summary"></div>
+                    <div id="scratchpiler-search-results"></div>
+                </section>
+
+                <section class="sp-panel" data-panel="headers">
+                    <div class="sp-panel-title">Headers
+                        <button class="sp-btn" id="sp-headers-new"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New</button>
+                    </div>
+                    <p class="sp-panel-note">Reusable snippets you pull in with <code>#include &lt;name.h&gt;</code>. They're saved in your userscript manager, so every project can use them. Headers can hold <code>define</code>, <code>scratchroutine</code>, <code>enum</code> and <code>struct</code> declarations.</p>
+                    <div class="sp-sec-b" id="sp-headers-list"></div>
+                </section>
+
+                <section class="sp-panel" data-panel="settings">
+                    <div class="sp-panel-title">Settings</div>
+                    <div class="sp-set-group">
+                        <h3>Editor</h3>
+                        <div class="sp-set"><label for="sp-setting-theme">Theme</label>
                             <select id="sp-setting-theme">
                                 <option value="scratchpiler-dark">Scratchpiler Dark</option>
                                 <option value="vs-dark">VS Code Dark</option>
-                                <option value="hc-black">High Contrast Black</option>
+                                <option value="hc-black">High Contrast</option>
                                 <option value="vs">VS Code Light</option>
-                            </select>
-                        </div>
-                        <div class="sp-settings-group">
-                            <label for="sp-setting-fontsize">Font Size</label>
-                            <select id="sp-setting-fontsize">
-                                <option value="12">12px</option>
-                                <option value="13">13px</option>
-                                <option value="14">14px</option>
-                                <option value="15">15px</option>
-                                <option value="16">16px</option>
-                                <option value="18">18px</option>
-                                <option value="20">20px</option>
-                            </select>
-                        </div>
-                        <div class="sp-settings-group checkbox">
-                            <input type="checkbox" id="sp-setting-wrap" />
-                            <label for="sp-setting-wrap">Line Wrap</label>
-                        </div>
-                        <div class="sp-settings-group checkbox">
-                            <input type="checkbox" id="sp-setting-minimap" />
-                            <label for="sp-setting-minimap">Show Minimap</label>
-                        </div>
-                        <div class="sp-settings-group">
-                            <label for="sp-setting-tabsize">Tab Size</label>
-                            <select id="sp-setting-tabsize">
-                                <option value="2">2 spaces</option>
-                                <option value="4">4 spaces</option>
-                                <option value="8">8 spaces</option>
-                            </select>
-                        </div>
-                        <div class="sp-settings-group">
-                            <label for="sp-setting-autosave">Auto-save Delay</label>
+                            </select></div>
+                        <div class="sp-set"><label>Font size</label>
+                            <span class="sp-stepper"><button id="sp-fontsize-down" aria-label="Smaller font">&minus;</button><output id="sp-setting-fontsize">14</output><button id="sp-fontsize-up" aria-label="Larger font">+</button></span></div>
+                        <div class="sp-set"><label>Indent</label>
+                            <span class="sp-seg" id="sp-setting-tabsize"><button data-value="2">2</button><button data-value="4">4</button><button data-value="8">8</button></span></div>
+                        <div class="sp-set"><label for="sp-setting-wrap">Wrap long lines</label><span class="sp-switch"><input type="checkbox" id="sp-setting-wrap" /><span></span></span></div>
+                        <div class="sp-set"><label for="sp-setting-minimap">Minimap</label><span class="sp-switch"><input type="checkbox" id="sp-setting-minimap" /><span></span></span></div>
+                        <div class="sp-set"><label for="sp-setting-autosave">Save code</label>
                             <select id="sp-setting-autosave">
-                                <option value="0">Instant</option>
-                                <option value="500">500 ms</option>
-                                <option value="1000">1 second</option>
-                                <option value="2000">2 seconds</option>
-                            </select>
-                        </div>
-                        <div style="font-size:11px; color:#6b8db5; margin-top:4px; margin-bottom:2px;">Lint Rules</div>
-                        <div class="sp-settings-group checkbox">
-                            <input type="checkbox" id="sp-setting-lint-typecheck" />
-                            <label for="sp-setting-lint-typecheck">Type checking (list vs variable)</label>
-                        </div>
-                        <div class="sp-settings-group checkbox">
-                            <input type="checkbox" id="sp-setting-lint-unreachable" />
-                            <label for="sp-setting-lint-unreachable">Unreachable code</label>
-                        </div>
-                        <div class="sp-settings-group checkbox">
-                            <input type="checkbox" id="sp-setting-lint-orphaned" />
-                            <label for="sp-setting-lint-orphaned">Orphaned blocks</label>
-                        </div>
-                        <div class="sp-settings-group checkbox">
-                            <input type="checkbox" id="sp-setting-lint-semantic" />
-                            <label for="sp-setting-lint-semantic">Semantic checks (unknown names, arity, shadowing)</label>
-                        </div>
-                        <div class="sp-settings-group checkbox">
-                            <input type="checkbox" id="sp-setting-lint-smells" />
-                            <label for="sp-setting-lint-smells">Code smells (unused, busy-wait, magic numbers)</label>
-                        </div>
+                                <option value="0">As you type</option>
+                                <option value="500">After 0.5 s</option>
+                                <option value="1000">After 1 s</option>
+                                <option value="2000">After 2 s</option>
+                            </select></div>
                     </div>
-
-                    <!-- Headers Panel -->
-                    <div class="sp-sidebar-panel" id="sp-panel-headers">
-                        <div style="font-size:11px; color:#6b8db5; margin-bottom:6px;">
-                            Reusable <code>#include &lt;name.h&gt;</code> snippets — stored in
-                            Tampermonkey, shared across all your projects. Headers may contain
-                            <code>define</code>, <code>scratchroutine</code>, <code>enum</code>
-                            and <code>struct</code> declarations.
-                        </div>
-                        <button class="sp-fix-action" id="sp-headers-new">
-                            <div class="sp-fix-action-icon">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            </div>
-                            <div class="sp-fix-action-text">
-                                <span class="sp-fix-action-title">New Header</span>
-                                <span class="sp-fix-action-desc">Create a .h file and open it in the editor.</span>
-                            </div>
-                        </button>
-                        <div class="sp-sidebar-list" id="sp-headers-list"></div>
+                    <div class="sp-set-group">
+                        <h3>Checks</h3>
+                        <div class="sp-set"><label for="sp-setting-lint-typecheck">Type checking<small>Lists passed where a variable is expected, and the reverse</small></label><span class="sp-switch"><input type="checkbox" id="sp-setting-lint-typecheck" /><span></span></span></div>
+                        <div class="sp-set"><label for="sp-setting-lint-unreachable">Unreachable code<small>Blocks after a stop or forever that never run</small></label><span class="sp-switch"><input type="checkbox" id="sp-setting-lint-unreachable" /><span></span></span></div>
+                        <div class="sp-set"><label for="sp-setting-lint-orphaned">Orphaned blocks<small>Code that isn't under any hat block</small></label><span class="sp-switch"><input type="checkbox" id="sp-setting-lint-orphaned" /><span></span></span></div>
+                        <div class="sp-set"><label for="sp-setting-lint-semantic">Names and arguments<small>Unknown names, wrong argument counts, shadowing</small></label><span class="sp-switch"><input type="checkbox" id="sp-setting-lint-semantic" /><span></span></span></div>
+                        <div class="sp-set"><label for="sp-setting-lint-smells">Code smells<small>Unused blocks, busy-waits, magic numbers</small></label><span class="sp-switch"><input type="checkbox" id="sp-setting-lint-smells" /><span></span></span></div>
                     </div>
-
-                    <!-- Fixes Panel -->
-                    <div class="sp-sidebar-panel" id="sp-panel-fixes">
-                        <div style="font-size:11px; color:#6b8db5; margin-bottom:4px;">Maintenance & recovery actions</div>
-
-                        <button class="sp-fix-action" id="sp-fix-clear-cache">
-                            <div class="sp-fix-action-icon">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            </div>
-                            <div class="sp-fix-action-text">
-                                <span class="sp-fix-action-title">Clear Local Code Cache</span>
-                                <span class="sp-fix-action-desc">Purge all cached SDSL code from localStorage. The editor will decompile fresh from the VM on next sprite switch.</span>
-                            </div>
-                        </button>
-
-                        <button class="sp-fix-action" id="sp-fix-reindex">
-                            <div class="sp-fix-action-icon">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                            </div>
-                            <div class="sp-fix-action-text">
-                                <span class="sp-fix-action-title">Invalidate &amp; Re-Index</span>
-                                <span class="sp-fix-action-desc">Re-scan all VM targets to rebuild the sprite index, variables, and custom blocks. Fixes stale sidebar data.</span>
-                            </div>
-                        </button>
-
-                        <button class="sp-fix-action destructive" id="sp-fix-reset-all">
-                            <div class="sp-fix-action-icon">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                            </div>
-                            <div class="sp-fix-action-text">
-                                <span class="sp-fix-action-title">Reset All Changes</span>
-                                <span class="sp-fix-action-desc">Remove all Scratchpiler-injected blocks and clear cached code. Restores sprites to their last-saved project state.</span>
-                            </div>
-                        </button>
+                    <div class="sp-set-group">
+                        <h3>Maintenance</h3>
+                        <button class="sp-maint" id="sp-fix-reindex"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg><span><b>Re-index project</b><small>Rescan sprites, variables and custom blocks when the explorer looks out of date.</small></span></button>
+                        <button class="sp-maint" id="sp-fix-clear-cache"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg><span><b>Clear saved code</b><small>Forget the text saved in this browser. Each sprite is decompiled fresh from Scratch when you open it.</small></span></button>
+                        <button class="sp-maint sp-danger" id="sp-fix-reset-all"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l9.5 17h-19z" stroke-linejoin="round"/><path d="M12 10v4M12 17.2v.1"/></svg><span><b id="sp-reset-title">Remove injected blocks</b><small id="sp-reset-desc">Take out everything Scratchpiler added and clear saved code. Sprites go back to their last saved state.</small></span></button>
                     </div>
+                </section>
+            </div>
+            <div class="sp-side-resize" id="sp-sidebar-resize" title="Drag to resize"></div>
+        </aside>
+
+        <section class="sp-ed">
+            <div class="sp-tabs" id="sp-tab-bar" role="tablist"></div>
+            <div id="scratchpiler-editor-container"></div>
+            <div class="sp-bottom" id="sp-bottom">
+                <div class="sp-bottom-resize" id="sp-bottom-resize" title="Drag to resize"></div>
+                <div class="sp-bottom-h" role="tablist">
+                    <button class="sp-btab" data-bottom="problems" aria-selected="true">Problems <span class="sp-cnt" id="sp-problems-count">0</span></button>
+                    <button class="sp-btab" data-bottom="output" aria-selected="false">Output</button>
+                    <span class="sp-grow"></span>
+                    <button class="sp-icon-btn sp-small" id="sp-output-clear-btn" title="Clear output"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M6.5 17.5l11-11"/></svg></button>
+                    <button class="sp-icon-btn sp-small" id="sp-bottom-toggle" aria-expanded="true" title="Toggle bottom panel (Ctrl+J)"><svg class="sp-bottom-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></button>
+                </div>
+                <div class="sp-bottom-body">
+                    <div id="sp-problems-view"></div>
+                    <div id="sp-output-log" hidden></div>
                 </div>
             </div>
-            <div id="sp-sidebar-resize" title="Drag to resize"></div>
-            <div id="scratchpiler-editor-pane">
-                <div id="sp-tab-bar"></div>
-                <div id="scratchpiler-editor-container"></div>
-                <div id="sp-output-panel">
-                    <div id="sp-output-header" title="Toggle Output panel">
-                        <span id="sp-output-header-title">Output</span>
-                        <button class="sp-out-hdr-btn" id="sp-output-clear-btn" title="Clear output">Clear</button>
-                        <button class="sp-out-hdr-btn" id="sp-output-toggle-btn" title="Expand / Collapse">▸</button>
-                    </div>
-                    <div id="sp-output-log"></div>
-                </div>
-            </div>
-        </div>
-        <div id="sp-debug-bar" style="display:none">
-            <span id="sp-debug-label">&#9646;&#9646; Paused at breakpoint</span>
-            <button id="sp-debug-resume-btn">Resume &#9654;</button>
-        </div>
-        <div id="sp-status-bar">
-            <div class="sp-sb-group sp-sb-left">
-                <span class="sp-sb-item" id="sp-sb-vm-status">
-                    <span class="sp-sb-dot sp-sb-dot-pending" id="sp-sb-vm-dot"></span>
-                    <span id="sp-sb-vm-text">Acquiring VM</span>
-                </span>
-                <span class="sp-sb-vsep">│</span>
-                <span class="sp-sb-item" id="sp-sb-sprite-name">&mdash;</span>
-                <span class="sp-sb-vsep">│</span>
-                <span class="sp-sb-item sp-sb-clickable" id="sp-sb-problems" title="Toggle Output panel">
-                    <span id="sp-sb-err-count" class="sp-sb-zero">0 errors</span>
-                    <span id="sp-sb-warn-count" class="sp-sb-zero">0 warnings</span>
-                </span>
-            </div>
-            <div class="sp-sb-group sp-sb-right">
-                <span class="sp-sb-item sp-sb-mono" id="sp-sb-cursor">Ln 1, Col 1</span>
-            </div>
-        </div>
-        <div id="sp-picker-backdrop" style="display:none">
-            <div id="sp-picker-modal" role="dialog" aria-label="Go to Sprite">
-                <input id="sp-picker-input" autocomplete="off" spellcheck="false" placeholder="Go to sprite…" />
-                <div id="sp-picker-list"></div>
-                <div id="sp-picker-footer">↑↓ navigate · Enter select · Esc close</div>
-            </div>
-        </div>
-        <div id="scratchpiler-dialog" style="display:none">
-            <div id="scratchpiler-dialog-box">
-                <div id="scratchpiler-dialog-title"></div>
-                <input id="scratchpiler-dialog-input" type="text" autocomplete="off" spellcheck="false" />
-                <div id="scratchpiler-dialog-actions">
-                    <button class="sp-dialog-btn" id="scratchpiler-dialog-cancel">Cancel</button>
-                    <button class="sp-dialog-btn sp-primary" id="scratchpiler-dialog-ok">Create</button>
-                </div>
-            </div>
-        </div>
+        </section>
 
+        <aside class="sp-dock" id="sp-dock" aria-label="Variables">
+            <div class="sp-dock-resize" id="sp-dock-resize" title="Drag to resize"></div>
+            <div class="sp-dock-h"><b>Variables</b><span class="sp-vars-state" id="sp-vars-state"></span><span class="sp-grow"></span>
+                <button class="sp-icon-btn sp-small" id="sp-dock-close" title="Close variables panel (Ctrl+Shift+V)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+            <div class="sp-dock-note" id="sp-dock-note" hidden></div>
+            <div class="sp-field"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="sp-var-filter" placeholder="Filter variables and lists" spellcheck="false" autocomplete="off" aria-label="Filter variables and lists" /></div>
+            <div class="sp-dock-body" id="sp-dock-body"></div>
+            <label class="sp-dock-foot"><span class="sp-switch"><input type="checkbox" id="sp-show-internal" /><span></span></span>Show compiler variables</label>
+        </aside>
+    </div>
+
+    <footer class="sp-status">
+        <span class="sp-it" id="sp-sb-vm" title="Connection to the Scratch VM"><i class="sp-vm-dot sp-pending" id="sp-sb-vm-dot"></i><span id="sp-sb-vm-text">Connecting to Scratch</span></span>
+        <button class="sp-it" id="sp-sb-problems" title="Show problems (Ctrl+Shift+M)"><span id="sp-sb-err-count" class="sp-zero">0 errors</span><span id="sp-sb-warn-count" class="sp-zero">0 warnings</span></button>
+        <span class="sp-it sp-sb-message" id="scratchpiler-status"></span>
+        <span class="sp-grow"></span>
+        <span class="sp-it sp-hide-sm" id="sp-sb-last">Not injected yet</span>
+        <button class="sp-it sp-num" id="sp-sb-cursor" title="Go to line (Ctrl+G)">Ln 1, Col 1</button>
+        <span class="sp-it sp-hide-sm" id="sp-sb-indent">Spaces: 4</span>
+        <button class="sp-it sp-hide-sm" id="sp-sb-keys" title="Keyboard shortcuts (Ctrl+/)">Shortcuts</button>
+    </footer>
+
+    <div class="sp-menu" id="sp-menu" role="menu"></div>
+
+    <div class="sp-scrim" id="sp-palette-scrim">
+        <div class="sp-modal" role="dialog" aria-label="Command palette">
+            <div class="sp-modal-in"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="sp-palette-input" placeholder="Go to a sprite, block or command" autocomplete="off" spellcheck="false" /></div>
+            <div class="sp-results" id="sp-palette-results"></div>
+            <div class="sp-modal-foot"><span><kbd>&uarr;</kbd><kbd>&darr;</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>&gt;</kbd> commands only</span><span><kbd>@</kbd> sprites only</span><span><kbd>:</kbd> go to line</span></div>
+        </div>
+    </div>
+
+    <div class="sp-scrim" id="sp-keys-scrim">
+        <div class="sp-modal sp-modal-wide" role="dialog" aria-label="Keyboard shortcuts">
+            <div class="sp-modal-in"><b>Keyboard shortcuts</b></div>
+            <div class="sp-keys">
+                <h4>Everywhere</h4>
+                <div>Open or close Scratchpiler <kbd>Alt M</kbd></div>
+                <div>Command palette <kbd>Ctrl K</kbd></div>
+                <div>Go to sprite <kbd>Ctrl P</kbd></div>
+                <div>Keyboard shortcuts <kbd>Ctrl /</kbd></div>
+                <h4>Compiling</h4>
+                <div>Compile &amp; inject <kbd>Ctrl Enter</kbd></div>
+                <div>Compile &amp; inject minified <kbd>Ctrl Shift Enter</kbd></div>
+                <div>Resume from breakpoint <kbd>F8</kbd></div>
+                <div>Pull code from Scratch <kbd>Ctrl Shift I</kbd></div>
+                <h4>Editing</h4>
+                <div>Format document <kbd>Alt Shift F</kbd></div>
+                <div>Rename symbol <kbd>F2</kbd></div>
+                <div>Go to definition <kbd>F12</kbd></div>
+                <div>Go to line <kbd>Ctrl G</kbd></div>
+                <h4>Layout</h4>
+                <div>Toggle sidebar <kbd>Ctrl B</kbd></div>
+                <div>Toggle bottom panel <kbd>Ctrl J</kbd></div>
+                <div>Toggle variables panel <kbd>Ctrl Shift V</kbd></div>
+                <div>Find in all sprites <kbd>Ctrl Shift F</kbd></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sp-toasts" id="sp-toasts" aria-live="polite"></div>
+</div>

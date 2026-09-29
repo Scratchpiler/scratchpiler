@@ -69,7 +69,7 @@ The overlay runs a full Monaco editor instance — the same engine that powers V
 
 What this buys you:
 
-- **Syntax highlighting** — keywords in blue, strings in orange, variables in yellow, math functions in green. The color scheme is Tomorrow Night Blue, which is pleasant and non-negotiable. If you want a light theme, we cannot help you, and you should probably seek professional guidance.
+- **Syntax highlighting** — keywords in violet, strings in green, numbers in cyan, and `[variables]` in orange, the same orange Scratch uses for variable blocks, so your brain doesn't have to switch contexts. There is a light theme in Settings. We can't stop you. We can only hope you seek professional guidance.
 - **Error squiggles** — red for parse/compile errors, yellow for linter warnings. They appear 350ms after you stop typing, a brief delay to let you appreciate your mistake before highlighting it. Hover them to read the message.
 - **Autocomplete** — press `Ctrl+Space` or just type. The completion list includes all built-in functions, all reporters, all variables and lists in the active sprite, all costume names, all sound names, all sprite names, and all custom block names. It's indexed live from the Scratch project, whispering the names of your assets back to you.
 - **Signature help** — type `(` after any function name to see its parameter list in a floating widget. Press `,` to advance to the next parameter. The widget stays open until you close the parens or press Escape, clinging to life like a desperate pop-up.
@@ -80,9 +80,11 @@ What this buys you:
 
 ## Sprite selection
 
-The dropdown in the toolbar lists all sprites and the Stage. Scratchpiler operates on one sprite at a time. Compiled blocks go into exactly the sprite that's selected — no cross-contamination.
+The Explorer on the left lists the Stage and every sprite. Clicking one opens it in a tab. Scratchpiler compiles one sprite at a time: blocks go into exactly the sprite whose tab is active, the one named in the top bar. No cross-contamination.
 
-Each sprite's editor content is saved independently to `localStorage` with the key `scratchpiler-content-<spriteName>`. Switching sprites in the dropdown automatically saves the current content and loads whatever was last saved for the new sprite. Reloading the page preserves your work. Clearing browser storage deletes your code forever, serving as a reminder that nothing in this browser tab is permanent, least of all your creations.
+Each sprite's code is saved independently to `localStorage` with the key `scratchpiler-content-<spriteName>`. Each open tab also keeps its own undo history, cursor and scroll position, so hopping between sprites doesn't erase your Ctrl+Z. Reloading the page preserves your code (not the undo history; we're not miracle workers). Clearing browser storage deletes your code forever, serving as a reminder that nothing in this browser tab is permanent, least of all your creations.
+
+A sprite you've never opened here has no saved code, so it's decompiled from Scratch the first time you open it. The top bar's sync indicator then compares what you're editing with what was last injected (or pulled), and tells you when they've drifted apart. The full tour of the UI lives in [editor.md](editor.md).
 
 ---
 
@@ -107,7 +109,7 @@ Step 2 is the most common source of errors. Variables must exist in Scratch befo
 
 Scratchpiler creates variables automatically in two cases: for-loop iterator variables (internal, with collision-avoiding names like `_scratchpiler_internal_xxxx_i`), and struct fields (see below). Everything else — your game's `[score]`, your `[playerX]`, your `[inventory]` list — must already exist in the Scratch project.
 
-The toolbar's **Variables** and **Lists** menus give you full CRUD over the variable panel without leaving the editor: create global or local variables, rename them, delete them, or bulk-initialize a list from a comma-separated string. Right-clicking (hovering and clicking ⋮) any variable or list in the sprite panel exposes these actions inline.
+The Explorer and the Variables panel give you full CRUD over Scratch's variables without leaving the editor: create global or local variables with the **+** buttons, and rename, edit, or delete them in the Variables panel (`Ctrl+Shift+V`). Right-click any variable or list for the same actions.
 
 ---
 
@@ -128,7 +130,7 @@ The editor's autocomplete knows about structs: typing `[` shows all `struct.fiel
 
 ## Debugging
 
-The `breakpoint` keyword pauses a sprite's script at runtime and activates a debug bar at the bottom of the overlay.
+The `breakpoint` keyword pauses a sprite's script at runtime and slides an amber debug bar in under the top bar.
 
 ```
 on flag {
@@ -138,7 +140,7 @@ on flag {
 }
 ```
 
-When execution hits `breakpoint`, the debug bar slides in: **"⏸ Paused at breakpoint"** with a **Resume ▶** button. Clicking Resume releases the pause and the script continues from where it stopped. Multiple breakpoints in one script work in sequence — each pause waits for its own resume.
+When execution hits `breakpoint`, the bar says **Paused at a breakpoint** and offers a **Resume** button (or **F8**). The Variables panel opens by itself, showing every value frozen at the moment it stopped, which is the whole point of stopping. Resuming releases the pause and the script continues from where it stopped. Multiple breakpoints in one script work in sequence — each pause waits for its own resume.
 
 Under the hood, `breakpoint` compiles to four blocks: `set [__dbg_at__] to 1` → `set [__dbg_resume__] to 0` → `wait until [__dbg_resume__] = 1` → `set [__dbg_at__] to 0`. The overlay polls `__dbg_at__` at 100ms to detect a live pause. The `__dbg_at__` and `__dbg_resume__` variables are created automatically on first compile.
 

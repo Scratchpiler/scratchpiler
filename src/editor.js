@@ -3,1049 +3,546 @@ import { injectedBlockIds } from "./inject-state.js";
 import { acquireVM, scratchIndex, reindex } from "./vm.js";
 import { loadMonaco } from "./monaco.js";
 import { registerLanguage } from "./language.js";
-import { buildOverlayDOM, buildTriggerButton, buildSearchNowhereDOM, setupSpritePicker, spPickerOpen, searchNowhereOpen, logToOutput, flashCompileBtn, openSpritePicker, closeSpritePicker, showSpriteContextMenu, closeSpriteContextMenu, setupOutputPanel, setupSidebarResize, openSearchNowhere, closeSearchNowhere, } from "./ui-dom.js";
-import { compileSource, compileSourceWithHeaders, expand, listHeaders, readHeader, writeHeader, deleteHeader, renameHeader, decompile, lint, typeCheckDiagnostics, injectBlocks, uid } from "./main.js";
+import {
+    buildOverlayDOM, buildTriggerButton, buildSearchNowhereDOM, searchNowhereOpen, openSearchNowhere, closeSearchNowhere,
+    logToOutput, flashCompileBtn, toast, setStatusMessage, showMenu, showMenuBelow, closeMenu, isMenuOpen, setupMenu,
+    openScrim, closeScrims, isScrimOpen, setupScrims, setBottomPanel, isBottomOpen, setupBottomPanel, setupSidebarResize,
+    escapeHtml, plural, spriteLabel,
+} from "./ui-dom.js";
+import { lint, typeCheckDiagnostics } from "./compiler.js";
+import { compileSourceWithHeaders, expand } from "./preprocess.js";
+import { readHeader, writeHeader } from "./headers.js";
+import { decompile } from "./decompiler.js";
+import { injectBlocks } from "./injector.js";
 import { getAnalysis, semanticDiagnostics, smellDiagnostics } from "./analyzer.js";
 import { registerSemanticProviders } from "./semantic-providers.js";
+import { renderExplorer, renderHeadersList, setupExplorer, updateExplorerLiveValues } from "./explorer.js";
+import { setupSearchPanel, focusSearch } from "./search-panel.js";
+import { setupPalette, openPalette } from "./palette.js";
+import { setupVariablesPanel, setDock, isDockOpen, renderVariablesPanel, tickVariablesPanel } from "./variables-panel.js";
+import { projectRunState } from "./variables.js";
+import { setupTooltips } from "./tooltips.js";
 
-// [I] Editor Lifecycle
-
-export let monacoEditor  = null;
+export let monacoEditor = null;
 export let overlayVisible = false;
-export let currentVM      = null;
+export let currentVM = null;
+export let currentSpriteContext = null;
+export let editingHeader = null;
+export let lastInjectAt = null;
+let monaco = null;
 
-let applySettingsFn = null;
-let currentActiveTab = 'explorer';
-export let sidebarExpanded = true;
-let debugPollInterval = null;
+const $ = id => document.getElementById(id);
+const contentKey = sprite => sprite ? `scratchpiler-content-${sprite}` : LS_KEY;
+const injectedSourceKey = sprite => `scratchpiler-injected-src-${sprite}`;
+export const fileKey = ({ kind, name }) => `${kind}:${name}`;
+export const fileLabel = ({ kind, name }) => kind === 'header' ? name : spriteLabel(name);
+export const allSpriteNames = () => ['__stage__', ...scratchIndex.sprites.map(s => s.name)];
 
-function renderSidebarSprites() {
-    const listEl = document.getElementById('scratchpiler-sprites-list');
-    if (!listEl) return;
-    listEl.innerHTML = '';
-
-    function makeSpriteItem(spriteName, labelText, iconSvg) {
-        const el = document.createElement('div');
-        el.className = 'sp-list-item';
-        el.dataset.sprite = spriteName;
-        el.innerHTML = `${iconSvg}<span class="sp-item-name">${labelText}</span>`;
-        el.addEventListener('click', () => selectSidebarSprite(spriteName));
-        el.addEventListener('contextmenu', e => showSpriteContextMenu(e, spriteName));
-        return el;
-    }
-
-    // Add Stage first
-    const stageEl = makeSpriteItem('__stage__', 'Stage.sp',
-        `<svg class="sp-item-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>`);
-    listEl.appendChild(stageEl);
-
-    // Add all other sprites
-    for (const s of scratchIndex.sprites) {
-        const el = makeSpriteItem(s.name, `${s.name}.sp`,
-            `<svg class="sp-item-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`);
-        listEl.appendChild(el);
-    }
-
-    // Maintain active highlighting
-    if (currentSpriteContext) {
-        const activeItem = listEl.querySelector(`[data-sprite="${currentSpriteContext}"]`);
-        if (activeItem) activeItem.classList.add('active');
-    }
+export function activeFile() {
+    if (editingHeader) return { kind: 'header', name: editingHeader };
+    if (currentSpriteContext) return { kind: 'sprite', name: currentSpriteContext };
+    return null;
 }
 
-export function selectSidebarSprite(spriteName) {
-    if (!spriteName) return;
-    const oldSprite = currentSpriteContext;
-    if (editingHeader) {
-        // Leaving header-editing mode: the editor holds header text, not the
-        // old sprite's code — persist it to header storage, never to the sprite.
-        exitHeaderEditing();
-    } else if (oldSprite && oldSprite !== spriteName) {
-        saveToLocalStorage(oldSprite);
-    }
-    currentSpriteContext = spriteName;
+const SETTINGS_KEY = 'scratchpiler-settings';
+const DEFAULT_SETTINGS = {
+    theme: 'scratchpiler-dark', fontSize: '14', wrap: true, minimap: false, tabSize: '4', autosave: '1000',
+    lintTypecheck: true, lintUnreachable: true, lintOrphaned: true, lintSemantic: true, lintSmells: true,
+};
+const settings = (() => {
+    try { return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
+    catch (_) { return { ...DEFAULT_SETTINGS }; }
+})();
+const EDITOR_FONT = '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 
-    // Switch editing target in VM if available
-    if (currentVM) {
-        const stage = currentVM.runtime.targets.find(t => t.isStage);
-        const target = (spriteName === '__stage__')
-            ? stage
-            : currentVM.runtime.targets.find(t => !t.isStage && t.sprite.name === spriteName);
-        if (target) {
-            try {
-                currentVM.setEditingTarget(target.id);
-            } catch (_) {}
+const models = new Map();
+let saveTimer = null;
+let lintTimer = null;
+
+function modelEntry(file) { return models.get(fileKey(file)); }
+export function modelFor(file) { return modelEntry(file)?.model ?? null; }
+
+function createModel(file, text) {
+    const model = monaco.editor.createModel(text, LANG_ID);
+    model.updateOptions({ tabSize: parseInt(settings.tabSize, 10) || 4, insertSpaces: true });
+    models.set(fileKey(file), { file, model, viewState: null });
+    return model;
+}
+
+function disposeModel(file) {
+    const entry = modelEntry(file);
+    if (!entry) return;
+    if (monacoEditor?.getModel() === entry.model) monacoEditor.setModel(null);
+    entry.model.dispose();
+    models.delete(fileKey(file));
+}
+
+export function replaceModelText(model, text) {
+    if (model.getValue() === text) return;
+    model.pushEditOperations([], [{ range: model.getFullModelRange(), text }], () => null);
+}
+
+export function savedSpriteCode(sprite) {
+    try { return localStorage.getItem(contentKey(sprite)); } catch (_) { return null; }
+}
+export function writeSavedSpriteCode(sprite, text) {
+    try { localStorage.setItem(contentKey(sprite), text); } catch (_) {}
+}
+
+export function spriteSource(sprite) {
+    return modelFor({ kind: 'sprite', name: sprite })?.getValue() ?? savedSpriteCode(sprite) ?? '';
+}
+
+function injectedSource(sprite) {
+    try { return localStorage.getItem(injectedSourceKey(sprite)); } catch (_) { return null; }
+}
+function recordInjectedSource(sprite, text) {
+    try { localStorage.setItem(injectedSourceKey(sprite), text); } catch (_) {}
+}
+function forgetInjectedSources() {
+    removeLocalStorageKeys(k => k.startsWith('scratchpiler-injected-src-'));
+}
+export function isSpriteDirty(sprite) {
+    const injected = injectedSource(sprite);
+    return injected !== null && injected !== spriteSource(sprite);
+}
+
+function removeLocalStorageKeys(predicate) {
+    const keys = [];
+    try {
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && predicate(k)) keys.push(k);
         }
-    }
-
-    // Highlight active item
-    const listEl = document.getElementById('scratchpiler-sprites-list');
-    if (listEl) {
-        for (const item of listEl.children) {
-            if (item.dataset.sprite === spriteName) {
-                item.classList.add('active');
-            } else {
-                item.classList.remove('active');
-            }
-        }
-    }
-
-    loadFromLocalStorage(spriteName);
-    updateSpriteDetails(spriteName);
-    openSpriteTab(spriteName);
-    updateStatusBarSprite(spriteName);
+        keys.forEach(k => localStorage.removeItem(k));
+    } catch (_) {}
+    return keys.length;
 }
 
-// ===== Sprite Tab Bar =====
+function saveFile(file) {
+    const model = modelFor(file);
+    if (!model) return;
+    const text = model.getValue();
+    if (file.kind === 'header') {
+        try { writeHeader(file.name, text); } catch (_) {}
+        return;
+    }
+    if (!text.trim()) return;
+    writeSavedSpriteCode(file.name, text);
+}
 
-const openTabSprites = [];
+function saveActiveFile() {
+    const file = activeFile();
+    if (file) saveFile(file);
+}
 
-function renderTabs() {
-    const bar = document.getElementById('sp-tab-bar');
-    if (!bar) return;
-    bar.innerHTML = '';
-    for (const name of openTabSprites) {
-        const isStage = name === '__stage__';
-        const label   = isStage ? 'Stage.sp' : `${name}.sp`;
-        const icon    = isStage ? '▣' : '◻';
-        const tab     = document.createElement('div');
-        tab.className = 'sp-tab' + (name === currentSpriteContext ? ' sp-tab-active' : '');
-        tab.dataset.sprite = name;
-        tab.innerHTML = `<span class="sp-tab-icon">${icon}</span><span class="sp-tab-name">${label}</span>`;
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'sp-tab-close';
-        closeBtn.textContent = '×';
-        closeBtn.title = 'Close tab';
-        closeBtn.addEventListener('click', e => { e.stopPropagation(); closeSpriteTab(name); });
-        tab.appendChild(closeBtn);
-        tab.addEventListener('click', () => selectSidebarSprite(name));
-        bar.appendChild(tab);
+function initialSpriteText(sprite) {
+    const cached = savedSpriteCode(sprite);
+    if (cached !== null && cached.trim() !== '') return cached;
+    if (!currentVM) return '';
+    try {
+        const code = decompile(currentVM, sprite);
+        recordInjectedSource(sprite, code);
+        setStatusMessage(`Decompiled ${spriteLabel(sprite)} from Scratch`);
+        return code;
+    } catch (e) {
+        console.warn('[scratchpiler] decompile failed for', sprite, e);
+        return '';
     }
 }
 
-function openSpriteTab(name) {
-    if (!openTabSprites.includes(name)) openTabSprites.push(name);
+function showFile(file, text) {
+    const current = activeFile();
+    if (current) {
+        const entry = modelEntry(current);
+        if (entry && monacoEditor) entry.viewState = monacoEditor.saveViewState();
+        saveFile(current);
+    }
+    const model = modelFor(file) ?? createModel(file, text());
+    if (file.kind === 'header') {
+        editingHeader = file.name;
+    } else {
+        editingHeader = null;
+        currentSpriteContext = file.name;
+        switchScratchEditingTarget(file.name);
+    }
+    if (monacoEditor) {
+        monacoEditor.setModel(model);
+        const viewState = modelEntry(file)?.viewState;
+        if (viewState) monacoEditor.restoreViewState(cursorAndScrollOnly(viewState));
+    }
+    ensureTab(file);
+    onActiveFileChanged();
+}
+
+const cursorAndScrollOnly = viewState => ({ ...viewState, contributionsState: {} });
+
+function switchScratchEditingTarget(sprite) {
+    if (!currentVM) return;
+    const target = sprite === '__stage__'
+        ? currentVM.runtime.targets.find(t => t.isStage)
+        : currentVM.runtime.targets.find(t => !t.isStage && t.isOriginal !== false && t.sprite.name === sprite);
+    if (target) { try { currentVM.setEditingTarget(target.id); } catch (_) {} }
+}
+
+export function selectSidebarSprite(sprite) {
+    if (!sprite || !monacoEditor) { currentSpriteContext = sprite || currentSpriteContext; return; }
+    showFile({ kind: 'sprite', name: sprite }, () => initialSpriteText(sprite));
+}
+
+export function openHeader(name) {
+    if (!monacoEditor) return;
+    showFile({ kind: 'header', name }, () => readHeader(name) ?? '');
+}
+
+export function openFile(file) {
+    if (file.kind === 'header') openHeader(file.name); else selectSidebarSprite(file.name);
+}
+
+function reloadSprite(sprite) {
+    disposeModel({ kind: 'sprite', name: sprite });
+    if (currentSpriteContext === sprite && !editingHeader) currentSpriteContext = null;
+    selectSidebarSprite(sprite);
+}
+
+function onActiveFileChanged() {
+    const file = activeFile();
+    $('sp-crumb-file').textContent = file ? fileLabel(file) : '—';
+    $('sp-run-label').textContent = editingHeader ? 'Check Header' : 'Compile & Inject';
+    $('scratchpiler-compile-btn').title = editingHeader
+        ? 'Save this header and check it for problems (Ctrl+Enter)'
+        : 'Compile and inject into Scratch (Ctrl+Enter). Shift+click to minify.';
     renderTabs();
+    renderExplorer();
+    renderHeadersList();
+    renderVariablesPanel();
+    refreshSyncState();
+    scheduleLint(0);
 }
 
-function closeSpriteTab(name) {
-    const idx = openTabSprites.indexOf(name);
-    if (idx < 0) return;
-    openTabSprites.splice(idx, 1);
-    if (currentSpriteContext === name) {
-        const next = openTabSprites[idx] ?? openTabSprites[idx - 1] ?? null;
+export const openTabs = [];
+
+function ensureTab(file) {
+    if (!openTabs.some(t => fileKey(t) === fileKey(file))) openTabs.push(file);
+}
+
+export function renderTabs() {
+    const bar = $('sp-tab-bar');
+    if (!bar) return;
+    const active = activeFile();
+    bar.innerHTML = openTabs.map(t => {
+        const key = fileKey(t);
+        const isActive = active && fileKey(active) === key;
+        const dirty = t.kind === 'sprite' && isSpriteDirty(t.name);
+        return `<div class="sp-tab${isActive ? ' sp-on' : ''}${dirty ? ' sp-dirty' : ''}" role="tab" aria-selected="${!!isActive}" data-key="${escapeHtml(key)}" title="${dirty ? 'Changed since last inject' : ''}">
+            ${escapeHtml(fileLabel(t))}${t.kind === 'header' ? '<span class="sp-kind">header</span>' : ''}<span class="sp-dot"></span>
+            <button class="sp-x" aria-label="Close ${escapeHtml(fileLabel(t))}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`;
+    }).join('');
+}
+
+const tabByKey = key => openTabs.find(t => fileKey(t) === key);
+
+export function closeTabs(keys) {
+    const active = activeFile();
+    const activeIndex = active ? openTabs.findIndex(t => fileKey(t) === fileKey(active)) : -1;
+    const closingActive = active && keys.includes(fileKey(active));
+    for (const key of keys) {
+        const tab = tabByKey(key);
+        if (!tab) continue;
+        saveFile(tab);
+        openTabs.splice(openTabs.indexOf(tab), 1);
+        if (!closingActive || fileKey(tab) !== fileKey(active)) disposeModel(tab);
+    }
+    if (closingActive) {
+        const next = openTabs[Math.min(activeIndex, openTabs.length - 1)];
+        const closed = active;
         if (next) {
-            selectSidebarSprite(next);
+            openFile(next);
         } else {
+            editingHeader = null;
             currentSpriteContext = null;
-            if (monacoEditor) monacoEditor.setValue('');
-            renderTabs();
+            onActiveFileChanged();
         }
+        disposeModel(closed);
     } else {
         renderTabs();
     }
 }
 
-// ===== Status Bar =====
+function tabMenuItems(key) {
+    const i = openTabs.findIndex(t => fileKey(t) === key);
+    const tab = openTabs[i];
+    return [
+        { text: 'Close', keys: 'Middle click', run: () => closeTabs([key]) },
+        { text: 'Close others', disabled: openTabs.length < 2, run: () => closeTabs(openTabs.filter(t => fileKey(t) !== key).map(fileKey)) },
+        { text: 'Close to the right', disabled: i === openTabs.length - 1, run: () => closeTabs(openTabs.slice(i + 1).map(fileKey)) },
+        '-',
+        tab.kind === 'sprite' && { text: 'Compile & inject', run: () => { openFile(tab); compileAndInject(); } },
+        tab.kind === 'sprite' && { text: 'Save as .sdsl file…', run: () => { openFile(tab); exportToLocalFile(); } },
+    ];
+}
+
+function setupTabs() {
+    const bar = $('sp-tab-bar');
+    bar.addEventListener('click', e => {
+        const tab = e.target.closest('.sp-tab');
+        if (!tab) return;
+        if (e.target.closest('.sp-x')) closeTabs([tab.dataset.key]);
+        else openFile(tabByKey(tab.dataset.key));
+    });
+    bar.addEventListener('auxclick', e => {
+        const tab = e.target.closest('.sp-tab');
+        if (tab && e.button === 1) { e.preventDefault(); closeTabs([tab.dataset.key]); }
+    });
+    bar.addEventListener('contextmenu', e => {
+        const tab = e.target.closest('.sp-tab');
+        if (!tab) return;
+        e.preventDefault();
+        showMenu(tabMenuItems(tab.dataset.key), { x: e.clientX, y: e.clientY });
+    });
+}
+
+export function refreshSyncState() {
+    const known = allSpriteNames().filter(s => injectedSource(s) !== null);
+    const dirty = known.filter(isSpriteDirty);
+    const pill = $('sp-sync');
+    pill.classList.toggle('sp-dirty', dirty.length > 0);
+    pill.classList.toggle('sp-clean', known.length > 0 && dirty.length === 0);
+    $('sp-sync-text').textContent = dirty.length ? 'Changed since last inject' : known.length ? 'Scratch is up to date' : 'Not injected yet';
+    pill.title = dirty.length ? `Not injected yet: ${dirty.map(spriteLabel).join(', ')}` : 'Scratch has the code shown here';
+    renderTabs();
+    renderExplorer();
+}
+
+function updateLastInjectLabel() {
+    const el = $('sp-sb-last');
+    if (!el) return;
+    if (!lastInjectAt) { el.textContent = 'Not injected yet'; return; }
+    const s = Math.round((Date.now() - lastInjectAt) / 1000);
+    el.textContent = s < 10 ? 'Injected just now' : s < 60 ? `Injected ${s}s ago` : `Injected ${Math.round(s / 60)} min ago`;
+}
+
+let currentView = 'explorer';
+export function setView(view, { toggle = false } = {}) {
+    const main = $('sp-main');
+    if (toggle && view === currentView && !main.classList.contains('sp-no-side')) {
+        main.classList.add('sp-no-side');
+        document.querySelectorAll('#scratchpiler-overlay .sp-rail [data-view]').forEach(b => b.setAttribute('aria-pressed', 'false'));
+        return;
+    }
+    currentView = view;
+    main.classList.remove('sp-no-side');
+    document.querySelectorAll('#scratchpiler-overlay .sp-rail [data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === view)));
+    document.querySelectorAll('#scratchpiler-overlay .sp-panel').forEach(p => p.classList.toggle('sp-on', p.dataset.panel === view));
+    if (view === 'headers') renderHeadersList();
+    if (view === 'search') focusSearch();
+}
+
+function toggleSidebar() {
+    const main = $('sp-main');
+    if (main.classList.contains('sp-no-side')) setView(currentView);
+    else setView(currentView, { toggle: true });
+}
+
+function setupRail() {
+    document.querySelectorAll('#scratchpiler-overlay .sp-rail [data-view]').forEach(b =>
+        b.addEventListener('click', () => setView(b.dataset.view, { toggle: true })));
+    $('sp-rail-problems').addEventListener('click', () => setBottomPanel(true, 'problems'));
+    if (matchMedia('(max-width: 860px)').matches) $('sp-main').classList.add('sp-no-side');
+}
 
 function updateStatusBarVM(state) {
-    const dot  = document.getElementById('sp-sb-vm-dot');
-    const text = document.getElementById('sp-sb-vm-text');
-    if (!dot || !text) return;
-    dot.className = `sp-sb-dot sp-sb-dot-${state}`;
-    if (state === 'ok')    text.textContent = 'VM Ready';
-    if (state === 'error') text.textContent = 'VM Not Found';
+    const dot = $('sp-sb-vm-dot');
+    dot.className = 'sp-vm-dot' + (state === 'ok' ? '' : ` sp-${state}`);
+    $('sp-sb-vm-text').textContent = state === 'ok' ? 'Scratch connected' : state === 'error' ? 'Scratch not found' : 'Connecting to Scratch';
 }
 
-function updateStatusBarSprite(name) {
-    const el = document.getElementById('sp-sb-sprite-name');
-    if (el) el.textContent = !name ? '—' : name === '__stage__' ? 'Stage' : name;
+export function updateStatus(text) {
+    setStatusMessage(text);
+    if (/^error/i.test(text)) logToOutput(text, 'error');
 }
 
-function updateStatusBarCursor(line, col) {
-    const el = document.getElementById('sp-sb-cursor');
-    if (el) el.textContent = `Ln ${line}, Col ${col}`;
+const SEVERITY = () => ({
+    [monaco.MarkerSeverity.Error]: 'error',
+    [monaco.MarkerSeverity.Warning]: 'warning',
+    [monaco.MarkerSeverity.Info]: 'info',
+    [monaco.MarkerSeverity.Hint]: 'info',
+});
+export const problemCounts = new Map();
+
+function renderProblems() {
+    if (!monacoEditor) return;
+    const severity = SEVERITY();
+    const groups = [];
+    let errors = 0, warnings = 0;
+    for (const { file, model } of models.values()) {
+        const markers = monaco.editor.getModelMarkers({ resource: model.uri, owner: LANG_ID })
+            .sort((a, b) => a.startLineNumber - b.startLineNumber || a.startColumn - b.startColumn);
+        const fileErrors = markers.filter(m => m.severity === monaco.MarkerSeverity.Error).length;
+        const fileWarnings = markers.filter(m => m.severity === monaco.MarkerSeverity.Warning).length;
+        if (file.kind === 'sprite') problemCounts.set(file.name, { errors: fileErrors, warnings: fileWarnings });
+        errors += fileErrors; warnings += fileWarnings;
+        if (markers.length) groups.push({ file, markers });
+    }
+    const view = $('sp-problems-view');
+    view.innerHTML = groups.length ? groups.map(({ file, markers }) =>
+        `<div class="sp-prob-file">${escapeHtml(fileLabel(file))}</div>` + markers.map(m =>
+            `<div class="sp-prob" data-key="${escapeHtml(fileKey(file))}" data-line="${m.startLineNumber}" data-col="${m.startColumn}">
+                <span class="sp-sev sp-${severity[m.severity]}"></span><span>${escapeHtml(m.message)}</span><span class="sp-loc">Ln ${m.startLineNumber}, Col ${m.startColumn}</span></div>`).join('')).join('')
+        : `<div class="sp-empty">${models.size ? 'No problems in open files.' : 'Open a sprite to check it for problems.'}</div>`;
+
+    const total = errors + warnings;
+    $('sp-problems-count').textContent = total;
+    const badge = $('sp-rail-badge');
+    badge.hidden = total === 0;
+    badge.textContent = total;
+    badge.classList.toggle('sp-err', errors > 0);
+    const errEl = $('sp-sb-err-count'), warnEl = $('sp-sb-warn-count');
+    errEl.textContent = plural(errors, 'error');
+    warnEl.textContent = plural(warnings, 'warning');
+    errEl.classList.toggle('sp-zero', errors === 0);
+    warnEl.classList.toggle('sp-zero', warnings === 0);
+    renderExplorer();
 }
 
-function updateStatusBarProblems(errors, warnings) {
-    const errEl  = document.getElementById('sp-sb-err-count');
-    const warnEl = document.getElementById('sp-sb-warn-count');
-    if (errEl)  { errEl.textContent  = `${errors} error${errors !== 1 ? 's' : ''}`;     errEl.classList.toggle('sp-sb-zero', errors === 0); }
-    if (warnEl) { warnEl.textContent = `${warnings} warning${warnings !== 1 ? 's' : ''}`; warnEl.classList.toggle('sp-sb-zero', warnings === 0); }
+export function revealPosition(file, line, col = 1) {
+    openFile(file);
+    if (!monacoEditor) return;
+    monacoEditor.setPosition({ lineNumber: line, column: col });
+    monacoEditor.revealPositionInCenter({ lineNumber: line, column: col });
+    monacoEditor.focus();
 }
 
-function updateSpriteDetails(spriteName) {
-    const detailTitle = document.getElementById('scratchpiler-detail-spritename');
-    if (detailTitle) {
-        detailTitle.textContent = spriteName === '__stage__' ? 'Stage' : spriteName;
-    }
-
-    const costumesContent   = document.getElementById('sp-subacc-costumes-content');
-    const soundsContent     = document.getElementById('sp-subacc-sounds-content');
-    const varsContent       = document.getElementById('sp-subacc-variables-content');
-    const cbContent         = document.getElementById('sp-subacc-customblocks-content');
-
-    if (!costumesContent || !soundsContent || !varsContent) return;
-
-    costumesContent.innerHTML = '';
-    soundsContent.innerHTML   = '';
-    varsContent.innerHTML     = '';
-    if (cbContent) cbContent.innerHTML = '';
-
-    let costumes = [], sounds = [], vars = [], customBlocks = [];
-
-    if (spriteName === '__stage__') {
-        costumes = scratchIndex.stage.backdrops || [];
-        sounds   = scratchIndex.stage.sounds    || [];
-        vars     = scratchIndex.globalVariables || [];
-    } else {
-        const sprite = scratchIndex.sprites.find(s => s.name === spriteName);
-        if (sprite) { costumes = sprite.costumes || []; sounds = sprite.sounds || []; }
-        vars         = scratchIndex.spriteVariables[spriteName] || [];
-        customBlocks = scratchIndex.customBlocks[spriteName]    || [];
-    }
-
-    function makeDetailItem(label, snippet, title) {
-        const div = document.createElement('div');
-        div.className = 'sp-detail-item';
-        div.textContent = label;
-        div.title = title;
-        div.addEventListener('click', () => {
-            if (monacoEditor) {
-                monacoEditor.trigger('sidebar', 'type', { text: snippet });
-                monacoEditor.focus();
-            }
-        });
-        return div;
-    }
-
-    // Costumes / backdrops
-    if (costumes.length === 0) {
-        costumesContent.innerHTML = '<div class="sp-detail-empty">None</div>';
-    } else {
-        for (const c of costumes) {
-            const snippet = spriteName === '__stage__'
-                ? `switchBackdrop("${c}")` : `switchCostume("${c}")`;
-            costumesContent.appendChild(makeDetailItem(c, snippet, `Insert: ${snippet}`));
-        }
-    }
-
-    // Sounds
-    if (sounds.length === 0) {
-        soundsContent.innerHTML = '<div class="sp-detail-empty">None</div>';
-    } else {
-        for (const s of sounds) {
-            soundsContent.appendChild(makeDetailItem(s, `play("${s}")`, `Insert: play("${s}")`));
-        }
-    }
-
-    // Variables / lists
-    if (vars.length === 0) {
-        varsContent.innerHTML = '<div class="sp-detail-empty">None</div>';
-    } else {
-        for (const v of vars) {
-            const snippet = `[${v.name}]`;
-            const row = document.createElement('div');
-            row.className = 'sp-detail-item-row';
-
-            const lbl = document.createElement('div');
-            lbl.className = 'sp-detail-item';
-            lbl.textContent = `${v.name} (${v.type})`;
-            lbl.title = `Insert: ${snippet}`;
-            lbl.addEventListener('click', () => {
-                if (monacoEditor) { monacoEditor.trigger('sidebar', 'type', { text: snippet }); monacoEditor.focus(); }
-            });
-
-            const actBtn = document.createElement('button');
-            actBtn.className = 'sp-detail-action-btn';
-            actBtn.textContent = '⋮';
-            actBtn.title = 'Variable actions';
-            actBtn.addEventListener('click', e => {
-                e.stopPropagation();
-                const rect = actBtn.getBoundingClientRect();
-                const menuItems = [
-                    { label: 'Rename…', action: () => openRenameDialog(v) },
-                    { label: 'Delete', danger: true, action: () => doDeleteVariable(v.id) },
-                ];
-                if (v.type === 'list') {
-                    menuItems.splice(1, 0, { label: 'Initialize from CSV…', action: () => openInitListDialog(v) });
-                }
-                showContextMenu(menuItems, rect.left, rect.bottom + 2);
-            });
-
-            row.appendChild(lbl);
-            row.appendChild(actBtn);
-            varsContent.appendChild(row);
-        }
-    }
-
-    // Custom blocks
-    if (cbContent) {
-        if (customBlocks.length === 0) {
-            cbContent.innerHTML = '<div class="sp-detail-empty">None</div>';
-        } else {
-            for (const proc of customBlocks) {
-                cbContent.appendChild(makeDetailItem(proc, proc, `Insert call: ${proc}`));
-            }
-        }
-    }
+function setupProblemsView() {
+    $('sp-problems-view').addEventListener('click', e => {
+        const row = e.target.closest('.sp-prob');
+        if (!row) return;
+        const tab = tabByKey(row.dataset.key) ?? models.get(row.dataset.key)?.file;
+        if (tab) revealPosition(tab, +row.dataset.line, +row.dataset.col);
+    });
+    $('sp-sb-problems').addEventListener('click', () => setBottomPanel(true, 'problems'));
 }
 
-function setupActivityBar() {
-    const sidebar = document.getElementById('scratchpiler-sidebar');
-    const actExplorer = document.getElementById('sp-activity-explorer');
-    const actSearch = document.getElementById('sp-activity-search');
-    const actSettings = document.getElementById('sp-activity-settings');
-    const actFixes = document.getElementById('sp-activity-fixes');
-    const actHeaders = document.getElementById('sp-activity-headers');
+function scheduleLint(delay = 350) {
+    clearTimeout(lintTimer);
+    lintTimer = setTimeout(lintActiveModel, delay);
+}
 
-    const panels = {
-        explorer: document.getElementById('sp-panel-explorer'),
-        search: document.getElementById('sp-panel-search'),
-        settings: document.getElementById('sp-panel-settings'),
-        fixes: document.getElementById('sp-panel-fixes'),
-        headers: document.getElementById('sp-panel-headers')
+function toMarker(item, severity, model, wholeLine = false) {
+    return {
+        startLineNumber: item.line, startColumn: item.col,
+        endLineNumber: item.line, endColumn: wholeLine ? model.getLineMaxColumn(item.line) : item.col + (item.len || 1),
+        message: item.message, severity,
     };
-
-    const buttons = {
-        explorer: actExplorer,
-        search: actSearch,
-        settings: actSettings,
-        fixes: actFixes,
-        headers: actHeaders
-    };
-
-    function switchTab(tabId) {
-        const sidebarTitle = document.getElementById('scratchpiler-sidebar-title');
-        if (sidebarTitle) {
-            sidebarTitle.textContent = tabId.charAt(0).toUpperCase() + tabId.slice(1);
-        }
-
-        if (currentActiveTab === tabId && sidebarExpanded) {
-            // Collapse sidebar
-            sidebar.style.display = 'none';
-            sidebarExpanded = false;
-            buttons[tabId].classList.remove('sp-active');
-        } else {
-            // Show/switch sidebar tab
-            sidebar.style.display = 'flex';
-            sidebarExpanded = true;
-
-            // Toggle active button class
-            Object.keys(buttons).forEach(k => {
-                if (k === tabId) buttons[k].classList.add('sp-active');
-                else buttons[k].classList.remove('sp-active');
-            });
-
-            // Toggle active panel class
-            Object.keys(panels).forEach(k => {
-                if (k === tabId) panels[k].classList.add('active');
-                else panels[k].classList.remove('active');
-            });
-
-            currentActiveTab = tabId;
-        }
-
-        // Force Monaco editor layout update
-        if (monacoEditor) {
-            setTimeout(() => monacoEditor.layout(), 50);
-        }
-    }
-
-    actExplorer.addEventListener('click', () => switchTab('explorer'));
-    actSearch.addEventListener('click', () => switchTab('search'));
-    actSettings.addEventListener('click', () => switchTab('settings'));
-    actFixes.addEventListener('click', () => switchTab('fixes'));
-    actHeaders?.addEventListener('click', () => { switchTab('headers'); renderHeadersList(); });
-
-    // Fixes panel actions
-    document.getElementById('sp-fix-clear-cache').addEventListener('click', () => {
-        let cleared = 0;
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && (key.startsWith('scratchpiler-content-') || key.startsWith(`${LS_INJ_KEY}-`))) keysToRemove.push(key);
-        }
-        keysToRemove.forEach(k => { localStorage.removeItem(k); cleared++; });
-        // Also clear the legacy key
-        try { localStorage.removeItem('scratchpiler-editor-content'); cleared++; } catch {}
-        // Clear in-memory injected ID tracking too (persisted entries are already removed above)
-        injectedBlockIds.clear();
-        updateStatus(`✓ Cleared ${cleared} cached entries`);
-        // Reload editor from VM for current sprite
-        if (currentSpriteContext) loadFromLocalStorage(currentSpriteContext);
-    });
-
-    document.getElementById('sp-fix-reindex').addEventListener('click', () => {
-        if (!currentVM) { updateStatus('Error: VM not available'); return; }
-        reindex(currentVM);
-        renderSidebarSprites();
-        if (currentSpriteContext) {
-            selectSidebarSprite(currentSpriteContext);
-        }
-        updateStatus('✓ Re-indexed all sprites & variables');
-    });
-
-    document.getElementById('sp-fix-reset-all').addEventListener('click', () => {
-        if (!currentVM) { updateStatus('Error: VM not available'); return; }
-        if (!confirm('Reset all Scratchpiler changes?\n\nThis will:\n• Remove all injected blocks from every sprite\n• Clear all cached SDSL code\n• Re-index the project\n\nThe project will return to its last-saved state.')) return;
-
-        // 1. Remove injected blocks from every sprite
-        let removedCount = 0;
-        for (const [spriteName, ids] of injectedBlockIds.entries()) {
-            const target = spriteName === '__stage__'
-                ? currentVM.runtime.targets.find(t => t.isStage)
-                : currentVM.runtime.targets.find(t => !t.isStage && t.sprite.name === spriteName);
-            if (target) {
-                for (const id of ids) {
-                    try { target.blocks.deleteBlock(id); removedCount++; } catch {}
-                }
-            }
-        }
-        injectedBlockIds.clear();
-
-        // 2. Clear all localStorage caches (content + persisted injected IDs)
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && (key.startsWith('scratchpiler-content-') || key.startsWith(`${LS_INJ_KEY}-`))) keysToRemove.push(key);
-        }
-        keysToRemove.forEach(k => localStorage.removeItem(k));
-        try { localStorage.removeItem('scratchpiler-editor-content'); } catch {}
-
-        // 3. Refresh workspace
-        try { currentVM.setEditingTarget(currentVM.editingTarget.id); } catch {}
-
-        // 4. Re-index
-        reindex(currentVM);
-        renderSidebarSprites();
-
-        // 5. Reset editor to decompile from VM
-        if (currentSpriteContext) {
-            selectSidebarSprite(currentSpriteContext);
-        } else {
-            if (monacoEditor) monacoEditor.setValue('');
-        }
-
-        updateStatus(`✓ Reset complete — removed ${removedCount} injected blocks, cleared ${keysToRemove.length} cache entries`);
-    });
-
-    // Setup accordions inside Sidebar Explorer
-    document.querySelectorAll('.sp-accordion-header').forEach(hdr => {
-        hdr.addEventListener('click', () => {
-            const content = hdr.nextElementSibling;
-            hdr.classList.toggle('active');
-            content.classList.toggle('active');
-            const chevron = hdr.querySelector('.sp-chevron');
-            if (chevron) {
-                chevron.textContent = hdr.classList.contains('active') ? '▼' : '▶';
-            }
-        });
-    });
-
-    document.querySelectorAll('.sp-sub-accordion-header').forEach(hdr => {
-        hdr.addEventListener('click', () => {
-            const content = hdr.nextElementSibling;
-            hdr.classList.toggle('active');
-            content.classList.toggle('active');
-            const isAct = hdr.classList.contains('active');
-            hdr.textContent = (isAct ? '▼ ' : '▶ ') + hdr.textContent.substring(2);
-        });
-    });
-
-    // Setup search & replace button click listeners
-    document.getElementById('scratchpiler-search-btn').addEventListener('click', runSearch);
-    document.getElementById('scratchpiler-search-input').addEventListener('keydown', e => {
-        if (e.key === 'Enter') runSearch();
-    });
-    document.getElementById('scratchpiler-replace-btn').addEventListener('click', runReplace);
-    document.getElementById('scratchpiler-replace-all-btn').addEventListener('click', runReplaceAll);
 }
 
-function runSearch() {
-    const query = document.getElementById('scratchpiler-search-input').value.trim();
-    const resultsEl = document.getElementById('scratchpiler-search-results');
-    if (!resultsEl) return;
-    resultsEl.innerHTML = '';
-
-    if (!query) {
-        resultsEl.innerHTML = '<div class="sp-search-no-results">Type a query to search</div>';
-        return;
-    }
-
-    const matches = [];
-
-    // Search Stage
-    const stageCode = localStorage.getItem('scratchpiler-content-__stage__') || '';
-    searchCode(stageCode, '__stage__', query, matches);
-
-    // Search Sprites
-    for (const s of scratchIndex.sprites) {
-        const code = localStorage.getItem(`scratchpiler-content-${s.name}`) || '';
-        searchCode(code, s.name, query, matches);
-    }
-
-    if (matches.length === 0) {
-        resultsEl.innerHTML = '<div class="sp-search-no-results">No results found</div>';
-        return;
-    }
-
-    // Group matches by sprite name
-    const groups = {};
-    for (const m of matches) {
-        if (!groups[m.spriteName]) groups[m.spriteName] = [];
-        groups[m.spriteName].push(m);
-    }
-
-    for (const [spriteName, groupMatches] of Object.entries(groups)) {
-        const groupHeader = document.createElement('div');
-        groupHeader.className = 'sp-search-group-header';
-        groupHeader.textContent = spriteName === '__stage__' ? 'Stage.sp' : `${spriteName}.sp`;
-        resultsEl.appendChild(groupHeader);
-
-        for (const m of groupMatches) {
-            const item = document.createElement('div');
-            item.className = 'sp-search-result-item';
-            item.innerHTML = `<span class="sp-search-line-num">${m.line}:</span> <span class="sp-search-line-text"></span>`;
-            item.querySelector('.sp-search-line-text').textContent = m.text;
-
-            item.addEventListener('click', () => {
-                selectSidebarSprite(m.spriteName);
-                if (monacoEditor) {
-                    monacoEditor.setPosition({ lineNumber: m.line, column: 1 });
-                    monacoEditor.revealLineInCenter(m.line);
-                    monacoEditor.focus();
-                }
-            });
-            resultsEl.appendChild(item);
-        }
-    }
-}
-
-export function searchCode(code, spriteName, query, matches) {
-    const lines = code.split('\n');
-    const lowerQuery = query.toLowerCase();
-    for (let i = 0; i < lines.length; i++) {
-        if (lines[i].toLowerCase().includes(lowerQuery)) {
-            matches.push({
-                spriteName,
-                line: i + 1,
-                text: lines[i].trim()
-            });
-        }
-    }
-}
-
-function runReplace() {
-    const searchVal = document.getElementById('scratchpiler-search-input').value;
-    const replaceVal = document.getElementById('scratchpiler-replace-input').value;
-    if (!searchVal) return;
-
-    if (monacoEditor) {
-        const selection = monacoEditor.getSelection();
-        const selectedText = monacoEditor.getModel().getValueInRange(selection);
-        if (selectedText.toLowerCase().includes(searchVal.toLowerCase())) {
-            const range = new monaco.Range(
-                selection.startLineNumber,
-                selection.startColumn,
-                selection.endLineNumber,
-                selection.endColumn
-            );
-            monacoEditor.executeEdits('search-replace', [{
-                range: range,
-                text: replaceVal,
-                forceMoveMarkers: true
-            }]);
-            saveToLocalStorage(currentSpriteContext);
-            runSearch();
-        } else {
-            const model = monacoEditor.getModel();
-            const matches = model.findMatches(searchVal, true, false, false, null, true);
-            if (matches.length > 0) {
-                const match = matches[0];
-                monacoEditor.setSelection(match.range);
-                monacoEditor.revealRangeInCenter(match.range);
-                monacoEditor.focus();
-            }
-        }
-    }
-}
-
-function runReplaceAll() {
-    const searchVal = document.getElementById('scratchpiler-search-input').value;
-    const replaceVal = document.getElementById('scratchpiler-replace-input').value;
-    if (!searchVal) return;
-
-    if (!confirm(`Are you sure you want to replace all occurrences of "${searchVal}" with "${replaceVal}" in all sprites?`)) {
-        return;
-    }
-
-    let replacedCount = 0;
-    replacedCount += replaceInSprite('__stage__', searchVal, replaceVal);
-    for (const s of scratchIndex.sprites) {
-        replacedCount += replaceInSprite(s.name, searchVal, replaceVal);
-    }
-
-    loadFromLocalStorage(currentSpriteContext);
-    updateStatus(`Replaced ${replacedCount} occurrence(s) across all sprites.`);
-    runSearch();
-}
-
-function replaceInSprite(spriteName, searchVal, replaceVal) {
-    const key = `scratchpiler-content-${spriteName}`;
-    const code = localStorage.getItem(key) || '';
-    if (!code) return 0;
-
-    const escaped = searchVal.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-    const regex = new RegExp(escaped, 'gi');
-    let count = 0;
-    const newCode = code.replace(regex, () => {
-        count++;
-        return replaceVal;
-    });
-
-    if (count > 0) {
-        localStorage.setItem(key, newCode);
-    }
-    return count;
-}
-
-function setupSettings() {
-    const themeSelect       = document.getElementById('sp-setting-theme');
-    const fontSizeSelect    = document.getElementById('sp-setting-fontsize');
-    const wrapCheckbox      = document.getElementById('sp-setting-wrap');
-    const minimapCheckbox   = document.getElementById('sp-setting-minimap');
-    const tabSizeSelect     = document.getElementById('sp-setting-tabsize');
-    const autosaveSelect    = document.getElementById('sp-setting-autosave');
-    const lintTypecheckChk  = document.getElementById('sp-setting-lint-typecheck');
-    const lintUnreachChk    = document.getElementById('sp-setting-lint-unreachable');
-    const lintOrphanedChk   = document.getElementById('sp-setting-lint-orphaned');
-    const lintSemanticChk   = document.getElementById('sp-setting-lint-semantic');
-    const lintSmellsChk     = document.getElementById('sp-setting-lint-smells');
-
-    let settings = {};
+function lintActiveModel() {
+    const model = monacoEditor?.getModel();
+    if (!model) { renderProblems(); return; }
+    if (editingHeader) { refreshSyncState(); return; }
     try {
-        settings = JSON.parse(localStorage.getItem('scratchpiler-settings')) || {};
-    } catch (_) {}
-
-    if (!settings.theme)                    settings.theme = 'scratchpiler-dark';
-    if (!settings.fontSize)                 settings.fontSize = '14';
-    if (settings.wrap === undefined)         settings.wrap = true;
-    if (settings.minimap === undefined)      settings.minimap = false;
-    if (!settings.tabSize)                   settings.tabSize = '4';
-    if (settings.autosave === undefined)     settings.autosave = '1000';
-    if (settings.lintTypecheck === undefined) settings.lintTypecheck = true;
-    if (settings.lintUnreachable === undefined) settings.lintUnreachable = true;
-    if (settings.lintOrphaned === undefined)  settings.lintOrphaned = true;
-    if (settings.lintSemantic === undefined)  settings.lintSemantic = true;
-    if (settings.lintSmells === undefined)    settings.lintSmells = true;
-
-    themeSelect.value      = settings.theme;
-    fontSizeSelect.value   = settings.fontSize;
-    wrapCheckbox.checked   = settings.wrap;
-    minimapCheckbox.checked = settings.minimap;
-    tabSizeSelect.value    = settings.tabSize;
-    autosaveSelect.value   = settings.autosave;
-    lintTypecheckChk.checked  = settings.lintTypecheck;
-    lintUnreachChk.checked    = settings.lintUnreachable;
-    lintOrphanedChk.checked   = settings.lintOrphaned;
-    if (lintSemanticChk) lintSemanticChk.checked = settings.lintSemantic;
-    if (lintSmellsChk)   lintSmellsChk.checked   = settings.lintSmells;
-
-    // Sync into module-level spSettings
-    spSettings.tabSize         = parseInt(settings.tabSize, 10) || 4;
-    spSettings.autosave        = parseInt(settings.autosave, 10);
-    spSettings.lintTypecheck   = settings.lintTypecheck;
-    spSettings.lintUnreachable = settings.lintUnreachable;
-    spSettings.lintOrphaned    = settings.lintOrphaned;
-    spSettings.lintSemantic    = settings.lintSemantic;
-    spSettings.lintSmells      = settings.lintSmells;
-
-    function applySettings() {
-        if (!monacoEditor) return;
-        const newTabSize  = parseInt(tabSizeSelect.value, 10) || 4;
-        const newAutosave = parseInt(autosaveSelect.value, 10);
-        spSettings.tabSize         = newTabSize;
-        spSettings.autosave        = newAutosave;
-        spSettings.lintTypecheck   = lintTypecheckChk.checked;
-        spSettings.lintUnreachable = lintUnreachChk.checked;
-        spSettings.lintOrphaned    = lintOrphanedChk.checked;
-        if (lintSemanticChk) spSettings.lintSemantic = lintSemanticChk.checked;
-        if (lintSmellsChk)   spSettings.lintSmells   = lintSmellsChk.checked;
-
-        monaco.editor.setTheme(themeSelect.value);
-        monacoEditor.updateOptions({
-            fontSize: parseInt(fontSizeSelect.value, 10),
-            wordWrap: wrapCheckbox.checked ? 'on' : 'off',
-            minimap: { enabled: minimapCheckbox.checked },
-            tabSize: newTabSize,
-            insertSpaces: true,
+        const sprite = currentSpriteContext;
+        const analysis = getAnalysis(model, sprite);
+        const { ast, parseErrors } = analysis;
+        const lintWarnings = lint(ast).filter(w => {
+            const msg = w.message || '';
+            if (!settings.lintUnreachable && msg.startsWith('Unreachable')) return false;
+            if (!settings.lintOrphaned && msg.startsWith('Orphaned')) return false;
+            return true;
         });
-        localStorage.setItem('scratchpiler-settings', JSON.stringify({
-            theme:            themeSelect.value,
-            fontSize:         fontSizeSelect.value,
-            wrap:             wrapCheckbox.checked,
-            minimap:          minimapCheckbox.checked,
-            tabSize:          tabSizeSelect.value,
-            autosave:         autosaveSelect.value,
-            lintTypecheck:    lintTypecheckChk.checked,
-            lintUnreachable:  lintUnreachChk.checked,
-            lintOrphaned:     lintOrphanedChk.checked,
-            lintSemantic:     lintSemanticChk ? lintSemanticChk.checked : true,
-            lintSmells:       lintSmellsChk ? lintSmellsChk.checked : true,
-        }));
-    }
-
-    themeSelect.addEventListener('change', applySettings);
-    fontSizeSelect.addEventListener('change', applySettings);
-    wrapCheckbox.addEventListener('change', applySettings);
-    minimapCheckbox.addEventListener('change', applySettings);
-    tabSizeSelect.addEventListener('change', applySettings);
-    autosaveSelect.addEventListener('change', applySettings);
-    lintTypecheckChk.addEventListener('change', applySettings);
-    lintUnreachChk.addEventListener('change', applySettings);
-    lintOrphanedChk.addEventListener('change', applySettings);
-    if (lintSemanticChk) lintSemanticChk.addEventListener('change', applySettings);
-    if (lintSmellsChk)   lintSmellsChk.addEventListener('change', applySettings);
-
-    return applySettings;
+        const typeWarnings = settings.lintTypecheck ? typeCheckDiagnostics(ast, sprite) : [];
+        const semanticWarnings = settings.lintSemantic ? semanticDiagnostics(analysis) : [];
+        const smellHints = settings.lintSmells ? smellDiagnostics(analysis) : [];
+        const S = monaco.MarkerSeverity;
+        monaco.editor.setModelMarkers(model, LANG_ID, [
+            ...parseErrors.map(e => toMarker(e, S.Error, model)),
+            ...lintWarnings.map(w => toMarker(w, S.Warning, model, true)),
+            ...typeWarnings.map(w => toMarker(w, S.Warning, model)),
+            ...semanticWarnings.map(w => toMarker(w, S.Warning, model)),
+            ...smellHints.map(w => toMarker(w, S.Info, model)),
+        ]);
+    } catch (_) {}
+    renderProblems();
+    refreshSyncState();
 }
 
-export function importFromLocalFile() {
-    const inp = document.createElement('input');
-    inp.type = 'file';
-    inp.accept = '.sp,.sdsl,.txt';
-    inp.onchange = e => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const rdr = new FileReader();
-        rdr.onload = ev => {
-            if (monacoEditor) {
-                monacoEditor.setValue(ev.target.result);
-                updateStatus(`Loaded file: ${file.name}`);
-            }
-        };
-        rdr.readAsText(file);
-    };
-    inp.click();
-}
-
-export function exportToLocalFile() {
+export function compileAndInject({ minify = false } = {}) {
     if (!monacoEditor) return;
-    const code = monacoEditor.getValue();
-    const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const name = currentSpriteContext === '__stage__' ? 'Stage' : (currentSpriteContext || 'project');
-    a.download = `${name}.sp`;
-    a.href = url;
-    a.click();
-    URL.revokeObjectURL(url);
-    updateStatus(`Exported ${name}.sp`);
-}
+    if (editingHeader) { checkCurrentHeader(); return; }
+    if (!currentVM) { toast('Scratch isn’t connected yet. Try again in a moment.', 'error'); return; }
+    const sprite = currentSpriteContext;
+    if (!sprite) { toast('Open a sprite to compile it', 'warn'); return; }
+    const model = monacoEditor.getModel();
+    const source = model.getValue();
+    setStatusMessage(minify ? 'Compiling (minified)…' : 'Compiling…');
 
-function loadExample(name) {
-    if (!monacoEditor) return;
-    let code = '';
-    if (name === 'hello-world') {
-        code = `// Hello World\n// A basic script: say hello when the flag is clicked.\n\non flag {\n    say("Hello, World!")\n    wait(2)\n    say("I'm a Scratch sprite!")\n    wait(2)\n    say("")\n}\n`;
-    } else if (name === 'chase-mouse') {
-        code = `// Chase Mouse\n// Point towards mouse and move forever\n\non flag {\n    forever {\n        point_towards("_mouse_")\n        move(5)\n    }\n}\n`;
-    } else if (name === 'bounce-loop') {
-        code = `// Bounce Loop\n// Move and bounce off edges forever\n\non flag {\n    forever {\n        move(10)\n        if_on_edge_bounce()\n    }\n}\n`;
-    }
-    if (code) {
-        monacoEditor.setValue(code);
-        updateStatus(`Loaded example: ${name}`);
-    }
-}
-
-function populateSpriteDropdown() {
-    renderSidebarSprites();
-}
-
-export function openOverlay() {
-    const overlay = document.getElementById('scratchpiler-overlay');
-    overlay.style.display = 'flex';
-    overlayVisible = true;
-    renderSidebarSprites();
-    if (!currentSpriteContext) {
-        currentSpriteContext = '__stage__';
-    }
-    selectSidebarSprite(currentSpriteContext);
-    const trigger = document.getElementById('scratchpiler-trigger');
-    if (trigger) trigger.style.display = 'none';
-    if (monacoEditor) { monacoEditor.layout(); monacoEditor.focus(); }
-}
-
-export function closeOverlay() {
-    saveToLocalStorage(currentSpriteContext);
-    document.getElementById('scratchpiler-overlay').style.display = 'none';
-    overlayVisible = false;
-    const trigger = document.getElementById('scratchpiler-trigger');
-    if (trigger) trigger.style.display = '';
-}
-
-function toggleOverlay() {
-    if (overlayVisible) closeOverlay(); else openOverlay();
-}
-
-function startDebugPoll(vm) {
-    if (debugPollInterval) return;
-    debugPollInterval = setInterval(() => {
-        const bar = document.getElementById('sp-debug-bar');
-        if (!bar) return;
-        if (!overlayVisible) { bar.style.display = 'none'; return; }
-        const stage = vm.runtime.targets.find(t => t.isStage);
-        if (!stage) return;
-        const atV = Object.values(stage.variables).find(v => v.name === '__dbg_at__');
-        bar.style.display = (atV && atV.value == 1) ? 'flex' : 'none';
-    }, 100);
-}
-
-function resumeDebugger() {
-    if (!currentVM) return;
-    const stage = currentVM.runtime.targets.find(t => t.isStage);
-    if (!stage) return;
-    const resumeV = Object.values(stage.variables).find(v => v.name === '__dbg_resume__');
-    if (resumeV) resumeV.value = 1;
-}
-
-// [J] Hotkeys
-
-function registerHotkeys() {
-    document.addEventListener('keydown', e => {
-        if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyM') {
-            e.preventDefault(); e.stopPropagation(); toggleOverlay();
-        } else if (e.key === 'Escape' && spPickerOpen) {
-            e.preventDefault(); e.stopPropagation(); closeSpritePicker();
-        } else if (e.key === 'Escape' && searchNowhereOpen) {
-            e.preventDefault(); e.stopPropagation(); closeSearchNowhere();
-        } else if (e.key === 'Escape' && overlayVisible) {
-            e.preventDefault(); e.stopPropagation(); closeOverlay();
-        } else if ((e.ctrlKey || e.metaKey) && (e.key === 'Enter' || e.key === 's') && overlayVisible) {
-            e.preventDefault(); e.stopPropagation();
-            document.getElementById('scratchpiler-compile-btn').click();
-        } else if ((e.ctrlKey || e.metaKey) && e.key === 'p' && overlayVisible) {
-            e.preventDefault(); e.stopPropagation();
-            if (spPickerOpen) closeSpritePicker(); else openSpritePicker();
-        }
-    }, true);
-
-    // Double-Shift opens/closes Search Nowhere (⇧⇧)
-    let _snLastShift = 0;
-    document.addEventListener('keyup', e => {
-        if (e.key === 'Shift' && !e.altKey && !e.ctrlKey && !e.metaKey) {
-            const now = Date.now();
-            if (now - _snLastShift < 400) {
-                _snLastShift = 0;
-                if (searchNowhereOpen) closeSearchNowhere(); else openSearchNowhere();
-            } else {
-                _snLastShift = now;
-            }
-        }
-    }, true);
-}
-
-// [K] Persistence
-
-const spSettings = {
-    tabSize:         4,
-    autosave:        1000,
-    lintTypecheck:   true,
-    lintUnreachable: true,
-    lintOrphaned:    true,
-    lintSemantic:    true,
-    lintSmells:      true,
-};
-
-let saveTimer = null;
-let lintTimer = null;
-export let currentSpriteContext = null; // track current sprite for per-sprite save/load
-
-// ===== Header editing (#include) =====
-let editingHeader = null; // header name while the editor shows a header, else null
-
-function setCompileBtnLabel() {
-    const btn = document.getElementById('scratchpiler-compile-btn');
-    if (btn) btn.innerHTML = editingHeader ? 'Check Header' : 'Compile &amp; Inject';
-}
-
-function exitHeaderEditing() {
-    if (!editingHeader) return;
-    try { writeHeader(editingHeader, monacoEditor ? monacoEditor.getValue() : ''); } catch (_) {}
-    editingHeader = null;
-    setCompileBtnLabel();
-    renderHeadersList();
-}
-
-function openHeaderInEditor(name) {
-    if (!monacoEditor) return;
-    if (editingHeader && editingHeader !== name) {
-        try { writeHeader(editingHeader, monacoEditor.getValue()); } catch (_) {}
-    } else if (!editingHeader) {
-        saveToLocalStorage(currentSpriteContext);
-    }
-    editingHeader = name;
-    monacoEditor.setValue(readHeader(name) ?? '');
-    setCompileBtnLabel();
-    updateStatus(`Editing ${name} — pick a sprite in the Explorer to go back`);
-    renderHeadersList();
-}
-
-function renderHeadersList() {
-    const list = document.getElementById('sp-headers-list');
-    if (!list) return;
-    list.innerHTML = '';
-    const names = listHeaders();
-    if (names.length === 0) {
-        const empty = document.createElement('div');
-        empty.style.cssText = 'font-size:11px;color:#6b8db5;padding:6px 2px;';
-        empty.textContent = 'No headers yet.';
-        list.appendChild(empty);
+    let result;
+    try {
+        result = compileSourceWithHeaders(source, currentVM, sprite);
+    } catch (e) {
+        console.error('[scratchpiler] compile exception', e);
+        logToOutput(`Compiler crashed: ${e.message}`, 'error');
+        toast('The compiler crashed. The details are in Output.', 'error');
+        flashCompileBtn(false);
         return;
     }
-    for (const name of names) {
-        const item = document.createElement('div');
-        item.className = 'sp-sidebar-item' + (editingHeader === name ? ' active' : '');
-        item.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;';
-        const label = document.createElement('span');
-        label.textContent = name;
-        label.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-        const renameBtn = document.createElement('button');
-        renameBtn.textContent = '✎';
-        renameBtn.title = 'Rename';
-        renameBtn.style.cssText = 'background:none;border:none;color:inherit;cursor:pointer;padding:0 2px;';
-        const delBtn = document.createElement('button');
-        delBtn.textContent = '✕';
-        delBtn.title = 'Delete';
-        delBtn.style.cssText = renameBtn.style.cssText;
-        item.appendChild(label); item.appendChild(renameBtn); item.appendChild(delBtn);
-        item.addEventListener('click', () => openHeaderInEditor(name));
-        renameBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showCreateDialog(`Rename ${name}`, (newName) => {
-                if (!newName.endsWith('.h')) newName += '.h';
-                try { renameHeader(name, newName); } catch (err) { updateStatus(err.message); return; }
-                if (editingHeader === name) editingHeader = newName;
-                renderHeadersList();
-            });
-        });
-        delBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (!confirm(`Delete header ${name}? Projects that #include it will stop compiling.`)) return;
-            deleteHeader(name);
-            if (editingHeader === name) {
-                editingHeader = null;
-                setCompileBtnLabel();
-                if (monacoEditor) loadFromLocalStorage(currentSpriteContext);
-            }
-            renderHeadersList();
-        });
-        list.appendChild(item);
+
+    monaco.editor.setModelMarkers(model, LANG_ID, result.errors.map(e => toMarker(e, monaco.MarkerSeverity.Error, model)));
+    if (result.errors.length > 0) {
+        result.errors.forEach(er => logToOutput(`${spriteLabel(sprite)}, line ${er.line}:${er.col}: ${er.message}`, 'error'));
+        setBottomPanel(true, 'problems');
+        toast(`${plural(result.errors.length, 'error')} in ${spriteLabel(sprite)}. Nothing was injected.`, 'error');
+        flashCompileBtn(false);
+        return;
     }
+
+    if (minify) {
+        const renamed = minifyBlocks(result.blocks, currentVM, sprite);
+        logToOutput(`Minified: ${plural(renamed, 'variable')} renamed to gibberish`, 'ok');
+    }
+    injectBlocks(result.blocks, currentVM, sprite, result.headerRoots);
+
+    const blocks = Object.values(result.blocks);
+    const scripts = blocks.filter(b => b.topLevel && !b.shadow).length;
+    const message = `Injected ${spriteLabel(sprite)}: ${plural(scripts, 'script')} (${plural(blocks.length, 'block')})${minify ? ', minified' : ''}`;
+    lastInjectAt = Date.now();
+    recordInjectedSource(sprite, source);
+    saveFile({ kind: 'sprite', name: sprite });
+    flashCompileBtn(true);
+    toast(message);
+    logToOutput(message, 'ok');
+    reindex(currentVM);
+    updateLastInjectLabel();
+    refreshSyncState();
+    renderVariablesPanel();
 }
 
-function setupHeadersPanel() {
-    document.getElementById('sp-headers-new')?.addEventListener('click', () => {
-        showCreateDialog('New header name (e.g. utils.h)', (name) => {
-            if (!name.endsWith('.h')) name += '.h';
-            try { writeHeader(name, `// ${name} — define / scratchroutine / enum / struct declarations\n`); }
-            catch (err) { updateStatus(err.message); return; }
-            renderHeadersList();
-            openHeaderInEditor(name);
-        });
-    });
-    renderHeadersList();
-}
-
-// Check a header in place: save it, then validate via a synthetic #include.
 function checkCurrentHeader() {
     const name = editingHeader;
-    try { writeHeader(name, monacoEditor.getValue()); }
-    catch (err) { updateStatus(err.message); flashCompileBtn(false); return; }
-    const ex = expand(`#include <${name}>`);
-    const markers = ex.errors.map(e => {
-        // errors carry `name.h:LINE[:COL]: message` — point markers at the real header line
+    const model = monacoEditor.getModel();
+    try { writeHeader(name, model.getValue()); }
+    catch (err) { toast(err.message, 'error'); flashCompileBtn(false); return; }
+    const expanded = expand(`#include <${name}>`);
+    const markers = expanded.errors.map(e => {
         const m = e.message.match(/^[\w-]+\.h:(\d+)(?::(\d+))?:? ?(.*)$/s);
-        return {
-            startLineNumber: m ? +m[1] : 1, startColumn: m && m[2] ? +m[2] : 1,
-            endLineNumber: m ? +m[1] : 1, endColumn: (m && m[2] ? +m[2] : 1) + 40,
-            message: m ? m[3] : e.message,
-            severity: monaco.MarkerSeverity.Error,
-        };
+        const line = m ? +m[1] : 1, col = m && m[2] ? +m[2] : 1;
+        return { startLineNumber: line, startColumn: col, endLineNumber: line, endColumn: col + 40, message: m ? m[3] : e.message, severity: monaco.MarkerSeverity.Error };
     });
-    monaco.editor.setModelMarkers(monacoEditor.getModel(), LANG_ID, markers);
-    if (ex.errors.length > 0) {
-        ex.errors.forEach(er => logToOutput(`${name}: ${er.message}`, 'error'));
-        updateStatus(`${ex.errors.length} problem(s) in ${name}`);
+    monaco.editor.setModelMarkers(model, LANG_ID, markers);
+    if (expanded.errors.length) {
+        expanded.errors.forEach(er => logToOutput(`${name}: ${er.message}`, 'error'));
+        setBottomPanel(true, 'problems');
+        toast(`${plural(expanded.errors.length, 'problem')} in ${name}`, 'error');
         flashCompileBtn(false);
     } else {
-        updateStatus(`✓ ${name} saved — no problems`);
+        toast(`Saved ${name}. No problems found.`);
         flashCompileBtn(true);
     }
 }
 
-function saveToLocalStorage(spriteName) {
-    if (!monacoEditor) return;
-    // Header-editing mode: the editor holds header text — save it to header
-    // storage instead (covers autosave, close, and search-replace paths).
-    if (editingHeader) {
-        try { writeHeader(editingHeader, monacoEditor.getValue()); } catch (_) {}
-        return;
-    }
-    const key = spriteName ? `scratchpiler-content-${spriteName}` : LS_KEY;
-    const val = monacoEditor.getValue();
-    // Don't cache empty/whitespace-only content — it poisons future
-    // decompile attempts when the editor was set to '' before the VM loaded.
-    if (!val || !val.trim()) return;
-    try { localStorage.setItem(key, val); } catch {}
-}
-
-function loadFromLocalStorage(spriteName) {
-    if (!monacoEditor) return;
-    const key = spriteName ? `scratchpiler-content-${spriteName}` : LS_KEY;
-    try {
-        const v = localStorage.getItem(key);
-        // Use cached value ONLY if it contains actual content.
-        // Empty/whitespace-only strings are treated as "no cache" so
-        // we always attempt a live decompile from the VM.
-        if (v !== null && v.trim() !== '') {
-            monacoEditor.setValue(v);
-        } else {
-            // No cached content — decompile live from the VM
-            if (currentVM) {
-                try {
-                    const code = decompile(currentVM, spriteName);
-                    monacoEditor.setValue(code);
-                    updateStatus(`Decompiled "${spriteName === '__stage__' ? 'Stage' : spriteName}"`);
-                } catch (e) {
-                    monacoEditor.setValue('');
-                    console.warn('[scratchpiler] decompile failed for', spriteName, e);
-                }
-            } else {
-                monacoEditor.setValue('');
-            }
-        }
-    } catch (e) {
-        monacoEditor.setValue('');
-    }
-}
-
-export function updateStatus(text) {
-    const el = document.getElementById('scratchpiler-status');
-    if (!el) return;
-    let prefix = '> ';
-    if (/^(error|warning)/i.test(text)) prefix = '! ';
-    else if (/^(injected|imported|index:|created)/i.test(text)) prefix = '✓ ';
-    el.textContent = prefix + text;
-}
-
-// Shift+Compile hidden minifier — renames all variable/list names to 8-char random strings
 function minifyBlocks(blocks, vm, spriteName) {
     const CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     const randName = () => Array.from({ length: 8 }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join('');
-
     const nameMap = new Map();
     for (const block of Object.values(blocks)) {
         for (const key of ['VARIABLE', 'LIST']) {
@@ -1053,238 +550,480 @@ function minifyBlocks(blocks, vm, spriteName) {
             if (f && !nameMap.has(f.value)) nameMap.set(f.value, randName());
         }
     }
-
     for (const block of Object.values(blocks)) {
         for (const key of ['VARIABLE', 'LIST']) {
             const f = block.fields?.[key];
             if (f && nameMap.has(f.value)) f.value = nameMap.get(f.value);
         }
     }
-
     const stage = vm.runtime.targets.find(t => t.isStage);
-    const sprite = spriteName !== '__stage__'
-        ? vm.runtime.targets.find(t => t.sprite?.name === spriteName)
-        : null;
-
+    const sprite = spriteName !== '__stage__' ? vm.runtime.targets.find(t => t.sprite?.name === spriteName) : null;
     for (const [realName, obfName] of nameMap) {
         for (const target of [sprite, stage].filter(Boolean)) {
             const vmVar = Object.values(target.variables).find(v => v.name === realName);
             if (vmVar) vmVar.name = obfName;
         }
     }
-
     return nameMap.size;
 }
 
-// [K2] Menu + Variable Creation
-
-let activeMenu = null;
-let activeContextMenu = null;
-let dialogCallback = null;
-
-function showContextMenu(items, x, y) {
-    if (activeContextMenu && activeContextMenu.parentNode) activeContextMenu.remove();
-    const overlay = document.getElementById('scratchpiler-overlay');
-    if (!overlay) return;
-    const dropdown = document.createElement('div');
-    dropdown.className = 'sp-dropdown sp-context-menu';
-    dropdown.style.left = x + 'px';
-    dropdown.style.top  = y + 'px';
-    for (const item of items) {
-        if (item === '-') {
-            const sep = document.createElement('div');
-            sep.className = 'sp-dropdown-sep';
-            dropdown.appendChild(sep);
-        } else {
-            const el = document.createElement('button');
-            el.className = 'sp-dropdown-item';
-            el.textContent = item.label;
-            if (item.danger) el.style.color = '#ff7070';
-            el.addEventListener('click', () => { closeContextMenu(); item.action(); });
-            dropdown.appendChild(el);
-        }
+export function pullFromScratch() {
+    if (editingHeader) { toast('Headers are stored in your userscript manager, not in Scratch', 'warn'); return; }
+    if (!currentVM) { toast('Scratch isn’t connected yet. Try again in a moment.', 'error'); return; }
+    const sprite = currentSpriteContext;
+    if (!sprite || !monacoEditor) return;
+    try {
+        const code = decompile(currentVM, sprite);
+        replaceModelText(monacoEditor.getModel(), code);
+        recordInjectedSource(sprite, code);
+        saveFile({ kind: 'sprite', name: sprite });
+        refreshSyncState();
+        toast(`Pulled ${spriteLabel(sprite)} from Scratch. Press Ctrl+Z to undo.`);
+        logToOutput(`Decompiled ${spriteLabel(sprite)} from the Scratch VM`, 'ok');
+    } catch (e) {
+        logToOutput(`Couldn’t decompile ${spriteLabel(sprite)}: ${e.message}`, 'error');
+        toast(`Couldn’t pull ${spriteLabel(sprite)} from Scratch. The details are in Output.`, 'error');
     }
-    overlay.appendChild(dropdown);
-    activeContextMenu = dropdown;
-    setTimeout(() => {
-        const onOutside = e => {
-            if (!dropdown.contains(e.target)) {
-                closeContextMenu();
-                document.removeEventListener('mousedown', onOutside);
-            }
-        };
-        document.addEventListener('mousedown', onOutside);
-    }, 0);
 }
 
-function closeContextMenu() {
-    if (activeContextMenu && activeContextMenu.parentNode) activeContextMenu.remove();
-    activeContextMenu = null;
+export function formatDocument() {
+    monacoEditor?.getAction('editor.action.formatDocument')?.run();
 }
 
-function doDeleteVariable(varId) {
-    if (!currentVM) { updateStatus('Error: VM not available'); return; }
-    let target = null;
-    for (const t of currentVM.runtime.targets) {
-        if (t.variables[varId]) { target = t; break; }
-    }
-    if (!target || !target.variables[varId]) { updateStatus('Error: variable not found'); return; }
-    const varName = target.variables[varId].name;
-    if (typeof target.deleteVariable === 'function') {
-        target.deleteVariable(varId);
-    } else {
-        delete target.variables[varId];
-    }
+export function reindexProject() {
+    if (!currentVM) { toast('Scratch isn’t connected yet. Try again in a moment.', 'error'); return; }
     reindex(currentVM);
-    updateSpriteDetails(currentSpriteContext);
-    updateStatus(`Deleted "${varName}"`);
+    renderExplorer();
+    renderVariablesPanel();
+    const vars = scratchIndex.globalVariables.length + Object.values(scratchIndex.spriteVariables).reduce((n, v) => n + v.length, 0);
+    const message = `Re-indexed ${plural(scratchIndex.sprites.length + 1, 'sprite')} and ${plural(vars, 'variable')}`;
+    toast(message);
+    logToOutput(message, 'info');
 }
 
-function openRenameDialog(v) {
-    const dialog = document.getElementById('scratchpiler-dialog');
-    if (!dialog) return;
-    document.getElementById('scratchpiler-dialog-title').textContent = `Rename "${v.name}"`;
-    const okBtn = document.getElementById('scratchpiler-dialog-ok');
-    if (okBtn) okBtn.textContent = 'Rename';
-    const input = document.getElementById('scratchpiler-dialog-input');
-    input.value = v.name;
-    dialog.style.display = 'flex';
-    setTimeout(() => { input.focus(); input.select(); }, 0);
-    dialogCallback = newName => {
-        dialog.style.display = 'none';
-        dialogCallback = null;
-        if (okBtn) okBtn.textContent = 'Create';
-        if (!newName || !newName.trim()) return;
-        newName = newName.trim();
-        if (!currentVM) { updateStatus('Error: VM not available'); return; }
-        let target = null;
-        for (const t of currentVM.runtime.targets) {
-            if (t.variables[v.id]) { target = t; break; }
+function reloadAllSprites() {
+    const sprites = [...models.values()].map(e => e.file).filter(f => f.kind === 'sprite');
+    const active = activeFile();
+    sprites.filter(f => !active || fileKey(f) !== fileKey(active)).forEach(disposeModel);
+    if (active?.kind === 'sprite') reloadSprite(active.name);
+    else refreshSyncState();
+}
+
+export function clearSavedCode() {
+    const cleared = removeLocalStorageKeys(k => k.startsWith('scratchpiler-content-') || k.startsWith(`${LS_INJ_KEY}-`) || k === LS_KEY);
+    forgetInjectedSources();
+    injectedBlockIds.clear();
+    reloadAllSprites();
+    toast(`Cleared ${plural(cleared, 'saved entry', 'saved entries')}. Sprites are decompiled fresh from Scratch.`);
+    logToOutput('Cleared saved code from this browser', 'info');
+}
+
+export function resetAllChanges() {
+    if (!currentVM) { toast('Scratch isn’t connected yet. Try again in a moment.', 'error'); return; }
+    let removed = 0;
+    for (const [sprite, ids] of injectedBlockIds.entries()) {
+        const target = sprite === '__stage__'
+            ? currentVM.runtime.targets.find(t => t.isStage)
+            : currentVM.runtime.targets.find(t => !t.isStage && t.sprite.name === sprite);
+        if (!target) continue;
+        for (const id of ids) {
+            try { target.blocks.deleteBlock(id); removed++; } catch (_) {}
         }
-        if (!target) { updateStatus('Error: variable not found'); return; }
-        const oldName = target.variables[v.id].name;
-        target.variables[v.id].name = newName;
-        // Update all block field references
-        for (const t of currentVM.runtime.targets) {
-            for (const block of Object.values(t.blocks._blocks || {})) {
-                for (const field of Object.values(block.fields || {})) {
-                    if (field.id === v.id) field.value = newName;
-                }
-            }
-        }
-        reindex(currentVM);
-        updateSpriteDetails(currentSpriteContext);
-        updateStatus(`Renamed "${oldName}" → "${newName}"`);
+    }
+    injectedBlockIds.clear();
+    removeLocalStorageKeys(k => k.startsWith('scratchpiler-content-') || k.startsWith(`${LS_INJ_KEY}-`) || k === LS_KEY);
+    forgetInjectedSources();
+    try { currentVM.setEditingTarget(currentVM.editingTarget.id); } catch (_) {}
+    reindex(currentVM);
+    reloadAllSprites();
+    const message = `Removed ${plural(removed, 'injected script')} and cleared saved code`;
+    toast(message, 'warn');
+    logToOutput(message, 'warn');
+}
+
+export function rewriteVariableReferences(oldName, newName, { global, sprite }) {
+    const needle = `[${oldName}]`, replacement = `[${newName}]`;
+    let refs = 0, files = 0;
+    for (const s of global ? allSpriteNames() : [sprite]) {
+        const model = modelFor({ kind: 'sprite', name: s });
+        const text = model ? model.getValue() : savedSpriteCode(s);
+        const injected = injectedSource(s);
+        if (injected?.includes(needle)) recordInjectedSource(s, injected.split(needle).join(replacement));
+        if (!text || !text.includes(needle)) continue;
+        refs += text.split(needle).length - 1;
+        files++;
+        const next = text.split(needle).join(replacement);
+        if (model) replaceModelText(model, next); else writeSavedSpriteCode(s, next);
+    }
+    refreshSyncState();
+    return { refs, files };
+}
+
+export function importFromLocalFile() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.sdsl,.sp,.txt';
+    input.onchange = e => {
+        const file = e.target.files[0];
+        if (!file || !monacoEditor) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            replaceModelText(monacoEditor.getModel(), ev.target.result);
+            toast(`Opened ${file.name}. Press Ctrl+Z to undo.`);
+        };
+        reader.readAsText(file);
     };
+    input.click();
 }
 
-function openInitListDialog(v) {
-    const dialog = document.getElementById('scratchpiler-dialog');
-    if (!dialog) return;
-    document.getElementById('scratchpiler-dialog-title').textContent = `Initialize [${v.name}] (comma-separated)`;
-    const okBtn = document.getElementById('scratchpiler-dialog-ok');
-    if (okBtn) okBtn.textContent = 'Set';
-    const input = document.getElementById('scratchpiler-dialog-input');
-    input.value = '';
-    input.placeholder = 'e.g. 1, 2, 3';
-    dialog.style.display = 'flex';
-    setTimeout(() => input.focus(), 0);
-    dialogCallback = csv => {
-        dialog.style.display = 'none';
-        dialogCallback = null;
-        if (okBtn) okBtn.textContent = 'Create';
-        input.placeholder = '';
-        if (!currentVM) return;
-        let target = null;
-        for (const t of currentVM.runtime.targets) {
-            if (t.variables[v.id]) { target = t; break; }
-        }
-        if (!target) return;
-        const items = (csv || '').split(',').map(s => s.trim()).filter(s => s !== '');
-        target.variables[v.id].value = items;
-        updateStatus(`Initialized [${v.name}] with ${items.length} item(s)`);
+export function exportToLocalFile() {
+    if (!monacoEditor) return;
+    const file = activeFile();
+    const name = file?.kind === 'header' ? file.name : `${spriteLabel(file?.name) || 'project'}.sdsl`;
+    const url = URL.createObjectURL(new Blob([monacoEditor.getValue()], { type: 'text/plain;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.download = name;
+    a.href = url;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`Saved ${name}`);
+}
+
+const EXAMPLES = {
+    'Hello world': `// Hello World\n// Say hello when the green flag is clicked.\n\non flag {\n    say("Hello, World!")\n    wait(2)\n    say("I'm a Scratch sprite!")\n    wait(2)\n    say("")\n}\n`,
+    'Chase mouse': `// Chase Mouse\n// Point towards the mouse and move forever.\n\non flag {\n    forever {\n        pointTowards("_mouse_")\n        move(5)\n    }\n}\n`,
+    'Bounce loop': `// Bounce Loop\n// Move and bounce off the edges forever.\n\non flag {\n    forever {\n        move(10)\n        bounce()\n    }\n}\n`,
+};
+
+function loadExample(name) {
+    if (!monacoEditor?.getModel()) { toast('Open a sprite first', 'warn'); return; }
+    replaceModelText(monacoEditor.getModel(), EXAMPLES[name]);
+    toast(`Loaded the “${name}” example. Press Ctrl+Z to undo.`);
+}
+
+function clearEditor() {
+    if (!monacoEditor?.getModel()) return;
+    replaceModelText(monacoEditor.getModel(), '');
+    toast('Cleared the editor', '', { label: 'Undo', run: () => monacoEditor.trigger('scratchpiler', 'undo') });
+}
+
+function brandMenuItems() {
+    return [
+        { label: 'File' },
+        { text: 'Open .sdsl file…', run: importFromLocalFile },
+        { text: 'Save as .sdsl file…', keys: 'Ctrl Shift S', run: exportToLocalFile },
+        { text: 'Clear editor', run: clearEditor },
+        { label: 'Examples' },
+        ...Object.keys(EXAMPLES).map(name => ({ text: name, run: () => loadExample(name) })),
+        '-',
+        { text: 'Keyboard shortcuts', keys: 'Ctrl /', run: () => openScrim('sp-keys-scrim') },
+        { text: 'Documentation', run: () => window.open('https://github.com/Scratchpiler/scratchpiler/tree/main/docs', '_blank') },
+        { text: 'Close Scratchpiler', keys: 'Esc', run: closeOverlay },
+    ];
+}
+
+export function compileMenuItems() {
+    return [
+        { text: 'Compile & inject', keys: 'Ctrl Enter', disabled: !!editingHeader, run: () => compileAndInject() },
+        { text: 'Compile & inject minified', keys: 'Ctrl Shift Enter', disabled: !!editingHeader, run: () => compileAndInject({ minify: true }) },
+        '-',
+        { text: 'Pull code from Scratch', keys: 'Alt Shift P', disabled: !!editingHeader, run: pullFromScratch },
+        { text: 'Format document', keys: 'Alt Shift F', run: formatDocument },
+    ];
+}
+
+function setupTopBar() {
+    $('scratchpiler-compile-btn').addEventListener('click', e => compileAndInject({ minify: e.shiftKey }));
+    $('sp-run-more').addEventListener('click', () => {
+        if (isMenuOpen()) { closeMenu(); return; }
+        showMenuBelow($('sp-run'), compileMenuItems(), true);
+    });
+    $('sp-brand').addEventListener('click', () => {
+        if (isMenuOpen()) { closeMenu(); return; }
+        showMenuBelow($('sp-brand'), brandMenuItems());
+    });
+    $('scratchpiler-close-btn').addEventListener('click', closeOverlay);
+    $('sp-debug-resume-btn').addEventListener('click', resumeDebugger);
+    $('sp-sb-cursor').addEventListener('click', () => openPalette(':'));
+}
+
+function applySettings() {
+    const tabSize = parseInt(settings.tabSize, 10) || 4;
+    $('sp-setting-theme').value = settings.theme;
+    $('sp-setting-fontsize').textContent = settings.fontSize;
+    $('sp-setting-wrap').checked = settings.wrap;
+    $('sp-setting-minimap').checked = settings.minimap;
+    $('sp-setting-autosave').value = settings.autosave;
+    $('sp-setting-lint-typecheck').checked = settings.lintTypecheck;
+    $('sp-setting-lint-unreachable').checked = settings.lintUnreachable;
+    $('sp-setting-lint-orphaned').checked = settings.lintOrphaned;
+    $('sp-setting-lint-semantic').checked = settings.lintSemantic;
+    $('sp-setting-lint-smells').checked = settings.lintSmells;
+    document.querySelectorAll('#sp-setting-tabsize button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.value === String(tabSize))));
+    $('sp-sb-indent').textContent = `Spaces: ${tabSize}`;
+    if (!monacoEditor) return;
+    monaco.editor.setTheme(settings.theme);
+    monacoEditor.updateOptions({
+        fontSize: parseInt(settings.fontSize, 10) || 14,
+        wordWrap: settings.wrap ? 'on' : 'off',
+        minimap: { enabled: settings.minimap },
+    });
+    for (const { model } of models.values()) model.updateOptions({ tabSize, insertSpaces: true });
+}
+
+function updateSetting(key, value) {
+    settings[key] = value;
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
+    applySettings();
+    if (key.startsWith('lint')) scheduleLint(0);
+}
+
+export function toggleSetting(key) {
+    updateSetting(key, !settings[key]);
+}
+
+function setupSettings() {
+    $('sp-setting-theme').addEventListener('change', e => updateSetting('theme', e.target.value));
+    $('sp-setting-autosave').addEventListener('change', e => updateSetting('autosave', e.target.value));
+    const step = d => updateSetting('fontSize', String(Math.min(24, Math.max(10, (parseInt(settings.fontSize, 10) || 14) + d))));
+    $('sp-fontsize-down').addEventListener('click', () => step(-1));
+    $('sp-fontsize-up').addEventListener('click', () => step(1));
+    $('sp-setting-tabsize').addEventListener('click', e => {
+        const b = e.target.closest('button[data-value]');
+        if (b) updateSetting('tabSize', b.dataset.value);
+    });
+    const toggles = {
+        'sp-setting-wrap': 'wrap', 'sp-setting-minimap': 'minimap',
+        'sp-setting-lint-typecheck': 'lintTypecheck', 'sp-setting-lint-unreachable': 'lintUnreachable',
+        'sp-setting-lint-orphaned': 'lintOrphaned', 'sp-setting-lint-semantic': 'lintSemantic', 'sp-setting-lint-smells': 'lintSmells',
     };
+    for (const [id, key] of Object.entries(toggles)) $(id).addEventListener('change', e => updateSetting(key, e.target.checked));
+
+    $('sp-fix-reindex').addEventListener('click', reindexProject);
+    $('sp-fix-clear-cache').addEventListener('click', clearSavedCode);
+    const reset = $('sp-fix-reset-all');
+    const RESET_COPY = { title: $('sp-reset-title').textContent, desc: $('sp-reset-desc').textContent };
+    let disarmTimer = null;
+    const disarm = () => {
+        clearTimeout(disarmTimer);
+        reset.classList.remove('sp-armed');
+        $('sp-reset-title').textContent = RESET_COPY.title;
+        $('sp-reset-desc').textContent = RESET_COPY.desc;
+    };
+    reset.addEventListener('click', () => {
+        if (!reset.classList.contains('sp-armed')) {
+            reset.classList.add('sp-armed');
+            $('sp-reset-title').textContent = 'Click again to remove injected blocks';
+            $('sp-reset-desc').textContent = 'This can’t be undone from Scratchpiler.';
+            disarmTimer = setTimeout(disarm, 4000);
+            return;
+        }
+        disarm();
+        resetAllChanges();
+    });
+    applySettings();
 }
 
-function openMenu(btnId, items) {
+export function openOverlay() {
+    $('scratchpiler-overlay').style.display = 'block';
+    overlayVisible = true;
+    const trigger = $('scratchpiler-trigger');
+    if (trigger) trigger.style.display = 'none';
+    renderExplorer();
+    if (!activeFile()) selectSidebarSprite(currentSpriteContext || '__stage__');
+    monacoEditor?.layout();
+    monacoEditor?.focus();
+}
+
+export function closeOverlay() {
+    saveActiveFile();
     closeMenu();
-    const btn = document.getElementById(btnId);
-    const bar = document.getElementById('scratchpiler-menubar');
-    if (!btn || !bar) return;
-    btn.classList.add('sp-menu-active');
-    const dropdown = document.createElement('div');
-    dropdown.className = 'sp-dropdown';
-    dropdown.style.left = btn.offsetLeft + 'px';
-    for (const item of items) {
-        if (item === '-') {
-            const sep = document.createElement('div');
-            sep.className = 'sp-dropdown-sep';
-            dropdown.appendChild(sep);
-        } else {
-            const el = document.createElement('button');
-            el.className = 'sp-dropdown-item';
-            el.textContent = item.label;
-            el.addEventListener('click', () => { closeMenu(); item.action(); });
-            dropdown.appendChild(el);
+    closeScrims();
+    $('scratchpiler-overlay').style.display = 'none';
+    overlayVisible = false;
+    const trigger = $('scratchpiler-trigger');
+    if (trigger) trigger.style.display = '';
+}
+
+function toggleOverlay() {
+    if (overlayVisible) closeOverlay(); else openOverlay();
+}
+
+let runState = 'stopped';
+function tickRuntime() {
+    if (!currentVM || !overlayVisible) return;
+    const next = projectRunState(currentVM);
+    if (next !== runState) {
+        if (next === 'paused') {
+            logToOutput('Paused at a breakpoint', 'warn');
+            setDock(true);
+        } else if (runState === 'paused') {
+            logToOutput('Resumed', 'info');
         }
+        runState = next;
+        $('sp-debug-bar').classList.toggle('sp-on', runState === 'paused');
     }
-    bar.appendChild(dropdown);
-    activeMenu = { btnId, dropdown };
-    setTimeout(() => {
-        const onOutside = e => {
-            if (!dropdown.contains(e.target) && e.target.id !== btnId) {
-                closeMenu();
-                document.removeEventListener('mousedown', onOutside);
-            }
-        };
-        document.addEventListener('mousedown', onOutside);
-    }, 0);
+    $('sp-live-dot').className = 'sp-live-dot' + (runState === 'running' ? '' : ` sp-${runState}`);
+    tickVariablesPanel(runState);
+    updateExplorerLiveValues();
 }
 
-function closeMenu() {
-    if (!activeMenu) return;
-    const btn = document.getElementById(activeMenu.btnId);
-    if (btn) btn.classList.remove('sp-menu-active');
-    if (activeMenu.dropdown.parentNode) activeMenu.dropdown.remove();
-    activeMenu = null;
+function resumeDebugger() {
+    const stage = currentVM?.runtime.targets.find(t => t.isStage);
+    const resume = stage && Object.values(stage.variables).find(v => v.name === '__dbg_resume__');
+    if (resume) resume.value = 1;
 }
 
-function showCreateDialog(title, onConfirm) {
-    const dialog = document.getElementById('scratchpiler-dialog');
-    if (!dialog) return;
-    document.getElementById('scratchpiler-dialog-title').textContent = title;
-    const input = document.getElementById('scratchpiler-dialog-input');
-    input.value = '';
-    dialog.style.display = 'flex';
-    setTimeout(() => input.focus(), 0);
-    dialogCallback = name => {
-        dialog.style.display = 'none';
-        dialogCallback = null;
-        if (name && name.trim()) onConfirm(name.trim());
-    };
+const MONACO_WIDGETS_BY_CLASS = '.suggest-widget.visible, .find-widget.visible, .rename-box, .parameter-hints-widget.visible';
+const MONACO_WIDGETS_BY_VISIBILITY = '.quick-input-widget, .context-view';
+function monacoWidgetOpen() {
+    const container = $('scratchpiler-editor-container');
+    if (!container) return false;
+    if (container.querySelector(MONACO_WIDGETS_BY_CLASS)) return true;
+    if ([...container.querySelectorAll('.shadow-root-host')].some(host => host.shadowRoot?.querySelector('.monaco-menu'))) return true;
+    return [...container.querySelectorAll(MONACO_WIDGETS_BY_VISIBILITY)].some(el => el.getClientRects().length > 0);
+}
+const focusInEditor = () => $('scratchpiler-editor-container')?.contains(document.activeElement);
+const focusInField = () => {
+    const el = document.activeElement;
+    return el && $('scratchpiler-overlay').contains(el) && !focusInEditor() && el.matches('input, textarea, select');
+};
+
+function handleEscape(e) {
+    const stop = () => { e.preventDefault(); e.stopPropagation(); };
+    if (isMenuOpen()) { stop(); closeMenu(); return; }
+    if (isScrimOpen()) { stop(); closeScrims(); return; }
+    if (searchNowhereOpen) { stop(); closeSearchNowhere(); return; }
+    if (!overlayVisible || monacoWidgetOpen() || focusInField()) return;
+    stop();
+    closeOverlay();
 }
 
-function doCreateVariable(name, isGlobal, isList) {
-    if (!currentVM) { updateStatus('Error: VM not available'); return; }
-    const spriteName = currentSpriteContext;
-    const stage = currentVM.runtime.targets.find(t => t.isStage);
-    const target = (isGlobal || spriteName === '__stage__')
-        ? stage
-        : currentVM.runtime.targets.find(t => !t.isStage && t.sprite.name === spriteName);
-    if (!target) { updateStatus('Error: target not found'); return; }
-    const varType = isList ? 'list' : '';
-    const existing = Object.values(target.variables).find(v => v.name === name && v.type === varType);
-    if (existing) {
-        updateStatus(`Error: ${isList ? 'list' : 'variable'} "${name}" already exists`);
-        return;
+function registerHotkeys() {
+    const bindings = [
+        { when: e => e.key === 'Enter' && e.mod && !focusInField(), run: e => compileAndInject({ minify: e.shiftKey }) },
+        { when: e => e.lower === 's' && e.mod && !e.shiftKey, run: () => compileAndInject() },
+        { when: e => e.lower === 's' && e.mod && e.shiftKey, run: exportToLocalFile },
+        { when: e => e.lower === 'k' && e.mod && !e.shiftKey, run: () => openPalette('') },
+        { when: e => e.lower === 'p' && e.mod && e.shiftKey, run: () => openPalette('>') },
+        { when: e => e.lower === 'p' && e.mod && !e.shiftKey, run: () => openPalette('@') },
+        { when: e => e.lower === 'g' && e.mod && !focusInEditor(), run: () => openPalette(':') },
+        { when: e => e.lower === 'b' && e.mod && !e.shiftKey, run: toggleSidebar },
+        { when: e => e.lower === 'j' && e.mod && !e.shiftKey, run: () => setBottomPanel(!isBottomOpen()) },
+        { when: e => e.lower === 'v' && e.mod && e.shiftKey, run: () => setDock(!isDockOpen()) },
+        { when: e => e.lower === 'f' && e.mod && e.shiftKey, run: () => setView('search') },
+        { when: e => e.lower === 'e' && e.mod && e.shiftKey, run: () => setView('explorer') },
+        { when: e => e.lower === 'm' && e.mod && e.shiftKey, run: () => setBottomPanel(true, 'problems') },
+        { when: e => e.key === ',' && e.mod, run: () => setView('settings') },
+        { when: e => e.key === '/' && e.mod && !focusInEditor(), run: () => openScrim('sp-keys-scrim') },
+        { when: e => e.lower === 'p' && e.altKey && e.shiftKey && !e.mod, run: pullFromScratch },
+        { when: e => e.key === 'F8' && runState === 'paused', run: resumeDebugger },
+    ];
+
+    let shiftTaps = 0, lastShiftAt = 0;
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Shift') shiftTaps = 0;
+        if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyM') {
+            e.preventDefault(); e.stopPropagation(); toggleOverlay(); return;
+        }
+        if (e.key === 'Escape') { handleEscape(e); return; }
+        if (!overlayVisible || isScrimOpen() || searchNowhereOpen) return;
+        const info = { key: e.key, lower: e.key.toLowerCase(), mod: e.ctrlKey || e.metaKey, shiftKey: e.shiftKey, altKey: e.altKey };
+        const binding = bindings.find(b => b.when(info));
+        if (!binding) return;
+        e.preventDefault();
+        e.stopPropagation();
+        binding.run(info);
+    }, true);
+
+    document.addEventListener('keyup', e => {
+        if (e.key !== 'Shift' || e.altKey || e.ctrlKey || e.metaKey) return;
+        const now = Date.now();
+        shiftTaps = now - lastShiftAt < 400 ? shiftTaps + 1 : 1;
+        lastShiftAt = now;
+        if (shiftTaps >= 2) {
+            shiftTaps = 0;
+            if (searchNowhereOpen) closeSearchNowhere(); else openSearchNowhere();
+        }
+    }, true);
+}
+
+function createEditor() {
+    registerLanguage(monaco);
+    registerSemanticProviders(monaco, () => currentSpriteContext);
+
+    monacoEditor = monaco.editor.create($('scratchpiler-editor-container'), {
+        model: null,
+        theme: settings.theme,
+        'semanticHighlighting.enabled': true,
+        automaticLayout: true,
+        minimap: { enabled: settings.minimap },
+        fontSize: parseInt(settings.fontSize, 10) || 14,
+        fontFamily: EDITOR_FONT,
+        fontLigatures: false,
+        lineHeight: 1.6,
+        lineNumbers: 'on',
+        wordWrap: settings.wrap ? 'on' : 'off',
+        scrollBeyondLastLine: false,
+        padding: { top: 10 },
+        suggestOnTriggerCharacters: true,
+        quickSuggestions: true,
+        tabCompletion: 'on',
+        smoothScrolling: true,
+        cursorSmoothCaretAnimation: 'on',
+        cursorBlinking: 'smooth',
+        renderLineHighlight: 'all',
+        fixedOverflowWidgets: true,
+    });
+
+    document.fonts?.load(`13px ${EDITOR_FONT}`).then(() => monaco.editor.remeasureFonts()).catch(() => {});
+
+    monacoEditor.addAction({
+        id: 'scratchpiler.compile', label: 'Compile & inject',
+        contextMenuGroupId: '0_scratchpiler', contextMenuOrder: 1,
+        precondition: undefined, run: () => compileAndInject(),
+    });
+    monacoEditor.addAction({
+        id: 'scratchpiler.pull', label: 'Pull code from Scratch',
+        contextMenuGroupId: '0_scratchpiler', contextMenuOrder: 2,
+        run: pullFromScratch,
+    });
+
+    monacoEditor.onDidChangeCursorPosition(e => {
+        $('sp-sb-cursor').textContent = `Ln ${e.position.lineNumber}, Col ${e.position.column}`;
+    });
+
+    monacoEditor.onDidChangeModelContent(() => {
+        clearTimeout(saveTimer);
+        const delay = parseInt(settings.autosave, 10);
+        if (delay === 0) saveActiveFile();
+        else saveTimer = setTimeout(saveActiveFile, isFinite(delay) ? delay : 1000);
+        scheduleLint();
+    });
+
+    monaco.editor.onDidChangeMarkers(() => renderProblems());
+    applySettings();
+}
+
+function onVMFound(vm) {
+    currentVM = vm;
+    updateStatusBarVM('ok');
+    reindex(vm);
+    vm.on('targetsUpdate', () => { reindex(vm); if (overlayVisible) { renderExplorer(); renderVariablesPanel(); } });
+    vm.runtime.on('PROJECT_LOADED', () => {
+        removeLocalStorageKeys(k => k.startsWith(`${LS_INJ_KEY}-`));
+        forgetInjectedSources();
+        injectedBlockIds.clear();
+        reindex(vm);
+        if (overlayVisible) refreshSyncState();
+    });
+    setInterval(tickRuntime, 200);
+    if (overlayVisible && currentSpriteContext && !editingHeader && !spriteSource(currentSpriteContext).trim()) {
+        reloadSprite(currentSpriteContext);
+    } else if (overlayVisible) {
+        renderExplorer();
     }
-    target.createVariable(uid(), name, varType);
-    reindex(currentVM);
-    const scope = (isGlobal || spriteName === '__stage__') ? 'global' : 'local';
-    updateStatus(`Created ${scope} ${isList ? 'list' : 'variable'} "${name}"`);
 }
-
-// [N] Bootstrap
 
 export function bootstrap() {
     buildOverlayDOM();
@@ -1292,347 +1031,29 @@ export function bootstrap() {
     buildSearchNowhereDOM();
     registerHotkeys();
 
-    document.getElementById('scratchpiler-close-btn').addEventListener('click', closeOverlay);
-    document.getElementById('sp-debug-resume-btn').addEventListener('click', resumeDebugger);
-
-    document.getElementById('sp-menu-file').addEventListener('click', () => {
-        openMenu('sp-menu-file', [
-            { label: 'Import from active sprite', action: () => document.getElementById('scratchpiler-import-btn').click() },
-            { label: 'Compile & Inject (Ctrl+Enter)', action: () => document.getElementById('scratchpiler-compile-btn').click() },
-            '-',
-            { label: 'Open .sp file...', action: () => importFromLocalFile() },
-            { label: 'Save as .sp file...', action: () => exportToLocalFile() },
-            '-',
-            { label: 'Clear Editor', action: () => { if (confirm("Clear all editor content?")) monacoEditor.setValue(""); } }
-        ]);
-    });
-
-    document.getElementById('sp-menu-edit').addEventListener('click', () => {
-        openMenu('sp-menu-edit', [
-            { label: 'Format Document', action: () => monacoEditor.getAction('editor.action.formatDocument').run() },
-            { label: 'Find & Replace', action: () => {
-                const searchBtn = document.getElementById('sp-activity-search');
-                if (searchBtn) {
-                    const sidebar = document.getElementById('scratchpiler-sidebar');
-                    const panels = {
-                        explorer: document.getElementById('sp-panel-explorer'),
-                        search: document.getElementById('sp-panel-search'),
-                        settings: document.getElementById('sp-panel-settings'),
-                        fixes: document.getElementById('sp-panel-fixes')
-                    };
-                    const buttons = {
-                        explorer: document.getElementById('sp-activity-explorer'),
-                        search: searchBtn,
-                        settings: document.getElementById('sp-activity-settings'),
-                        fixes: document.getElementById('sp-activity-fixes')
-                    };
-                    sidebar.style.display = 'flex';
-                    sidebarExpanded = true;
-                    document.getElementById('scratchpiler-sidebar-title').textContent = 'Search';
-                    Object.keys(buttons).forEach(k => {
-                        if (k === 'search') buttons[k].classList.add('sp-active');
-                        else buttons[k].classList.remove('sp-active');
-                    });
-                    Object.keys(panels).forEach(k => {
-                        if (k === 'search') panels[k].classList.add('active');
-                        else panels[k].classList.remove('active');
-                    });
-                    currentActiveTab = 'search';
-                    if (monacoEditor) monacoEditor.layout();
-                }
-                const searchInput = document.getElementById('scratchpiler-search-input');
-                if (searchInput) searchInput.focus();
-            } },
-            '-',
-            { label: 'Toggle Line Wrap', action: () => {
-                const wrapChk = document.getElementById('sp-setting-wrap');
-                if (wrapChk) { wrapChk.checked = !wrapChk.checked; wrapChk.dispatchEvent(new Event('change')); }
-            } },
-            { label: 'Toggle Minimap', action: () => {
-                const miniChk = document.getElementById('sp-setting-minimap');
-                if (miniChk) { miniChk.checked = !miniChk.checked; miniChk.dispatchEvent(new Event('change')); }
-            } }
-        ]);
-    });
-
-    document.getElementById('sp-menu-variables').addEventListener('click', () => {
-        openMenu('sp-menu-variables', [
-            { label: 'New global variable…', action: () => showCreateDialog('New Global Variable', n => doCreateVariable(n, true, false)) },
-            { label: 'New local variable…',  action: () => showCreateDialog('New Local Variable',  n => doCreateVariable(n, false, false)) },
-            '-',
-            { label: 'Rename / Delete…', action: () => {
-                const actExplorer = document.getElementById('sp-activity-explorer');
-                if (actExplorer) actExplorer.click();
-                updateStatus('Right-click a variable in the sidebar to rename or delete it');
-            }},
-        ]);
-    });
-
-    document.getElementById('sp-menu-lists').addEventListener('click', () => {
-        openMenu('sp-menu-lists', [
-            { label: 'New global list…', action: () => showCreateDialog('New Global List', n => doCreateVariable(n, true, true)) },
-            { label: 'New local list…',  action: () => showCreateDialog('New Local List',  n => doCreateVariable(n, false, true)) },
-            '-',
-            { label: 'Rename / Delete / Initialize…', action: () => {
-                const actExplorer = document.getElementById('sp-activity-explorer');
-                if (actExplorer) actExplorer.click();
-                updateStatus('Click ⋮ on a list in the sidebar to rename, delete, or initialize it');
-            }},
-        ]);
-    });
-
-    document.getElementById('sp-menu-help').addEventListener('click', () => {
-        openMenu('sp-menu-help', [
-            { label: 'GitHub Repository', action: () => window.open('https://www.github.com/Earth1283/scratchpiler/', '_blank') },
-            '-',
-            { label: 'Load Example: Hello World', action: () => loadExample('hello-world') },
-            { label: 'Load Example: Chase Mouse', action: () => loadExample('chase-mouse') },
-            { label: 'Load Example: Bounce Loop', action: () => loadExample('bounce-loop') }
-        ]);
-    });
-
-    setupActivityBar();
-    setupHeadersPanel();
-    setupOutputPanel();
-    setupSpritePicker();
+    setupMenu();
+    setupScrims();
+    setupBottomPanel();
     setupSidebarResize();
+    setupTopBar();
+    setupRail();
+    setupTabs();
+    setupProblemsView();
+    setupSettings();
+    setupExplorer();
+    setupSearchPanel();
+    setupPalette();
+    setupVariablesPanel();
+    setupTooltips();
+    setInterval(updateLastInjectLabel, 15000);
 
-    const confirmDialog = () => {
-        if (dialogCallback) dialogCallback(document.getElementById('scratchpiler-dialog-input').value);
-    };
-    document.getElementById('scratchpiler-dialog-cancel').addEventListener('click', () => {
-        document.getElementById('scratchpiler-dialog').style.display = 'none';
-        dialogCallback = null;
-    });
-    document.getElementById('scratchpiler-dialog-ok').addEventListener('click', confirmDialog);
-    document.getElementById('scratchpiler-dialog-input').addEventListener('keydown', e => {
-        if (e.key === 'Enter') confirmDialog();
-        else if (e.key === 'Escape') {
-            document.getElementById('scratchpiler-dialog').style.display = 'none';
-            dialogCallback = null;
-        }
-    });
-
-    document.getElementById('scratchpiler-import-btn').addEventListener('click', () => {
-        if (!currentVM) { updateStatus('Error: VM not available'); return; }
-        const spriteName = currentSpriteContext;
-        updateStatus('Importing...');
-        try {
-            const code = decompile(currentVM, spriteName);
-            monacoEditor.setValue(code);
-            monacoEditor.setScrollPosition({ scrollTop: 0 });
-            updateStatus(`Imported from "${spriteName}"`);
-        } catch (e) {
-            updateStatus('Import error: ' + e.message);
-            console.error('[scratchpiler] import exception', e);
-        }
-    });
-
-    loadMonaco(function (monaco) {
-        registerLanguage(monaco);
-        registerSemanticProviders(monaco, () => currentSpriteContext);
-
-        monacoEditor = monaco.editor.create(
-            document.getElementById('scratchpiler-editor-container'),
-            {
-                value: '',
-                language: LANG_ID,
-                theme: 'scratchpiler-dark',
-                'semanticHighlighting.enabled': true,
-                automaticLayout: true,
-                minimap: { enabled: false },
-                fontSize: 14,
-                lineNumbers: 'on',
-                wordWrap: 'on',
-                scrollBeyondLastLine: false,
-                suggestOnTriggerCharacters: true,
-                quickSuggestions: true,
-                tabCompletion: 'on',
-                smoothScrolling: true,
-                cursorSmoothCaretAnimation: 'on',
-                cursorBlinking: 'smooth',
-            }
-        );
-
-        monacoEditor.onDidChangeCursorPosition(e => {
-            updateStatusBarCursor(e.position.lineNumber, e.position.column);
+    loadMonaco(loaded => {
+        monaco = loaded;
+        createEditor();
+        if (overlayVisible) selectSidebarSprite(currentSpriteContext || '__stage__');
+        acquireVM(onVMFound, () => {
+            updateStatusBarVM('error');
+            logToOutput('Couldn’t find the Scratch VM after 15 seconds. Compiling and injecting won’t work until the page is reloaded.', 'error');
         });
-
-        applySettingsFn = setupSettings();
-        if (applySettingsFn) applySettingsFn();
-
-        monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-            document.getElementById('scratchpiler-compile-btn').click();
-        });
-
-        // Format button (hidden compatibility button listener)
-        document.getElementById('scratchpiler-format-btn').addEventListener('click', () => {
-            monacoEditor.getAction('editor.action.formatDocument').run();
-        });
-
-        monacoEditor.onDidChangeModelContent(() => {
-            clearTimeout(saveTimer);
-            clearTimeout(lintTimer);
-            const saveDelay = isFinite(spSettings.autosave) ? spSettings.autosave : 1000;
-            if (saveDelay === 0) {
-                saveToLocalStorage(currentSpriteContext);
-            } else {
-                saveTimer = setTimeout(() => saveToLocalStorage(currentSpriteContext), saveDelay);
-            }
-            lintTimer = setTimeout(() => {
-                try {
-                    const model = monacoEditor.getModel();
-                    const sn = currentSpriteContext;
-                    const analysis = getAnalysis(model, sn);
-                    const { ast, parseErrors: errors } = analysis;
-                    const rawLint = lint(ast);
-
-                    const lintWarnings = rawLint.filter(w => {
-                        const msg = w.message || '';
-                        if (!spSettings.lintUnreachable && msg.startsWith('Unreachable')) return false;
-                        if (!spSettings.lintOrphaned && msg.startsWith('Orphaned')) return false;
-                        return true;
-                    });
-
-                    const typeWarnings = spSettings.lintTypecheck
-                        ? typeCheckDiagnostics(ast, sn)
-                        : [];
-
-                    const semWarnings = spSettings.lintSemantic
-                        ? semanticDiagnostics(analysis)
-                        : [];
-                    const smellHints = spSettings.lintSmells
-                        ? smellDiagnostics(analysis)
-                        : [];
-
-                    monaco.editor.setModelMarkers(model, LANG_ID, [
-                        ...errors.map(er => ({
-                            startLineNumber: er.line, startColumn: er.col,
-                            endLineNumber:   er.line, endColumn: er.col + (er.len || 1),
-                            message:  er.message,
-                            severity: monaco.MarkerSeverity.Error,
-                        })),
-                        ...lintWarnings.map(w => ({
-                            startLineNumber: w.line, startColumn: w.col,
-                            endLineNumber:   w.line,
-                            endColumn: model.getLineMaxColumn(w.line),
-                            message:  w.message,
-                            severity: monaco.MarkerSeverity.Warning,
-                        })),
-                        ...typeWarnings.map(w => ({
-                            startLineNumber: w.line, startColumn: w.col,
-                            endLineNumber:   w.line, endColumn: w.col + (w.len || 1),
-                            message:  w.message,
-                            severity: monaco.MarkerSeverity.Warning,
-                        })),
-                        ...semWarnings.map(w => ({
-                            startLineNumber: w.line, startColumn: w.col,
-                            endLineNumber:   w.line, endColumn: w.col + (w.len || 1),
-                            message:  w.message,
-                            severity: monaco.MarkerSeverity.Warning,
-                        })),
-                        ...smellHints.map(w => ({
-                            startLineNumber: w.line, startColumn: w.col,
-                            endLineNumber:   w.line, endColumn: w.col + (w.len || 1),
-                            message:  w.message,
-                            severity: monaco.MarkerSeverity.Info,
-                        })),
-                    ]);
-                    updateStatusBarProblems(errors.length,
-                        lintWarnings.length + typeWarnings.length + semWarnings.length + smellHints.length);
-                } catch (_) {}
-            }, 350);
-        });
-
-        // Compile & Inject button (doubles as "Check Header" in header mode)
-        document.getElementById('scratchpiler-compile-btn').addEventListener('click', (e) => {
-            if (editingHeader) { checkCurrentHeader(); return; }
-            if (!currentVM) { updateStatus('Error: VM not available'); return; }
-            const spriteName = currentSpriteContext;
-            const source = monacoEditor.getValue();
-            const minify = e.shiftKey;
-            updateStatus(minify ? 'Compiling (minify)...' : 'Compiling...');
-
-            let result;
-            try { result = compileSourceWithHeaders(source, currentVM, spriteName); }
-            catch (e) {
-                updateStatus('Compile error: ' + e.message);
-                logToOutput('Compile error: ' + e.message, 'error');
-                flashCompileBtn(false);
-                console.error('[scratchpiler] compile exception', e);
-                return;
-            }
-
-            // Show Monaco error markers
-            monaco.editor.setModelMarkers(monacoEditor.getModel(), LANG_ID,
-                result.errors.map(e => ({
-                    startLineNumber: e.line, startColumn: e.col,
-                    endLineNumber: e.line, endColumn: e.col + (e.len || 1),
-                    message: e.message,
-                    severity: monaco.MarkerSeverity.Error,
-                }))
-            );
-
-            if (result.errors.length > 0) {
-                const msg = `${result.errors.length} error(s) — not injected`;
-                updateStatus(msg);
-                result.errors.forEach(er => logToOutput(`Line ${er.line}:${er.col} — ${er.message}`, 'error'));
-                flashCompileBtn(false);
-                return;
-            }
-
-            if (minify) {
-                const renamed = minifyBlocks(result.blocks, currentVM, spriteName);
-                logToOutput(`Minified: ${renamed} variable(s) renamed to gibberish 🙈`, 'ok');
-            }
-
-            injectBlocks(result.blocks, currentVM, spriteName, result.headerRoots);
-            flashCompileBtn(true);
-            const blockCount = Object.keys(result.blocks).length;
-            const label = spriteName === '__stage__' ? 'Stage' : spriteName;
-            logToOutput(`Compiled & injected ${blockCount} block(s) into "${label}"`, 'ok');
-        });
-
-        document.getElementById('sp-sb-problems')?.addEventListener('click', () => {
-            const panel     = document.getElementById('sp-output-panel');
-            const toggleBtn = document.getElementById('sp-output-toggle-btn');
-            if (!panel) return;
-            panel.classList.add('sp-expanded');
-            if (toggleBtn) toggleBtn.textContent = '▾';
-            if (monacoEditor) setTimeout(() => monacoEditor.layout(), 160);
-        });
-
-        acquireVM(
-            vm => {
-                currentVM = vm;
-                updateStatusBarVM('ok');
-                reindex(vm);
-                startDebugPoll(vm);
-                vm.on('targetsUpdate',   () => { reindex(vm); if (overlayVisible) populateSpriteDropdown(); });
-                vm.runtime.on('PROJECT_LOADED', () => {
-                    // A new project was loaded — any previously-tracked injected block IDs
-                    // are stale (they belonged to the old project).  Clear both the in-memory
-                    // map and the persisted localStorage entries so the next injection starts
-                    // clean and doesn't try to delete IDs that no longer exist.
-                    const injectedKeys = [];
-                    for (let i = 0; i < localStorage.length; i++) {
-                        const k = localStorage.key(i);
-                        if (k && k.startsWith(`${LS_INJ_KEY}-`)) injectedKeys.push(k);
-                    }
-                    injectedKeys.forEach(k => localStorage.removeItem(k));
-                    injectedBlockIds.clear();
-                    reindex(vm);
-                });
-
-                // If the overlay was opened before the VM was acquired,
-                // re-trigger the sprite selection so the editor decompiles live code.
-                if (overlayVisible && currentSpriteContext) {
-                    renderSidebarSprites();
-                    selectSidebarSprite(currentSpriteContext);
-                }
-            },
-            () => { updateStatus('Warning: VM not found after 15s'); updateStatusBarVM('error'); }
-        );
     });
 }
-

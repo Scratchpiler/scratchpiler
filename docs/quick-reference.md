@@ -405,7 +405,7 @@ clear([list])                  → listDeleteAll([list])
 breakpoint   // pause execution here; open the debug bar
 ```
 
-When a `breakpoint` is hit at runtime, Scratchpiler's **debug bar** slides in at the bottom of the overlay. Click **Resume ▶** to continue execution. You can hit multiple breakpoints in sequence — each one pauses and waits.
+When a `breakpoint` is hit at runtime, an amber **debug bar** slides in under the top bar and the Variables panel opens so you can inspect the frozen values. Click **Resume** or press **F8** to continue. You can hit multiple breakpoints in sequence — each one pauses and waits.
 
 Compiles to four blocks: sets `[__dbg_at__]` to `1`, sets `[__dbg_resume__]` to `0`, waits until `[__dbg_resume__] = 1`, then clears `[__dbg_at__]`. The overlay polls `__dbg_at__` every 100ms to detect the pause.
 
@@ -481,11 +481,21 @@ true  false                           // boolean literals
 | `Alt+M` | Open / close scratchpiler overlay |
 | `Ctrl+Enter` | Compile & inject (the moment of truth) |
 | `Ctrl+S` | Compile & inject (for standard editor muscle memory) |
+| `Ctrl+Shift+Enter` | Compile & inject minified |
+| `Ctrl+K` | Command palette (`>` commands, `@` sprites, `:` line number) |
+| `Ctrl+P` | Go to sprite or header |
+| `Ctrl+Shift+V` | Show / hide the Variables panel |
+| `Ctrl+Shift+F` | Find and replace in every sprite and header |
+| `Alt+Shift+P` | Pull the current sprite's code back from Scratch |
 | `Alt+Shift+F` | Format / auto-indent (hiding structural chaos with spacing) |
 | `Ctrl+Space` | Trigger autocomplete (request assistance from Monaco) |
-| `Esc` | Close overlay |
+| `F8` | Resume from a `breakpoint` |
+| `Ctrl+B` / `Ctrl+J` | Show / hide the sidebar / bottom panel |
+| `Ctrl+/` | Every shortcut, on one sheet (outside the code editor) |
+| `Shift`, `Shift` | Search Nowhere |
+| `Esc` | Close whatever's on top; the overlay last |
 
-When paused at a `breakpoint`, click the **Resume ▶** button in the debug bar to continue. The bar disappears once execution resumes.
+When paused at a `breakpoint`, an amber bar appears under the top bar. Click **Resume** (or press `F8`) to continue. The Variables panel opens so you can inspect every value at the moment the project stopped.
 
 ---
 

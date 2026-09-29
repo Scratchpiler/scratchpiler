@@ -1,6 +1,6 @@
 # Variables and Lists
 
-Variables and lists must exist in the Scratch project before you compile. If you reference `[score]` and there's no variable named `score` in Scratch, you'll get a compile error. Use the **Variables** and **Lists** menus in the toolbar to create, rename, or delete variables without leaving the editor — or use `struct` declarations to auto-create groups of related variables at compile time.
+Variables and lists must exist in the Scratch project before you compile. If you reference `[score]` and there's no variable named `score` in Scratch, you'll get a compile error. Use the **+** buttons in the Explorer to create them and the Variables panel (`Ctrl+Shift+V`) to rename, edit or delete them without leaving the editor — or use `struct` declarations to auto-create groups of related variables at compile time.
 
 ---
 
@@ -283,19 +283,21 @@ set [val] to [myList][i]       // equivalent to [myList].item([i])
 
 ---
 
-## Managing variables from the toolbar
+## Managing variables without leaving the editor
 
-The **Variables** and **Lists** menus in the toolbar expose the full variable panel without leaving the editor:
+The Explorer creates variables, and the **Variables panel** (`Ctrl+Shift+V`, docked on the right) edits them:
 
 | Action | How |
 |---|---|
-| Create new variable | Variables → New variable… (prompts for name; creates on stage or active sprite) |
-| Create new list | Lists → New list… |
-| Rename | Hover a variable in the sprite panel, click ⋮, choose Rename |
-| Delete | Hover a variable in the sprite panel, click ⋮, choose Delete |
-| Bulk-initialize a list | Hover a list in the sprite panel, click ⋮, choose Initialize from CSV |
+| Create new variable | Click **+** next to **Variables** in the Explorer, type a name, choose *This sprite only* or *All sprites*, press Enter |
+| Create new list | Click **+** next to **Lists** |
+| See live values | Open the Variables panel. Values update while the project runs and freeze at a `breakpoint` |
+| Change a value | Click the value in the Variables panel, type, press Enter |
+| Rename | Click the name in the Variables panel and type. Every `[old name]` in your code is renamed too |
+| Delete | Hover a row and click the bin, or right-click it. A toast offers Undo |
+| Edit a list | Click *N items* to expand it, then edit one item per line. Changes apply when you click away |
 
-**Initialize from CSV** accepts a comma-separated string (`1, 2, 3, hello, world`) and replaces the list's contents immediately. Useful for seeding data without writing setup code.
+Very long lists (over 10,000 items) ask before rendering, because the browser would rather not. Compiler-generated helper variables (names starting with `__`) are hidden unless you turn on **Show compiler variables** at the bottom of the panel.
 
 ---
 
@@ -430,7 +432,7 @@ enum { BLUE = 3 }
 
 Variables are either **global** (available to all sprites) or **local** (available to one sprite). Scratchpiler searches the active sprite first, then the Stage (global). If you have a local `[score]` and a global `[score]`, the local one wins.
 
-Create global variables from the **Variables → New global variable…** menu in the toolbar.
+Create variables with the **+** next to **Variables** in the Explorer, choosing *All sprites* for global or *This sprite only* for local. The **+** refuses to create a local and a global with the same name, which saves you an afternoon of finding out why your score never goes up.
 
 ---
 

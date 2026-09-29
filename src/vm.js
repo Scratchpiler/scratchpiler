@@ -1,4 +1,3 @@
-import { updateStatus } from "./editor.js";
 import { setScratchIndex } from "./scratch-index.js";
 
 export { scratchIndex } from "./scratch-index.js";
@@ -108,5 +107,4 @@ export function reindex(vm) {
         }
     }
     setScratchIndex(idx);
-    updateStatus(`Index: ${idx.sprites.length} sprites, ${idx.globalVariables.length} globals`);
 }

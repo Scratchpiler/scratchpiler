@@ -16,7 +16,7 @@ If the "Open Scratchpiler" button simply is not there, verify that your URL is s
 
 ## Step 2 — Pick a sprite
 
-Use the dropdown in the toolbar to select which sprite you are writing code for. Every sprite has its own independent, isolated editor workspace. Code compiled for "Cat" stays in Cat, forever trapped in its own logical cage. Cross-sprite access is forbidden by design.
+Click a sprite in the **Explorer** on the left to open it in a tab. Every sprite has its own independent, isolated editor workspace, with its own undo history. Code compiled for "Cat" stays in Cat, forever trapped in its own logical cage. Cross-sprite access is forbidden by design.
 
 Start with the default sprite (usually the Orange Cat, who has seen too much) if you don't have a preference.
 
@@ -38,15 +38,17 @@ Press **Ctrl+Enter** to compile and inject. Switch back to Scratch, click the gr
 
 If you see a red underline, there's a parse error — hover it to read the message, correct your syntax, and try again. The parser is uncompromising. It does not accept partial efforts.
 
+Watch the indicator next to the **Compile & Inject** button: it says **Changed since last inject** while you're editing and **Scratch is up to date** once you compile. If you ever wonder whether Scratch is running the code you're staring at, that's the thing to look at.
+
 ---
 
 ## Step 4 — Variables
 
 Variables must be created in Scratch before scratchpiler can use them. Scratchpiler does not create variables on its own; it merely references what already exists. Think of them as entities that must be summoned (created) in the Scratch editor before we can possess them in text.
 
-1. Click **Variables** in the scratchpiler toolbar → **New global variable…** (or summon it via Scratch's sidebar if you enjoy clicking)
-2. Name it `score`
-3. Click OK
+1. In the Explorer, click the **+** next to **Variables** (or summon it via Scratch's sidebar if you enjoy clicking)
+2. Name it `score` and pick **All sprites**
+3. Press Enter
 
 Now write:
 
@@ -280,7 +282,7 @@ Now that you've seen the basics, use the reference docs to look up specifics:
 
 **"Unknown statement"** — You typed a function name that scratchpiler doesn't recognise (or spelled a known one wrong). Check [quick-reference.md](quick-reference.md) for the exact name, or accept that computers are literal-minded and lack empathy for your typos.
 
-**Blocks don't appear after compile** — Check the sprite dropdown. You may have compiled into the wrong sprite, injecting your logic into a random obstacle or a decorative cloud where it will float, inert and useless.
+**Blocks don't appear after compile** — Check which sprite is highlighted in the Explorer (and named in the top bar). You may have compiled into the wrong sprite, injecting your logic into a random obstacle or a decorative cloud where it will float, inert and useless.
 
 **Red squiggles everywhere** — Look at the first error. Parser errors cascade: one missing `{` can make everything after it look like syntactical garbage. Fix from top to bottom, much like sorting out your life.
 

@@ -177,14 +177,14 @@ No lists. We considered using a global list to track running routines. We decide
 
 The linter now understands the difference between lists and variables. If you try to call `listAdd` on a variable, it will tell you. If you try to `pyfor` over a variable, it will tell you. If you try to use `.item()` on a variable that is definitely not a list, the linter will produce a yellow underline and a message that is perhaps more informative than your code deserves.
 
-This is opt-out via the Settings panel. Maybe you enjoy chaos. We don't judge. Actually we do. That's the whole point of the type checker.
+This is opt-out under **Checks** in Settings. Maybe you enjoy chaos. We don't judge. Actually we do. That's the whole point of the type checker.
 
 ### Settings: Finally, Actual Settings
 
-The Settings panel (gear icon, sidebar) now has:
+The Settings panel (the sliders icon at the bottom of the left rail, or `Ctrl+,`) now has:
 
-- **Tab size** — 2, 4, or 8 spaces. 2 if you want to fit more code on the screen. 8 if you are a BSD kernel developer and this is your normal.
-- **Auto-save delay** — instant, 500ms, 1 second, 2 seconds. The code is being saved to `localStorage`, not uploaded to a server, so "instant" is fine unless your laptop is held together with thermal paste and prayer.
+- **Indent** — 2, 4, or 8 spaces. 2 if you want to fit more code on the screen. 8 if you are a BSD kernel developer and this is your normal.
+- **Save code** — as you type, or after 0.5, 1 or 2 seconds. The code is being saved to `localStorage`, not uploaded to a server, so "instant" is fine unless your laptop is held together with thermal paste and prayer.
 - **Lint rules** — toggle type checking, unreachable code warnings, and orphaned block warnings independently. Some people want to write dead code in peace. We respect that. We still judge it.
 
 ---
@@ -219,7 +219,7 @@ A: Define "production." If you mean "a Scratch project that will be played by re
 A: Scratchpiler only modifies the local VM state in your browser. It does not submit API requests to Scratch's servers on your behalf, does not modify saved projects, and does not interact with the Scratch backend in any way. Whether saving a Scratch project that contains scratchpiler-compiled blocks violates any terms of service is a legal question we are not qualified to answer and are actively avoiding.
 
 **Q: I lost my code when the tab crashed.**
-A: Scratchpiler auto-saves your code to `localStorage` every time you edit. Check the **Fixes** panel in the sidebar — there's a "Clear Local Code Cache" button that confirms the data was there. You can also check `localStorage.getItem('scratchpiler-content-SpriteName')` in the console. If it's gone, the browser truly discarded it. This is the browser's fault. Please direct your anger at Chrome's memory management policies rather than at us.
+A: Scratchpiler auto-saves your code to `localStorage` every time you edit. Do *not* press **Clear saved code** under Settings → Maintenance, which does exactly what it says. You can also check `localStorage.getItem('scratchpiler-content-SpriteName')` in the console. If it's gone, the browser truly discarded it. This is the browser's fault. Please direct your anger at Chrome's memory management policies rather than at us.
 
 **Q: Can I use this for a platformer? A fighting game? A 3D raycaster?**
 A: Yes. People have. The decompiler will probably reconstruct it correctly. The linter will probably not understand what you're doing. The `_scratchpiler_internal` variables will accumulate in your sprite's variable list until it looks like the aftermath of a naming convention disaster. This is the experience. This is scratchpiler.

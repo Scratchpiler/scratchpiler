@@ -8,10 +8,10 @@ Headers are reusable code libraries stored in browser storage and shared across 
 
 Headers are created and edited in the **Headers panel** in the Scratchpiler UI:
 
-1. In the activity bar (left sidebar), click the **file icon** to open the Headers panel
-2. Click **+ New** to create a new header
-3. Name it (letters, digits, underscore, hyphen — must end in `.h`)
-4. Edit the header content in the panel's editor
+1. In the icon rail on the far left, click the **`{ }` icon** to open the Headers panel
+2. Click **New** and type a name (letters, digits, underscore, hyphen — `.h` is added if you leave it off), then press Enter
+3. The header opens in its own editor tab, next to your sprites
+4. Edit the header content like any other file. Hover a header in the list to rename or delete it (deleting offers an Undo)
 5. While editing, the **Compile & Inject** button becomes **Check Header** — it validates the header without injecting into Scratch
 6. Click **Check Header** to save and verify
 
