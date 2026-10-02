@@ -6,7 +6,7 @@ import { tokenize } from "./compiler.js";
 import { ASM_OPCODES } from "./asm-opcodes.js";
 import { getAnalysis, visibleSymbols } from "./analyzer.js";
 import { listHeaders } from "./headers.js";
-import { completionContext } from "./completion-context.js";
+import { completionContext, structFields, isComparisonNoise } from "./completion-context.js";
 
 export function registerLanguage(monaco) {
     monaco.languages.register({ id: LANG_ID });
@@ -146,7 +146,7 @@ export function registerLanguage(monaco) {
 
     monaco.languages.registerCompletionItemProvider(LANG_ID, {
         triggerCharacters: ['"', '(', '[', '.', '<'],
-        provideCompletionItems(model, position) {
+        provideCompletionItems(model, position, context) {
             const word  = model.getWordUntilPosition(position);
             const range = {
                 startLineNumber: position.lineNumber,
@@ -154,9 +154,12 @@ export function registerLanguage(monaco) {
                 startColumn:     word.startColumn,
                 endColumn:       word.endColumn,
             };
-            const ctx = completionContext(model.getLineContent(position.lineNumber).substring(0, position.column - 1));
+            const ctx = completionContext(
+                model.getLineContent(position.lineNumber).substring(0, position.column - 1),
+                n => position.lineNumber > n ? model.getLineContent(position.lineNumber - n) : undefined,
+            );
 
-            if (ctx.kind === 'comment') return { suggestions: [] };
+            if (ctx.kind === 'comment' || ctx.kind === 'member') return { suggestions: [] };
 
             if (ctx.kind === 'include') {
                 const closed = model.getLineContent(position.lineNumber)[word.endColumn - 1] === '>';
@@ -168,7 +171,7 @@ export function registerLanguage(monaco) {
                 };
             }
 
-            if (ctx.kind === 'general' && ctx.afterLt && word.word === '') return { suggestions: [] };
+            if (isComparisonNoise(ctx, word.word, context?.triggerCharacter)) return { suggestions: [] };
 
             if (ctx.kind === 'routine') {
                 const CIKr = monaco.languages.CompletionItemKind;
@@ -193,23 +196,17 @@ export function registerLanguage(monaco) {
 
             // Struct field completions inside [name. (unclosed bracket before dot)
             if (ctx.kind === 'structField') {
-                const structRe = /\bstruct\s+(\w+)\s*\{([^}]*)\}/g;
-                const src = model.getValue();
-                let sm, fields;
-                while ((sm = structRe.exec(src)) !== null) {
-                    if (sm[1] === ctx.struct) fields = sm[2].split(/[\s,]+/).filter(f => f.length > 0);
-                }
-                if (fields && fields.length > 0) {
-                    return {
-                        suggestions: fields.map(f => ({
-                            label: `${ctx.struct}.${f}]`,
-                            kind: monaco.languages.CompletionItemKind.Field,
-                            detail: `Struct field · ${ctx.struct}`,
-                            insertText: f + ']',
-                            range,
-                        }))
-                    };
-                }
+                const fields = structFields(model.getValue()).get(ctx.struct)
+                    ?? projectVariables().map(v => v.name).filter(n => n.startsWith(`${ctx.struct}.`)).map(n => n.slice(ctx.struct.length + 1));
+                return {
+                    suggestions: fields.map(f => ({
+                        label: `${ctx.struct}.${f}]`,
+                        kind: monaco.languages.CompletionItemKind.Field,
+                        detail: `Struct field · ${ctx.struct}`,
+                        insertText: f + ']',
+                        range,
+                    }))
+                };
             }
 
             // Var completions inside an unclosed [ with no dot yet:
@@ -233,14 +230,7 @@ export function registerLanguage(monaco) {
                         }
                     }
                 } catch (_) {}
-                const src = model.getValue();
-                const structDefs = {};
-                const structRe = /\bstruct\s+(\w+)\s*\{([^}]*)\}/g;
-                let sm2;
-                while ((sm2 = structRe.exec(src)) !== null) {
-                    structDefs[sm2[1]] = sm2[2].split(/[\s,]+/).filter(f => f.length > 0);
-                }
-                for (const [sName, fields] of Object.entries(structDefs)) {
+                for (const [sName, fields] of structFields(model.getValue())) {
                     for (const field of fields) {
                         suggestions.push({
                             label: `${sName}.${field}]`,
@@ -252,13 +242,7 @@ export function registerLanguage(monaco) {
                         });
                     }
                 }
-                const activeName = getActiveSpriteNameFromDropdown();
-                const projVars = [
-                    ...scratchIndex.globalVariables,
-                    ...(activeName && activeName !== '__stage__'
-                        ? (scratchIndex.spriteVariables[activeName] ?? []) : []),
-                ];
-                for (const v of projVars) {
+                for (const v of projectVariables()) {
                     suggestions.push({
                         label: `${v.name}]`,
                         kind: v.type === 'list' ? CIKf.Enum : CIKf.Variable,
@@ -283,6 +267,10 @@ export function registerLanguage(monaco) {
                     { label: 'indexOf(item)',  insertText: 'indexOf(${1:item})',  detail: 'List · data_itemnumoflist' },
                     { label: 'sort()',         insertText: 'sort()',              detail: 'List · sort ascending (Shell sort)' },
                     { label: 'sort("desc")',   insertText: 'sort("desc")',        detail: 'List · sort descending (Shell sort)' },
+                    { label: 'sum()',          insertText: 'sum()',               detail: 'List · sum of numeric items' },
+                    { label: 'min()',          insertText: 'min()',               detail: 'List · smallest numeric item' },
+                    { label: 'max()',          insertText: 'max()',               detail: 'List · largest numeric item' },
+                    { label: 'count(value)',   insertText: 'count(${1:value})',   detail: 'List · items equal to value' },
                 ];
                 return {
                     suggestions: DOT_METHODS.map(m => ({
@@ -358,6 +346,8 @@ export function registerLanguage(monaco) {
                     sounds:          () => strItems(activeTarget()?.sprite.sounds.map(s => s.name) ?? [], CIKs.Event, 'Sound'),
                     keys:            () => strItems(KEY_NAMES, CIKs.Enum, 'Key name'),
                     targets:         () => strItems(['_mouse_', '_random_', ...spriteNames], CIKs.Class, 'Sprite / target'),
+                    mouseTargets:    () => strItems(['_mouse_', ...spriteNames], CIKs.Class, 'Sprite / mouse'),
+                    ofTargets:       () => strItems(['_stage_', ...spriteNames], CIKs.Class, 'Sprite / stage'),
                     touchTargets:    () => strItems(['_edge_', '_mouse_', ...spriteNames], CIKs.Class, 'Sprite / edge / mouse'),
                     clones:          () => strItems(['_myself_', ...spriteNames], CIKs.Class, 'Sprite / self'),
                     effects:         () => strItems(['color','fisheye','whirl','pixelate','mosaic','brightness','ghost'], CIKs.Enum, 'Visual effect'),
@@ -397,6 +387,7 @@ export function registerLanguage(monaco) {
 
             // Analyzer-driven, scope-aware additions: in-scope params/loop vars,
             // enum constants, and call snippets for in-file defines/scratchroutines.
+            const definedNames = new Set();
             try {
                 const a = getAnalysis(model, currentSpriteContext);
                 const CIKa = monaco.languages.CompletionItemKind;
@@ -425,6 +416,7 @@ export function registerLanguage(monaco) {
                             : `${sym.name}()`;
                         const label = `${sym.name}(${params.join(', ')})`;
                         if (sym.kind === 'define') {
+                            definedNames.add(sym.name);
                             suggestions.push({
                                 label, kind: CIKa.Function, detail: 'Custom block (define)',
                                 insertText: snippet, insertTextRules: IS, range,
@@ -442,6 +434,17 @@ export function registerLanguage(monaco) {
                     }
                 }
             } catch (_) {}
+
+            const activeSprite = getActiveSpriteNameFromDropdown();
+            for (const proccode of (scratchIndex.customBlocks[activeSprite] ?? [])) {
+                const block = projectBlockCall(proccode);
+                if (definedNames.has(block.name)) continue;
+                suggestions.push({
+                    label: block.label, kind: monaco.languages.CompletionItemKind.Function,
+                    detail: 'Custom block (project)', insertText: block.snippet,
+                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, range,
+                });
+            }
             return { suggestions: withCompletionBehavior(suggestions) };
         },
     });
@@ -809,7 +812,7 @@ const SUGGEST_COMMAND = { id: 'editor.action.triggerSuggest', title: 'Suggest' }
 const HINTS_COMMAND   = { id: 'editor.action.triggerParameterHints', title: 'Parameter hints' };
 
 const KEY_NAMES = [
-    'space', 'enter', 'up arrow', 'down arrow', 'left arrow', 'right arrow',
+    'space', 'enter', 'up arrow', 'down arrow', 'left arrow', 'right arrow', 'any',
     ...'abcdefghijklmnopqrstuvwxyz0123456789',
 ];
 
@@ -845,13 +848,34 @@ function getActiveSpriteNameFromDropdown() {
     return currentSpriteContext;
 }
 
+function projectVariables() {
+    const activeName = getActiveSpriteNameFromDropdown();
+    return [
+        ...scratchIndex.globalVariables,
+        ...(activeName && activeName !== '__stage__' ? (scratchIndex.spriteVariables[activeName] ?? []) : []),
+    ];
+}
+
+function callSnippet(name, params) {
+    return `${name}(${params.map((p, i) => `\${${i + 1}:${p}}`).join(', ')})`;
+}
+
+function projectBlockCall(proccode) {
+    const name = proccode.split(' %')[0].trim();
+    const argCount = (proccode.match(/%[snb]/g) ?? []).length;
+    const params = Array.from({ length: argCount }, (_, i) => `arg${i + 1}`);
+    return { name, label: `${name}(${params.join(', ')})`, snippet: callSnippet(name, params) };
+}
+
 // Detects whether `position` sits inside a `__asm__ volatile(...)` region, and at what
 // depth: 1 = top level of the asm block (opcode-name position), 2+ = inside an opcode
 // call's own parens (register/literal position). Returns null outside any asm region.
 function detectAsmContext(model, position) {
     const offset = model.getOffsetAt(position);
+    const src = model.getValue();
+    if (src.lastIndexOf('__asm__', offset - 1) === -1) return null;
     let toks;
-    try { toks = tokenize(model.getValue()); } catch (e) { return null; }
+    try { toks = tokenize(src); } catch (e) { return null; }
     const posOf = (t) => model.getOffsetAt({ lineNumber: t.line, column: t.col });
 
     let lastAsmIdx = -1;
@@ -893,14 +917,15 @@ function collectRegistersInScope(model, position) {
     const src = model.getValue();
     const offset = model.getOffsetAt(position);
     const before = src.slice(0, offset);
-    let depth = 0;
+    let depth = 0, segStart = 0;
     const scopeStack = []; // { depth, names: [] }
     // Walk char-by-char tracking brace depth, applying scope entries at the point they occur.
     for (let i = 0; i < before.length; i++) {
         const c = before[i];
         if (c === '{') {
             // Does a scope-introducing header end right before this brace?
-            const head = before.slice(0, i);
+            const head = before.slice(segStart, i);
+            segStart = i + 1;
             const forM = head.match(/\b(?:for|pyfor)\s*\[([^\]]+)\][^{}]*$/);
             const routineM = head.match(/\bscratchroutine\s+\w+\s*\(([^)]*)\)[^{}]*$/);
             const names = [];
@@ -914,6 +939,7 @@ function collectRegistersInScope(model, position) {
             scopeStack.push({ depth, names });
             depth++;
         } else if (c === '}') {
+            segStart = i + 1;
             depth--;
             while (scopeStack.length && scopeStack[scopeStack.length - 1].depth >= depth) scopeStack.pop();
         }
@@ -1092,6 +1118,7 @@ function buildSuggestions(monaco, range, hatRange) {
     push('asin()',     CIK.Function, 'Math', 'asin($0)');
     push('acos()',     CIK.Function, 'Math', 'acos($0)');
     push('atan()',     CIK.Function, 'Math', 'atan($0)');
+    push('ceil()',     CIK.Function, 'Aliases · ceiling()', 'ceil($0)', 'Alias for `ceiling()`');
     push('ln()',       CIK.Function, 'Math', 'ln($0)');
     push('log()',      CIK.Function, 'Math', 'log($0)');
     push('exp()',      CIK.Function, 'Math', 'exp($0)');
@@ -1166,6 +1193,8 @@ function buildSuggestions(monaco, range, hatRange) {
     // Ergonomic aliases — friendlier names for common operations
     push('print()',    CIK.Function, 'Aliases · say()',          'print($0)',
          'Alias for `say()` — print a value to the speech bubble');
+    push('println()',  CIK.Function, 'Aliases · say()',          'println($0)',
+         'Alias for `say()` — print a value to the speech bubble');
     push('step()',     CIK.Function, 'Aliases · move()',         'step($0)',
          'Alias for `move()` — move forward N steps');
     push('forward()',  CIK.Function, 'Aliases · move()',         'forward($0)',
@@ -1200,6 +1229,8 @@ function buildSuggestions(monaco, range, hatRange) {
          'Delete item at index — alias for `listDelete(index, [list])`');
     push('insert()',   CIK.Function, 'Aliases · listInsert()',   'insert([$1], $2, $0)',
          'Insert item at index — alias for `listInsert(item, index, [list])`');
+    push('pop()',      CIK.Function, 'Aliases · listDeleteAll()','pop([$0])',
+         'Delete all items from list — alias for `listDeleteAll([list])`');
     push('replace()',  CIK.Function, 'Aliases · listReplace()',  'replace([$1], $2, $0)',
          'Replace item at index — alias for `listReplace(index, [list], item)`');
     push('clear()',    CIK.Function, 'Aliases · listDeleteAll()','clear([$0])',
@@ -1256,35 +1287,15 @@ function buildSuggestions(monaco, range, hatRange) {
     push('[list].max()',   CIK.Function, 'Lists · Aggregates', '[$1].max()',   'Find the maximum numeric item in the list');
     push('[list].count()', CIK.Function, 'Lists · Aggregates', '[$1].count($0)', 'Count how many items equal a given value');
 
-    // Sprite names
-    for (const s of scratchIndex.sprites)
-        push(s.name, CIK.Class, 'Sprite', s.name);
-
-    // Stage backdrops
-    for (const b of scratchIndex.stage.backdrops)
-        push(b, CIK.File, 'Backdrop', b);
-
     // Global variables/lists
     for (const v of scratchIndex.globalVariables)
         push(`[${v.name}]`, v.type === 'list' ? CIK.Enum : CIK.Variable, `Global ${v.type}`, `[${v.name}]`);
 
-    // Active sprite/stage context
+    // Active sprite variables
     const activeName = getActiveSpriteNameFromDropdown();
-    if (activeName === '__stage__') {
-        for (const s of scratchIndex.stage.sounds)
-            push(s, CIK.Event, 'Sound', s);
-    } else if (activeName) {
-        const sprite = scratchIndex.sprites.find(s => s.name === activeName);
-        if (sprite) {
-            for (const c of sprite.costumes)
-                push(c, CIK.Color, 'Costume', c);
-            for (const s of sprite.sounds)
-                push(s, CIK.Event, 'Sound', s);
-        }
+    if (activeName && activeName !== '__stage__') {
         for (const v of (scratchIndex.spriteVariables[activeName] ?? []))
             push(`[${v.name}]`, v.type === 'list' ? CIK.Enum : CIK.Variable, `${activeName} ${v.type}`, `[${v.name}]`);
-        for (const p of (scratchIndex.customBlocks[activeName] ?? []))
-            push(p, CIK.Function, 'Custom block', p);
     }
 
     return items;

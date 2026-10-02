@@ -18,8 +18,9 @@ const CALL_SLOTS = {
     play: ['sounds'], playUntilDone: ['sounds'],
     broadcast: ['broadcasts'], broadcastAndWait: ['broadcasts'], send: ['broadcasts'], sendAndWait: ['broadcasts'],
     goTo: ['targets'], pointTowards: ['targets'], glide: [null, 'targets'],
-    distanceTo: ['targets'], xOf: ['targets'], yOf: ['targets'], directionOf: ['targets'], sizeOf: ['targets'],
-    costumeNumOf: ['targets'], costumeNameOf: ['targets'], volumeOf: ['targets'],
+    distanceTo: ['mouseTargets'],
+    xOf: ['ofTargets'], yOf: ['ofTargets'], directionOf: ['ofTargets'], sizeOf: ['ofTargets'],
+    costumeNumOf: ['ofTargets'], costumeNameOf: ['ofTargets'], volumeOf: ['ofTargets'],
     touching: ['touchTargets'],
     key: ['keys'],
     setEffect: ['effects'], changeEffect: ['effects'],
@@ -35,28 +36,103 @@ const CALL_SLOTS = {
 
 const HAT_SLOTS = { receive: 'broadcasts', backdrop: 'backdrops', key: 'keys' };
 
-function stringSlot(toks, k) {
-    const hat = toks[k - 2], kind = toks[k - 1];
-    if (hat && kind && hat.value === 'on' && STRING_HATS.has(kind.value)) return HAT_SLOTS[kind.value];
+const MAX_LOOKBACK_LINES = 8;
 
-    let depth = 0, argIndex = 0;
-    for (let i = k - 1; i >= 0; i--) {
+function lexLine(line) {
+    let toks;
+    try { toks = tokenize(line, { quiet: true }); } catch (_) { return null; }
+    toks.pop(); // EOF
+    return toks.some(t => t.unterminated) ? null : toks;
+}
+
+// Walks tokens right-to-left from `from`, resuming from `state`, until the call whose
+// argument list holds the cursor is found. Returns { slot } once decided, or the
+// carried-over state when the tokens ran out first.
+function scanSlot(toks, from, state) {
+    let { depth, argIndex } = state;
+    for (let i = from; i >= 0; i--) {
         const t = toks[i];
-        if (t.type === '{' || t.type === '}') return null;
+        if (t.type === '{' || t.type === '}') return { slot: null };
         if (t.type === ')') depth++;
         else if (t.type === ',' && depth === 0) argIndex++;
         else if (t.type === '(') {
             if (depth > 0) { depth--; continue; }
             const callee = toks[i - 1];
-            return callee && isWord(callee) ? (CALL_SLOTS[callee.value]?.[argIndex] ?? null) : null;
+            return { slot: callee && isWord(callee) ? (CALL_SLOTS[callee.value]?.[argIndex] ?? null) : null };
         }
     }
-    return null;
+    return { depth, argIndex };
 }
 
+function stringSlot(toks, k, lineAbove) {
+    const hat = toks[k - 2], kind = toks[k - 1];
+    if (hat && kind && hat.value === 'on' && STRING_HATS.has(kind.value)) return HAT_SLOTS[kind.value];
+
+    let state = scanSlot(toks, k - 1, { depth: 0, argIndex: 0 });
+    for (let n = 1; !('slot' in state) && lineAbove && n <= MAX_LOOKBACK_LINES; n++) {
+        const line = lineAbove(n);
+        const above = line === undefined ? null : lexLine(line);
+        if (!above) break;
+        state = scanSlot(above, above.length - 1, state);
+    }
+    return state.slot ?? null;
+}
+
+// The `{expr}` being typed inside an unterminated string, as { text, offset } where
+// `offset` is how many characters of the line precede `text`; null outside an expr.
+function openInterpolation(prefix, quoteCol) {
+    const body = prefix.slice(quoteCol);
+    let i = 0, exprStart = -1, depth = 0;
+    while (i < body.length) {
+        const c = body[i];
+        if (exprStart < 0) {
+            if ((c === '{' || c === '}') && body[i + 1] === c) i += 2;
+            else if (c === '{') { exprStart = ++i; depth = 1; }
+            else i++;
+        } else if (c === '"') {
+            const close = body.indexOf('"', i + 1);
+            if (close < 0) return { text: body.slice(exprStart), offset: quoteCol + exprStart };
+            i = close + 1;
+        } else {
+            if (c === '{') depth++;
+            else if (c === '}' && --depth === 0) exprStart = -1;
+            i++;
+        }
+    }
+    return exprStart < 0 ? null : { text: body.slice(exprStart), offset: quoteCol + exprStart };
+}
+
+let structMemo = { src: null, structs: null };
+
+// struct name -> field names, for every `struct name { a, b }` in `src`.
+export function structFields(src) {
+    if (structMemo.src === src) return structMemo.structs;
+    const structs = new Map();
+    let toks = [];
+    try { toks = tokenize(src, { quiet: true }); } catch (_) {}
+    for (let i = 0; i + 2 < toks.length; i++) {
+        if (toks[i].value !== 'struct' || !isWord(toks[i]) || !isWord(toks[i + 1]) || toks[i + 2].type !== '{') continue;
+        const fields = [];
+        let j = i + 3;
+        for (; j < toks.length && toks[j].type !== '}'; j++) if (isWord(toks[j])) fields.push(toks[j].value);
+        structs.set(toks[i + 1].value, fields);
+        i = j;
+    }
+    structMemo = { src, structs };
+    return structs;
+}
+
+// Typing `<` pops the list open for #include <...>; after a comparison it is only noise.
+export function isComparisonNoise(ctx, wordText, triggerCharacter) {
+    return ctx.kind === 'general' && ctx.afterLt && wordText === '' && triggerCharacter === '<';
+}
+
+// `lineAbove(n)` (optional) returns the text n lines above the cursor line, so an
+// argument list that spans lines can still be traced back to its callee.
+//
 // kinds: comment | string | structField | varName | include | routine |
-//        listMethod | penMethod | general
-export function completionContext(prefix) {
+//        listMethod | penMethod | member | general
+export function completionContext(prefix, lineAbove) {
     let toks;
     try { toks = tokenize(prefix, { comments: true, quiet: true }); } catch (_) { return { kind: 'general' }; }
     toks.pop(); // EOF
@@ -70,7 +146,13 @@ export function completionContext(prefix) {
             const field = /^([^.\]]+)\.\w*$/.exec(last.value);
             return field ? { kind: 'structField', struct: field[1] } : { kind: 'varName' };
         }
-        return { kind: 'string', quoteCol: last.col, slot: stringSlot(toks, toks.length - 1) };
+        const expr = openInterpolation(prefix, last.col);
+        if (expr) {
+            const inner = completionContext(expr.text);
+            return inner.kind === 'string' ? { ...inner, quoteCol: inner.quoteCol + expr.offset }
+                : { ...inner, onCol: null };
+        }
+        return { kind: 'string', quoteCol: last.col, slot: stringSlot(toks, toks.length - 1, lineAbove) };
     }
 
     const partial = isWord(last) && last.endCol === prefix.length + 1;
@@ -79,12 +161,14 @@ export function completionContext(prefix) {
     if (!tail) return { kind: 'general' };
     const before = head[head.length - 2];
 
-    if (tail.type === '.' && before) {
-        if (before.type === 'VAR') return { kind: 'listMethod' };
-        if (before.value === 'pen' && isWord(before)) return { kind: 'penMethod' };
-    }
-    if (head.length >= 3 && head[0].type === '#' && head[1].value === 'include' && head[2].type === '<') {
+    if (head.length >= 3 && head[0].type === '#' && head[1].value === 'include' && head[2].type === '<'
+        && !head.some(t => t.type === '>')) {
         return { kind: 'include' };
+    }
+    if (tail.type === '.') {
+        if (before?.type === 'VAR') return { kind: 'listMethod' };
+        if (before && before.value === 'pen' && isWord(before)) return { kind: 'penMethod' };
+        return { kind: 'member' };
     }
     if (isWord(tail) && (tail.value === 'launch' || tail.value === 'await' || tail.value === 'cancel')) {
         return { kind: 'routine', withCall: tail.value !== 'cancel' };

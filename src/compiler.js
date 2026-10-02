@@ -296,6 +296,11 @@ export const CALL_SIGS = {
     cancel:         'cancel name        — set cancel flag',
     isRunning:      'isRunning(name)    — boolean: currently running?',
     checkCancel:    'checkCancel()      — stop this script if cancelled',
+    // Sensing predicates & heap
+    touching: 'touching("sprite" | "_edge_" | "_mouse_")  — boolean',
+    key:      'key("name")  — boolean: is the key pressed?',
+    alloc:    'alloc(n)  — allocate n heap cells, returns a pointer',
+    free:     'free(p)  — free heap cells allocated by alloc(p)',
 };
 
 // Returns up to `max` candidates whose spelling is close to `name` (prefix/substring heuristics).
@@ -336,7 +341,7 @@ export function parse(tokens, opts = {}) {
         return t;
     }
     function check(type) { return tokens[pos].type === type; }
-    function checkV(val) { return tokens[pos].value === val; }
+    function checkV(val) { const t = tokens[pos]; return t.type !== TT.STR && t.type !== TT.ISTR && t.value === val; }
     function tryEat(type) { if (check(type)) { pos++; return true; } return false; }
     function tryEatV(val) { if (checkV(val)) { pos++; return true; } return false; }
 
@@ -835,7 +840,7 @@ export function parse(tokens, opts = {}) {
             const mTok = peek();
             // Method names may collide with reserved keywords (down/up/clear/stamp/setSize/changeSize),
             // whose tokens carry the keyword itself as `type` rather than TT.IDENT.
-            const isWordTok = mTok.type === TT.IDENT || KW_SET.has(mTok.value);
+            const isWordTok = mTok.type === TT.IDENT || (mTok.type !== TT.STR && KW_SET.has(mTok.value));
             const method = isWordTok ? mTok.value : '';
             if (isWordTok) pos++;
             const PEN_METHODS = {
@@ -1281,7 +1286,7 @@ export function parse(tokens, opts = {}) {
     }
     function parseCallExpr() {
         const t = peek();
-        if (t.type === TT.IDENT || (KW_SET.has(t.value) && ['touching','key','xPos','yPos','direction','size','timer','answer','mouseDown','mouseX','mouseY','loudness','costumeNum','costumeName','volume','username','daysSince2000','isRunning'].includes(t.value))) {
+        if (t.type === TT.IDENT || (t.type !== TT.STR && KW_SET.has(t.value) && ['touching','key','xPos','yPos','direction','size','timer','answer','mouseDown','mouseX','mouseY','loudness','costumeNum','costumeName','volume','username','daysSince2000','isRunning'].includes(t.value))) {
             pos++;
             if (check(TT.LPAREN)) {
                 eat(TT.LPAREN);
@@ -2112,7 +2117,7 @@ function compile(ast, vm, spriteName) {
             function mkAdd(a,b){ return { type: 'BinOp', op: '+', left: a, right: b }; }
             function mkSub(a,b){ return { type: 'BinOp', op: '-', left: a, right: b }; }
             function mkDiv(a,b){ return { type: 'BinOp', op: '/', left: a, right: b }; }
-            function mkAbs(a)  { return { type: 'Call', name: 'abs', args: [a] }; }
+            function mkAbs(a)  { return { type: 'CallExpr', name: 'abs', args: [a] }; }
             // min(val, hi) = (val+hi - abs(val-hi)) / 2
             const minExpr = mkDiv(mkSub(mkAdd(val, hi), mkAbs(mkSub(val, hi))), mkN(2));
             // max(lo, min(val,hi)) = (lo + min + abs(lo - min)) / 2

@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { completionContext } from '../src/completion-context.js';
+import { completionContext, structFields, isComparisonNoise } from '../src/completion-context.js';
 
-const ctx = prefix => completionContext(prefix);
+const ctx = (prefix, lineAbove) => completionContext(prefix, lineAbove);
 
 test('line comments, including after code and quotes inside', () => {
     assert.equal(ctx('// hello').kind, 'comment');
@@ -29,6 +29,50 @@ test('nested calls do not leak the outer callee', () => {
     assert.equal(ctx('say(abs(1)) play("').slot, 'sounds');
 });
 
+test('distanceTo and sensing-of calls use their own target menus', () => {
+    assert.equal(ctx('distanceTo("').slot, 'mouseTargets');
+    for (const fn of ['xOf', 'yOf', 'directionOf', 'sizeOf', 'costumeNumOf', 'costumeNameOf', 'volumeOf']) {
+        assert.equal(ctx(`${fn}("`).slot, 'ofTargets', fn);
+    }
+    assert.equal(ctx('pointTowards("').slot, 'targets');
+});
+
+test('string interpolation hands the open {expr} to the normal contexts', () => {
+    assert.equal(ctx('say("hi {[').kind, 'varName');
+    assert.deepEqual(ctx('say("hi {[p.').struct, 'p');
+    assert.equal(ctx('say("hi {[xs].').kind, 'listMethod');
+    assert.equal(ctx('say("hi {{[').kind, 'string');
+    assert.equal(ctx('say("hi {x} then [').kind, 'string');
+    assert.deepEqual(ctx('say("a {play("'), { kind: 'string', quoteCol: 14, slot: 'sounds' });
+    assert.equal(ctx('say("a {abs(1) + "x').kind, 'string');
+});
+
+test('argument lists spanning lines resolve through the lines above', () => {
+    const above = lines => n => lines[lines.length - n];
+    assert.equal(ctx('  "', above(['glide(1,'])).slot, 'targets');
+    assert.equal(ctx('  "', above(['glide(1,', '  2,'])).slot, null);
+    assert.equal(ctx('  "', above(['foo(', 'say(1)'])).slot, null);
+    assert.equal(ctx('  "', above(['glide(1,', 'say("oops'])).slot, null);
+    assert.equal(ctx('  "', above(['glide(1,', '}'])).slot, null);
+    assert.equal(ctx('  "').slot, null);
+});
+
+test('struct fields skip comments and span lines', () => {
+    const fields = src => structFields(src).get('p');
+    assert.deepEqual(fields('struct p { x, y }'), ['x', 'y']);
+    assert.deepEqual(fields('struct p {\n  x, // horizontal\n  y\n}'), ['x', 'y']);
+    assert.deepEqual(fields('struct a { z }\nstruct p { x }'), ['x']);
+    assert.equal(fields('struct p'), undefined);
+});
+
+test('< noise is only suppressed for the trigger character', () => {
+    const lt = ctx('if [a] < ');
+    assert.equal(isComparisonNoise(lt, '', '<'), true);
+    assert.equal(isComparisonNoise(lt, '', undefined), false);
+    assert.equal(isComparisonNoise(lt, 'm', '<'), false);
+    assert.equal(isComparisonNoise(ctx('if [a] > '), '', '>'), false);
+});
+
 test('closed strings are not string context', () => {
     assert.equal(ctx('play("boing") ').kind, 'general');
 });
@@ -46,7 +90,9 @@ test('bracket contexts', () => {
 test('dot namespaces', () => {
     assert.equal(ctx('pen.').kind, 'penMethod');
     assert.equal(ctx('pen.se').kind, 'penMethod');
-    assert.equal(ctx('foo.').kind, 'general');
+    assert.equal(ctx('foo.').kind, 'member');
+    assert.equal(ctx('pen.down().').kind, 'member');
+    assert.equal(ctx('#include <a.').kind, 'include');
 });
 
 test('include and scratchroutine statements', () => {
