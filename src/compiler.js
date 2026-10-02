@@ -18,7 +18,7 @@ const TT = {
 
 const KW_SET = new Set(KEYWORDS);
 
-export function tokenize(src) {
+export function tokenize(src, opts = {}) {
     const tokens = [];
     let i = 0, line = 1, col = 1;
 
@@ -33,7 +33,12 @@ export function tokenize(src) {
         if (/\s/.test(src[i])) { advance(); continue; }
         // Line comment
         if (src[i] === '/' && src[i+1] === '/') {
+            const from = i, cLine = line, cCol = col;
             while (i < src.length && src[i] !== '\n') i++;
+            if (opts.comments) {
+                col += i - from;
+                tokens.push({ type: 'COMMENT', value: src.slice(from, i), line: cLine, col: cCol, endLine: line, endCol: col });
+            }
             continue;
         }
         const startLine = line, startCol = col;
@@ -70,12 +75,13 @@ export function tokenize(src) {
                 }
                 s += advance();
             }
-            if (src[i] === '"') advance();
+            const unterminated = src[i] !== '"';
+            if (!unterminated) advance();
             if (parts.length === 0) {
-                tokens.push({ type: TT.STR, value: s, line: startLine, col: startCol, endLine: line, endCol: col });
+                tokens.push({ type: TT.STR, value: s, unterminated, line: startLine, col: startCol, endLine: line, endCol: col });
             } else {
                 if (s !== '') parts.push({ kind: 'str', text: s });
-                tokens.push({ type: TT.ISTR, parts, value: '', line: startLine, col: startCol, endLine: line, endCol: col });
+                tokens.push({ type: TT.ISTR, parts, value: '', unterminated, line: startLine, col: startCol, endLine: line, endCol: col });
             }
             continue;
         }
@@ -85,8 +91,9 @@ export function tokenize(src) {
             advance();
             let s = '';
             while (i < src.length && src[i] !== ']') s += advance();
-            if (src[i] === ']') advance();
-            tokens.push({ type: TT.VAR, value: s.trim(), line: startLine, col: startCol, endLine: line, endCol: col });
+            const unterminated = src[i] !== ']';
+            if (!unterminated) advance();
+            tokens.push({ type: TT.VAR, value: s.trim(), unterminated, line: startLine, col: startCol, endLine: line, endCol: col });
             continue;
         }
 
@@ -143,7 +150,7 @@ export function tokenize(src) {
         }
 
         // Unknown — skip with warning
-        console.warn(`[scratchpiler] unexpected char: ${c} at ${line}:${col}`);
+        if (!opts.quiet) console.warn(`[scratchpiler] unexpected char: ${c} at ${line}:${col}`);
         advance();
     }
 

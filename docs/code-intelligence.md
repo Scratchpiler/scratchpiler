@@ -66,6 +66,10 @@ Completions know where your cursor is:
 - Typing `[` inside a define offers its parameters first, then struct fields, then project variables and lists.
 - Loop variables are only offered inside their loop. `[i]` will not haunt you at the top level.
 - Enum constants, `define` call snippets with parameter placeholders, and `launch`/`await` snippets for your scratchroutines all appear in the general list.
+- After `launch `, `await ` or `cancel ` only scratchroutines are offered (no more `launch launch anim()`), and `#include <` lists your saved headers.
+- Nothing pops up inside `//` comments, and words from the file no longer pad the list.
+
+**Tab chains the next step.** Accepting a snippet lands you in its first slot and immediately opens the right popup: a string slot (`play("`, `on receive "`) lists sounds or broadcasts, a `[` slot lists variables, an argument slot shows signature help. Items match on the bare name, so `goTo` finds both `goTo(x, y)` and `goTo("sprite")`. The editor remembers what you picked last and preselects it next time.
 
 ## Signature help & hover
 

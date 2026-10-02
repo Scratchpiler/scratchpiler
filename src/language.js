@@ -5,6 +5,8 @@ import { formatSource } from "./injector.js";
 import { tokenize } from "./compiler.js";
 import { ASM_OPCODES } from "./asm-opcodes.js";
 import { getAnalysis, visibleSymbols } from "./analyzer.js";
+import { listHeaders } from "./headers.js";
+import { completionContext } from "./completion-context.js";
 
 export function registerLanguage(monaco) {
     monaco.languages.register({ id: LANG_ID });
@@ -143,7 +145,7 @@ export function registerLanguage(monaco) {
     });
 
     monaco.languages.registerCompletionItemProvider(LANG_ID, {
-        triggerCharacters: ['"', '(', '[', '.'],
+        triggerCharacters: ['"', '(', '[', '.', '<'],
         provideCompletionItems(model, position) {
             const word  = model.getWordUntilPosition(position);
             const range = {
@@ -152,40 +154,67 @@ export function registerLanguage(monaco) {
                 startColumn:     word.startColumn,
                 endColumn:       word.endColumn,
             };
-            const linePrefix = model.getLineContent(position.lineNumber).substring(0, word.startColumn - 1);
+            const ctx = completionContext(model.getLineContent(position.lineNumber).substring(0, position.column - 1));
+
+            if (ctx.kind === 'comment') return { suggestions: [] };
+
+            if (ctx.kind === 'include') {
+                const closed = model.getLineContent(position.lineNumber)[word.endColumn - 1] === '>';
+                return {
+                    suggestions: listHeaders().map(name => ({
+                        label: name, kind: monaco.languages.CompletionItemKind.File,
+                        detail: 'Header', insertText: closed ? name : `${name}>`, range,
+                    })),
+                };
+            }
+
+            if (ctx.kind === 'general' && ctx.afterLt && word.word === '') return { suggestions: [] };
+
+            if (ctx.kind === 'routine') {
+                const CIKr = monaco.languages.CompletionItemKind;
+                const IS = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+                const suggestions = [];
+                try {
+                    for (const sym of visibleSymbols(getAnalysis(model, currentSpriteContext), position.lineNumber, position.column)) {
+                        if (sym.kind !== 'routine') continue;
+                        const params = sym.meta.params || [];
+                        suggestions.push({
+                            label: `${sym.name}(${params.join(', ')})`, kind: CIKr.Function,
+                            detail: 'scratchroutine', filterText: sym.name,
+                            insertText: ctx.withCall
+                                ? `${sym.name}(${params.map((p, i) => `\${${i + 1}:${p}}`).join(', ')})`
+                                : sym.name,
+                            insertTextRules: IS, range,
+                        });
+                    }
+                } catch (_) {}
+                return { suggestions: withCompletionBehavior(suggestions) };
+            }
 
             // Struct field completions inside [name. (unclosed bracket before dot)
-            if (linePrefix.endsWith('.') && /\[([^\].]+)\.$/.test(linePrefix)) {
-                const match = linePrefix.match(/\[([^\].]+)\.$/);
-                const prefix = match ? match[1] : '';
-                if (prefix) {
-                    const src = model.getValue();
-                    const structDefs = {};
-                    const structRe = /\bstruct\s+(\w+)\s*\{([^}]*)\}/g;
-                    let sm;
-                    while ((sm = structRe.exec(src)) !== null) {
-                        const fields = sm[2].split(/[\s,]+/).filter(f => f.length > 0);
-                        structDefs[sm[1]] = fields;
-                    }
-                    const fields = structDefs[prefix];
-                    if (fields && fields.length > 0) {
-                        const CIKf = monaco.languages.CompletionItemKind;
-                        return {
-                            suggestions: fields.map(f => ({
-                                label: `${prefix}.${f}]`,
-                                kind: CIKf.Field,
-                                detail: `Struct field · ${prefix}`,
-                                insertText: f + ']',
-                                range,
-                            }))
-                        };
-                    }
+            if (ctx.kind === 'structField') {
+                const structRe = /\bstruct\s+(\w+)\s*\{([^}]*)\}/g;
+                const src = model.getValue();
+                let sm, fields;
+                while ((sm = structRe.exec(src)) !== null) {
+                    if (sm[1] === ctx.struct) fields = sm[2].split(/[\s,]+/).filter(f => f.length > 0);
+                }
+                if (fields && fields.length > 0) {
+                    return {
+                        suggestions: fields.map(f => ({
+                            label: `${ctx.struct}.${f}]`,
+                            kind: monaco.languages.CompletionItemKind.Field,
+                            detail: `Struct field · ${ctx.struct}`,
+                            insertText: f + ']',
+                            range,
+                        }))
+                    };
                 }
             }
 
             // Var completions inside an unclosed [ with no dot yet:
             // in-scope params/loop vars first, then struct fields, then project vars.
-            if (linePrefix.endsWith('[')) {
+            if (ctx.kind === 'varName') {
                 const CIKf = monaco.languages.CompletionItemKind;
                 const suggestions = [];
                 try {
@@ -243,7 +272,7 @@ export function registerLanguage(monaco) {
             }
 
             // Dot-method completions after [varname].
-            if (linePrefix.endsWith('.') && /\[[^\]]+\]\.$/.test(linePrefix)) {
+            if (ctx.kind === 'listMethod') {
                 const dotRange = { ...range, startColumn: word.startColumn };
                 const CIKd = monaco.languages.CompletionItemKind;
                 const DOT_METHODS = [
@@ -266,7 +295,7 @@ export function registerLanguage(monaco) {
             }
 
             // Dot-method completions after pen.
-            if (linePrefix.endsWith('.') && /\bpen\.$/.test(linePrefix)) {
+            if (ctx.kind === 'penMethod') {
                 const dotRange = { ...range, startColumn: word.startColumn };
                 const CIKd = monaco.languages.CompletionItemKind;
                 const PEN_DOT_METHODS = [
@@ -290,144 +319,56 @@ export function registerLanguage(monaco) {
                 };
             }
 
-            // context aware completions (strings)
-            // Detect if cursor is inside an unclosed string literal and
-            // return only the appropriate completions for that argument slot.
-            const fullPrefix = model.getLineContent(position.lineNumber)
-                .substring(0, position.column - 1);
-            let inStr = false, quoteStart = -1;
-            for (let i = 0; i < fullPrefix.length; i++) {
-                if (fullPrefix[i] === '"') { inStr = !inStr; if (inStr) quoteStart = i; }
-            }
-            if (inStr && quoteStart !== -1) {
-                const beforeQuote = fullPrefix.substring(0, quoteStart).trimEnd();
+            // Inside an unclosed string literal: offer only what fits that argument slot.
+            if (ctx.kind === 'string') {
                 const CIKs = monaco.languages.CompletionItemKind;
-                const IS   = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
-
-                // Range covers everything inside the string (from after " to closing " or cursor)
                 const lineContent = model.getLineContent(position.lineNumber);
                 const afterCursor = lineContent.substring(position.column - 1);
                 const closingQ    = afterCursor.indexOf('"');
                 const strRange = {
                     startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
-                    startColumn: quoteStart + 2,
+                    startColumn: ctx.quoteCol + 1,
                     endColumn:   closingQ >= 0 ? position.column + closingQ : position.column,
                 };
 
-                function strItems(vals, kind, detail) {
-                    return vals.map(v => ({
-                        label: v, kind: kind ?? CIKs.Value, detail: detail ?? '',
-                        insertText: v, range: strRange,
-                    }));
-                }
+                const strItems = (vals, kind, detail) => vals.map(v => ({
+                    label: v, kind, detail, insertText: v, range: strRange,
+                }));
 
-                // Helper: get broadcast names from the VM stage
-                function getBroadcasts() {
-                    if (!currentVM) return [];
-                    const stage = currentVM.runtime.targets.find(t => t.isStage);
-                    if (!stage) return [];
-                    return Object.values(stage.variables)
-                        .filter(v => v.type === 'broadcast_msg')
-                        .map(v => v.name);
-                }
-
-                // Helper: get sounds for active sprite/stage
-                function getActiveSounds() {
-                    if (!currentVM) return [];
+                const activeTarget = () => {
+                    if (!currentVM) return null;
                     const sn = getActiveSpriteNameFromDropdown();
-                    const target = sn === '__stage__'
+                    return sn === '__stage__'
                         ? currentVM.runtime.targets.find(t => t.isStage)
                         : currentVM.runtime.targets.find(t => t.sprite?.name === sn);
-                    return target ? target.sprite.sounds.map(s => s.name) : [];
-                }
+                };
+                const broadcasts = () => {
+                    const stage = currentVM?.runtime.targets.find(t => t.isStage);
+                    return stage
+                        ? Object.values(stage.variables).filter(v => v.type === 'broadcast_msg').map(v => v.name)
+                        : [];
+                };
+                const spriteNames = scratchIndex.sprites.map(s => s.name);
+                const backdrops = scratchIndex.stage.backdrops || [];
 
-                // Helper: get costumes for active sprite/stage
-                function getActiveCostumes() {
-                    if (!currentVM) return [];
-                    const sn = getActiveSpriteNameFromDropdown();
-                    const target = sn === '__stage__'
-                        ? currentVM.runtime.targets.find(t => t.isStage)
-                        : currentVM.runtime.targets.find(t => t.sprite?.name === sn);
-                    return target ? target.sprite.costumes.map(c => c.name) : [];
-                }
-
-                const KEY_NAMES = [
-                    'space','enter','up arrow','down arrow','left arrow','right arrow',
-                    'a','b','c','d','e','f','g','h','i','j','k','l','m',
-                    'n','o','p','q','r','s','t','u','v','w','x','y','z',
-                    '0','1','2','3','4','5','6','7','8','9',
-                ];
-                const SPRITE_TARGETS = ['_mouse_', '_random_',
-                    ...scratchIndex.sprites.map(s => s.name)];
-                const TOUCH_TARGETS  = ['_edge_', '_mouse_',
-                    ...scratchIndex.sprites.map(s => s.name)];
-                const BACKDROPS = scratchIndex.stage.backdrops || [];
-                const EFFECTS   = ['color','fisheye','whirl','pixelate','mosaic','brightness','ghost'];
-                const ROT_STYLES = ["all around", "left-right", "don't rotate"];
-                const PEN_COLOR_PARAMS = ['color','saturation','brightness','transparency'];
-                const TIME_UNITS = ['year','month','date','day','hour','minute','second'];
-
-                // Match the context before the opening quote
-                if (/\bon\s+receive\s*$/.test(beforeQuote)) {
-                    return { suggestions: strItems(getBroadcasts(), CIKs.Event, 'Broadcast message') };
-                }
-                if (/\bon\s+backdrop\s*$/.test(beforeQuote)) {
-                    return { suggestions: strItems(BACKDROPS, CIKs.File, 'Backdrop') };
-                }
-                if (/\bon\s+key\s*$/.test(beforeQuote)) {
-                    return { suggestions: strItems(KEY_NAMES, CIKs.Enum, 'Key name') };
-                }
-                if (/\bswitchCostume\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(getActiveCostumes(), CIKs.Color, 'Costume') };
-                }
-                if (/\b(?:switchBackdrop|switchBackdropAndWait)\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(BACKDROPS, CIKs.File, 'Backdrop') };
-                }
-                if (/\b(?:play|playUntilDone)\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(getActiveSounds(), CIKs.Event, 'Sound') };
-                }
-                if (/\b(?:broadcast|broadcastAndWait|send|sendAndWait)\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(getBroadcasts(), CIKs.Event, 'Broadcast message') };
-                }
-                if (/\b(?:goTo|pointTowards|glide\s*\([^)]*,\s*)\s*$/.test(beforeQuote) ||
-                    /\bglide\s*\([^,]+,\s*$/.test(beforeQuote)) {
-                    return { suggestions: strItems(SPRITE_TARGETS, CIKs.Class, 'Sprite / target') };
-                }
-                if (/\btouching\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(TOUCH_TARGETS, CIKs.Class, 'Sprite / edge / mouse') };
-                }
-                if (/\b(?:distanceTo|xOf|yOf|directionOf|sizeOf|costumeNumOf|costumeNameOf|volumeOf|pointTowards)\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(SPRITE_TARGETS, CIKs.Class, 'Sprite / target') };
-                }
-                if (/\bkey\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(KEY_NAMES, CIKs.Enum, 'Key name') };
-                }
-                if (/\b(?:setEffect|changeEffect)\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(EFFECTS, CIKs.Enum, 'Visual effect') };
-                }
-                if (/\b(?:setSoundEffect|changeSoundEffect)\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(['PITCH', 'PAN LEFT/RIGHT'], CIKs.Enum, 'Sound effect') };
-                }
-                if (/\bsetRotationStyle\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(ROT_STYLES, CIKs.Enum, 'Rotation style') };
-                }
-                if (/\bsetDragMode\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(['draggable', 'not draggable'], CIKs.Enum, 'Drag mode') };
-                }
-                if (/\b(?:setPenColorParam|changePenColorParam|setColorParam|changeColorParam)\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(PEN_COLOR_PARAMS, CIKs.Enum, 'Pen color parameter') };
-                }
-                if (/\bcurrentTime\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(TIME_UNITS, CIKs.Enum, 'Time unit') };
-                }
-                if (/\b(?:createClone)\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(['_myself_', ...scratchIndex.sprites.map(s => s.name)], CIKs.Class, 'Sprite / self') };
-                }
-                if (/\b(?:sort)\s*\($/.test(beforeQuote)) {
-                    return { suggestions: strItems(['desc'], CIKs.Enum, 'Sort direction') };
-                }
-                // Inside a string but no specific context — suppress generic completions
-                return { suggestions: [] };
+                const SLOT_ITEMS = {
+                    broadcasts:      () => strItems(broadcasts(), CIKs.Event, 'Broadcast message'),
+                    backdrops:       () => strItems(backdrops, CIKs.File, 'Backdrop'),
+                    costumes:        () => strItems(activeTarget()?.sprite.costumes.map(c => c.name) ?? [], CIKs.Color, 'Costume'),
+                    sounds:          () => strItems(activeTarget()?.sprite.sounds.map(s => s.name) ?? [], CIKs.Event, 'Sound'),
+                    keys:            () => strItems(KEY_NAMES, CIKs.Enum, 'Key name'),
+                    targets:         () => strItems(['_mouse_', '_random_', ...spriteNames], CIKs.Class, 'Sprite / target'),
+                    touchTargets:    () => strItems(['_edge_', '_mouse_', ...spriteNames], CIKs.Class, 'Sprite / edge / mouse'),
+                    clones:          () => strItems(['_myself_', ...spriteNames], CIKs.Class, 'Sprite / self'),
+                    effects:         () => strItems(['color','fisheye','whirl','pixelate','mosaic','brightness','ghost'], CIKs.Enum, 'Visual effect'),
+                    soundEffects:    () => strItems(['PITCH', 'PAN LEFT/RIGHT'], CIKs.Enum, 'Sound effect'),
+                    rotationStyles:  () => strItems(['all around', 'left-right', "don't rotate"], CIKs.Enum, 'Rotation style'),
+                    dragModes:       () => strItems(['draggable', 'not draggable'], CIKs.Enum, 'Drag mode'),
+                    penParams:       () => strItems(['color','saturation','brightness','transparency'], CIKs.Enum, 'Pen color parameter'),
+                    timeUnits:       () => strItems(['year','month','date','day','hour','minute','second'], CIKs.Enum, 'Time unit'),
+                    sortDirections:  () => strItems(['desc'], CIKs.Enum, 'Sort direction'),
+                };
+                return { suggestions: SLOT_ITEMS[ctx.slot]?.() ?? [] };
             }
 
             // __asm__ volatile(...) context: opcode names at the top level, registers inside a call
@@ -451,10 +392,7 @@ export function registerLanguage(monaco) {
             }
 
             // Hat-block range fix: extend backwards to cover "on " prefix
-            const onMatch = linePrefix.match(/\bon\s+$/);
-            const hatRange = onMatch
-                ? { ...range, startColumn: word.startColumn - onMatch[0].length }
-                : range;
+            const hatRange = ctx.onCol ? { ...range, startColumn: ctx.onCol } : range;
             const suggestions = buildSuggestions(monaco, range, hatRange);
 
             // Analyzer-driven, scope-aware additions: in-scope params/loop vars,
@@ -504,7 +442,7 @@ export function registerLanguage(monaco) {
                     }
                 }
             } catch (_) {}
-            return { suggestions };
+            return { suggestions: withCompletionBehavior(suggestions) };
         },
     });
 
@@ -865,6 +803,42 @@ export function registerLanguage(monaco) {
             decreaseIndentPattern: /^\s*\}/,
         },
     });
+}
+
+const SUGGEST_COMMAND = { id: 'editor.action.triggerSuggest', title: 'Suggest' };
+const HINTS_COMMAND   = { id: 'editor.action.triggerParameterHints', title: 'Parameter hints' };
+
+const KEY_NAMES = [
+    'space', 'enter', 'up arrow', 'down arrow', 'left arrow', 'right arrow',
+    ...'abcdefghijklmnopqrstuvwxyz0123456789',
+];
+
+function followUpCommand(text) {
+    const idx = text.search(/\$(?:\d|\{\d)/);
+    if (idx <= 0) return null;
+    if (/^\$\{\d+\|/.test(text.slice(idx))) return null;
+    if (/^(?:launch|await|cancel) \$/.test(text)) return SUGGEST_COMMAND;
+    const prev = text[idx - 1];
+    if (prev === '"' || prev === '[' || prev === '<') return SUGGEST_COMMAND;
+    if (prev === '(') return HINTS_COMMAND;
+    return null;
+}
+
+// Match on the bare name ("goTo", not "goTo(x, y)"), and chain the next useful
+// popup after a snippet lands the cursor in its first slot.
+function withCompletionBehavior(items) {
+    for (const item of items) {
+        if (typeof item.insertText !== 'string') continue;
+        if (item.filterText === undefined && typeof item.label === 'string') {
+            const stem = item.label.replace(/\s*[({].*$/, '');
+            if (stem && stem !== item.label) item.filterText = stem;
+        }
+        if (!item.command) {
+            const command = followUpCommand(item.insertText);
+            if (command) item.command = command;
+        }
+    }
+    return items;
 }
 
 function getActiveSpriteNameFromDropdown() {
@@ -1250,7 +1224,7 @@ function buildSuggestions(monaco, range, hatRange) {
          'Pointer indexing — read value at offset ptr + i');
 
     // Includes
-    push('#include <>',    CIK.Snippet,  'Headers · #include <name.h>', '#include <${0:name.h}>',
+    push('#include <>',    CIK.Snippet,  'Headers · #include <name.h>', '#include <$0>',
          'Include a header library (created in the Headers panel, shared across projects)');
 
     // Scratchroutines
