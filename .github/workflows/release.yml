@@ -19,6 +19,10 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # fix ci now that sp depends on slvm
+      - name: Clone SLVM locally
+        run: git clone --depth 1 https://github.com/Scratchpiler/slvm.git ../slvm
+
       - run: npm ci
 
       - run: npm run prod
