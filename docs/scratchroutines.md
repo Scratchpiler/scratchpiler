@@ -39,7 +39,7 @@ scratchroutine heartbeat() {
 - An `on receive "__sroutine_name"` hat block
 - A preamble: `set [__sroutine_name_cancelled] to 0` and `change [__sroutine_name_count] by 1`
 - The body, with each parameter name resolved to its hidden global variable
-- A postamble: `change [__sroutine_name_count] by -1`
+- A postamble: `change [__sroutine_name_count] by -1`. Explicit returns, `stopThis()`, clone deletion and cancellation also decrement the counter before exiting.
 
 All infrastructure variables are created automatically on the Stage (global scope). You do not need to create them in Scratch first.
 
@@ -58,7 +58,7 @@ scratchroutine moveSprite(dx, dy) {
 
 Internally, `[dx]` resolves to `__sroutine_moveSprite_dx` (a global variable). You never interact with the internal name directly. The decompiler knows about it and will reconstruct the original param name on re-import.
 
-**Argument passing is positional.** Parameters are matched to the global vars by alphabetical sort of the variable names, not by name. If you define `scratchroutine foo(a, b)`, then `launch foo(1, 2)` will set `__sroutine_foo_a` to 1 and `__sroutine_foo_b` to 2. The sort is stable across compiles because variable names are deterministic.
+**Argument passing is positional.** Arguments follow the declaration order, including when the caller is compiled separately. For `scratchroutine foo(z, a)`, `launch foo(1, 2)` assigns `z = 1` and `a = 2`. The compiler stores this order in the Stage list `__sroutine_foo_params`, so it survives project saves and re-imports. Older projects without this list use the Stage variable creation order as a fallback. `count` and `cancelled` are reserved parameter names because they hold the routine's lifecycle state.
 
 ---
 
@@ -131,6 +131,7 @@ Used **inside a scratchroutine body only**. Compiles to:
 
 ```
 if [__sroutine_name_cancelled] = 1 {
+    change [__sroutine_name_count] by -1
     stopThis()
 }
 ```
@@ -317,6 +318,7 @@ For the curious or the deeply, irreversibly determined to look at the variable m
 | Parameter | `__sroutine_<name>_<param>` |
 | Cancel flag | `__sroutine_<name>_cancelled` |
 | Running counter | `__sroutine_<name>_count` |
+| Parameter order (list) | `__sroutine_<name>_params` |
 
 These variables are created on the Stage automatically when the scratchroutine compiles. They are hidden from SDSL source — `[__sroutine_bounce_cancelled]` does not appear in autocomplete, and the decompiler suppresses set/change blocks for these names. They do appear in Scratch's variable monitor if you look for them.
 

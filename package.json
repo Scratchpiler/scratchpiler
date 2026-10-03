@@ -26,7 +26,8 @@
   },
   "homepage": "https://github.com/Scratchpiler/scratchpiler#readme",
   "devDependencies": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "jsdom": "^30.1.1"
   },
   "dependencies": {
     "slvm": "file:../slvm"

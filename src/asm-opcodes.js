@@ -160,17 +160,17 @@ export const ASM_OPCODES = {
             { name: 'DIRECTION', kind: 'input', valueType: 'number' },
         ],
     },
-    'motion_distanceto': {
+    'sensing_distanceto': {
         params: [
             { name: 'DISTANCETOMENU', kind: 'input', valueType: 'menu',
-              menuShadow: { opcode: 'motion_distancetomenu', field: 'DISTANCETOMENU' } },
+              menuShadow: { opcode: 'sensing_distancetomenu', field: 'DISTANCETOMENU' } },
         ],
     },
-    'motion_glidesecstosprite': {
+    'motion_glideto': {
         params: [
             { name: 'SECS', kind: 'input', valueType: 'number' },
             { name: 'TO', kind: 'input', valueType: 'menu',
-              menuShadow: { opcode: 'motion_glidesecstosprite_menu', field: 'TO' } },
+              menuShadow: { opcode: 'motion_glideto_menu', field: 'TO' } },
         ],
     },
 

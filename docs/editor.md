@@ -133,7 +133,7 @@ The `{ }` icon in the left rail. Headers open in their own tabs next to your spr
 `Ctrl+,`, or the sliders icon at the bottom of the left rail.
 
 - **Editor** — theme, font size, indent width, line wrap, minimap, and how soon your code is saved.
-- **Compiler** — choose the backend: **Classic** (default) or **SLVM (experimental)**, which compiles through an intermediate representation first. See [slvm-backend.md](slvm-backend.md) for what changes, how it is tested, and the few things it still rejects.
+All compilation uses SLVM automatically. Settings from earlier versions keep editor preferences; the retired backend choice is ignored. See [slvm-backend.md](slvm-backend.md) for the pipeline and verification.
 - **Checks** — toggle each family of warnings. See [linter.md](linter.md) for what they catch, and [code-intelligence.md](code-intelligence.md) for the smarter ones.
 - **Maintenance**:
   - **Re-index project** — rescans sprites, variables and custom blocks when the explorer looks out of date.

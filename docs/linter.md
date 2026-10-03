@@ -14,8 +14,7 @@ Some statements unconditionally end the current script's execution. Any code aft
 |---|---|
 | `stopAll()` | Stops all scripts in the project |
 | `stopThis()` | Stops the current script |
-| `forever { }` | Loops forever; nothing after it in this scope can execute |
-| `deleteClone()` | Destroys the clone running this script, erasing it from browser memory |
+| `forever { }` without an exiting `break` | Loops forever; nothing after it in this scope can execute |
 
 ```
 on flag {

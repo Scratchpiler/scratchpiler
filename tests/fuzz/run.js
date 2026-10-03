@@ -1,15 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { generateProgram, DEFAULT_FEATURES } from './generate.js';
-import { compareBackends, haveVM, visible } from '../backend-harness.js';
+import { execute, haveVM, visible } from '../backend-harness.js';
 import { runOracle, OracleLimit } from './oracle.js';
 
 const USAGE = `usage: node tests/fuzz/run.js [--from N] [--count N] [--out dir] [--feature name ...]
 
-Generates random Scratchpiler programs, compiles each with the classic and the SLVM
-backend, runs both in a headless scratch-vm and reports every difference in variables,
-lists, speech or sprite state. Divergent programs are written to --out with a .json
-report next to each.
+Generates random Scratchpiler programs, compiles through SLVM, and compares a
+headless scratch-vm execution with the independent source interpreter. Failing
+programs and reports are written to --out. Any failure produces a nonzero exit.
 features: ${Object.keys(DEFAULT_FEATURES).join(', ')}`;
 
 const argv = process.argv.slice(2);
@@ -28,7 +27,7 @@ if (!haveVM) {
 }
 if (opts.out) fs.mkdirSync(opts.out, { recursive: true });
 
-const totals = { programs: 0, compileErrors: 0, classicOnlyErrors: 0, diverged: 0, classicWrong: 0, slvmWrong: 0, oracleSkipped: 0, blocksClassic: 0, blocksSlvm: 0 };
+const totals = { programs: 0, compileErrors: 0, runtimeErrors: 0, mismatches: 0, oracleSkipped: 0, blocks: 0 };
 
 function disagreements(vm, oracle) {
     const out = [];
@@ -45,46 +44,45 @@ function disagreements(vm, oracle) {
     if (JSON.stringify(vm.said) !== JSON.stringify(oracle.said)) out.push(`said ${JSON.stringify(vm.said)}, expected ${JSON.stringify(oracle.said)}`);
     return out;
 }
+function saveFailure(seed, source, report) {
+    if (!opts.out) return;
+    fs.writeFileSync(path.join(opts.out, `seed-${seed}.sdsl`), source);
+    fs.writeFileSync(path.join(opts.out, `seed-${seed}.json`), JSON.stringify(report, null, 2));
+}
+
 for (let seed = opts.from; seed < opts.from + opts.count; seed++) {
     const source = generateProgram(seed, opts.features);
-    const result = await compareBackends(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
     totals.programs++;
-    if (result.slvmErrors.length) {
-        totals.compileErrors++;
-        console.log(`seed ${seed}: SLVM compile errors ${JSON.stringify(result.slvmErrors.map((e) => e.message))}`);
-        if (opts.out) fs.writeFileSync(path.join(opts.out, `seed-${seed}.sdsl`), source);
+    let result;
+    try {
+        result = await execute(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
+    } catch (error) {
+        totals.runtimeErrors++;
+        console.log(`seed ${seed}: ${error.message}`);
+        saveFailure(seed, source, { error: error.stack });
         continue;
     }
-    if (result.classicErrors.length) totals.classicOnlyErrors++;
-    if (result.compiled) {
-        totals.blocksClassic += result.blocks.classic;
-        totals.blocksSlvm += result.blocks.slvm;
+    if (result.errors.length) {
+        totals.compileErrors++;
+        console.log(`seed ${seed}: compile errors ${JSON.stringify(result.errors.map((e) => e.message))}`);
+        saveFailure(seed, source, { errors: result.errors });
+        continue;
     }
-    let oracle = null;
+    totals.blocks += Object.keys(result.blocks).length;
+    let oracle;
     try {
-        oracle = runOracle(source);
+        oracle = runOracle(source, { initialVars: { p: 0, q: 0 }, initialLists: { L: [] } });
     } catch (e) {
         if (!(e instanceof OracleLimit)) throw e;
         totals.oracleSkipped++;
+        continue;
     }
-    const report = {
-        backends: result.differences,
-        classic: oracle && result.classic ? disagreements(result.classic, oracle) : [],
-        slvm: oracle ? disagreements(result.slvm, oracle) : [],
-    };
-    if (result.differences.length) totals.diverged++;
-    if (report.classic.length) totals.classicWrong++;
-    if (report.slvm.length) totals.slvmWrong++;
-    if (result.differences.length || report.classic.length || report.slvm.length) {
-        const parts = [];
-        if (result.differences.length) parts.push(`backends differ (${result.differences.map((d) => d.what).join(', ')})`);
-        if (report.classic.length) parts.push(`classic ≠ oracle: ${report.classic[0]}`);
-        if (report.slvm.length) parts.push(`slvm ≠ oracle: ${report.slvm[0]}`);
-        console.log(`seed ${seed}: ${parts.join(' | ')}`);
-        if (opts.out) {
-            fs.writeFileSync(path.join(opts.out, `seed-${seed}.sdsl`), source);
-            fs.writeFileSync(path.join(opts.out, `seed-${seed}.json`), JSON.stringify(report, null, 2));
-        }
+    const differences = disagreements(result.runtime, oracle);
+    if (differences.length) {
+        totals.mismatches++;
+        console.log(`seed ${seed}: ${differences[0]}`);
+        saveFailure(seed, source, { differences });
     }
 }
 console.log(JSON.stringify(totals));
+process.exitCode = totals.compileErrors || totals.runtimeErrors || totals.mismatches || totals.oracleSkipped ? 1 : 0;

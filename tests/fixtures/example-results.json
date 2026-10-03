@@ -1,0 +1,646 @@
+{
+  "ask-quiz.sdsl": {
+    "vars": {
+      "score": "0",
+      "userAnswer": "0"
+    },
+    "lists": {},
+    "said": [
+      "What does CPU stand for?"
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "bogosort.sdsl": {
+    "vars": {
+      "sorted": "1",
+      "attempts": "43",
+      "idx1": "4",
+      "idx2": "1",
+      "temp": "1",
+      "len_minus_one": "4"
+    },
+    "lists": {
+      "data": [
+        "1",
+        "2",
+        "5",
+        "7",
+        "9"
+      ]
+    },
+    "said": [
+      "Starting BogoSort! (This may take a while...)",
+      "Sorted in 43 attempts!"
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "bounce-loop.sdsl": {
+    "vars": {},
+    "lists": {},
+    "said": [],
+    "sprites": {
+      "Sprite1": {
+        "x": 38398500,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "broadcast-game.sdsl": {
+    "vars": {
+      "score": "0",
+      "lives": "3",
+      "gameRunning": "0"
+    },
+    "lists": {},
+    "said": [
+      "Press ENTER to start."
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "chase-mouse.sdsl": {
+    "vars": {},
+    "lists": {},
+    "said": [],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "clones-burst.sdsl": {
+    "vars": {
+      "cloneDir": "0"
+    },
+    "lists": {},
+    "said": [],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "control-flow-sugar.sdsl": {
+    "vars": {
+      "score": "0",
+      "grade": "F",
+      "tries": "1",
+      "n": "0",
+      "total": "0"
+    },
+    "lists": {},
+    "said": [
+      "password?"
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "counter.sdsl": {
+    "vars": {
+      "score": "0"
+    },
+    "lists": {},
+    "said": [],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "custom-blocks.sdsl": {
+    "vars": {},
+    "lists": {},
+    "said": [],
+    "sprites": {
+      "Sprite1": {
+        "x": 100,
+        "y": -100,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "for-loop-spiral.sdsl": {
+    "vars": {},
+    "lists": {},
+    "said": [
+      "Done."
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 101.04709657377731,
+        "y": -113.04336836431098,
+        "direction": -110,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "fork-bomb.sdsl": {
+    "vars": {},
+    "lists": {},
+    "said": [
+      "Initiating clone cascade..."
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "graphic-effects.sdsl": {
+    "vars": {},
+    "lists": {},
+    "said": [
+      "Press SPACE to cycle effects. R to reset."
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "hello-world.sdsl": {
+    "vars": {},
+    "lists": {},
+    "said": [
+      "Hello, World!",
+      "I'm a Scratch sprite!"
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "include-demo.sdsl": {
+    "vars": {
+      "result": "49"
+    },
+    "lists": {},
+    "said": [
+      "7 squared is 49"
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "list-inventory.sdsl": {
+    "vars": {},
+    "lists": {
+      "inventory": [
+        "torch",
+        "map"
+      ]
+    },
+    "said": [
+      "Inventory ready. Use S/P/I/C/L."
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "math-functions.sdsl": {
+    "vars": {
+      "x": "0",
+      "result": "0"
+    },
+    "lists": {},
+    "said": [
+      "Press 1-7 to demo math functions."
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "operator-sugar.sdsl": {
+    "vars": {
+      "score": "73",
+      "hp": "100",
+      "grade": "pass"
+    },
+    "lists": {},
+    "said": [
+      "nonzero!",
+      "passing, not great",
+      "score=73, grade=pass, half=36.5",
+      "literal braces: {not interpolated}"
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "platformer-full.sdsl": {
+    "vars": {
+      "lives": "3",
+      "score": "16",
+      "alive": "1",
+      "velY": "0"
+    },
+    "lists": {},
+    "said": [],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": -160,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "platformer-move.sdsl": {
+    "vars": {},
+    "lists": {},
+    "said": [],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "pointers-linkedlist.sdsl": {
+    "vars": {
+      "x": "0",
+      "px": "1",
+      "head": "72",
+      "i": "3",
+      "node": "0",
+      "sum": "6",
+      "next": "0",
+      "__alloc_prev": "0",
+      "__alloc_cur": "72",
+      "__alloc_next": "0",
+      "__heap_free": "66"
+    },
+    "lists": {
+      "__heap": [
+        "99",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "2",
+        "69",
+        "0",
+        "2",
+        "72",
+        "66",
+        "2",
+        "0",
+        "69"
+      ],
+      "__ptab": [
+        "x"
+      ]
+    },
+    "said": [
+      "through the pointer: 42",
+      "x is now 99",
+      "sum = 6"
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "return-functions.sdsl": {
+    "vars": {
+      "area": "42",
+      "msg": "hello, world"
+    },
+    "lists": {},
+    "said": [
+      "area = 42",
+      "hello, world — fact(5) = 120",
+      "arithmetic checks out"
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "sensing-radar.sdsl": {
+    "vars": {
+      "dist": "10000",
+      "report": "Dist: 10000"
+    },
+    "lists": {},
+    "said": [
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far",
+      "Dist: 10000 — far"
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "spaghetti-goto.sdsl": {
+    "vars": {
+      "i": "9"
+    },
+    "lists": {},
+    "said": [
+      "Counting: 0",
+      "Counting: 1",
+      "Counting: 2",
+      "Counting: 3",
+      "Counting: 4",
+      "Counting: 5",
+      "Counting: 6",
+      "Counting: 7",
+      "Counting: 8",
+      "Counting: 9"
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "string-ops.sdsl": {
+    "vars": {
+      "word": "0",
+      "result": "0"
+    },
+    "lists": {},
+    "said": [
+      "Enter a word:"
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "timer-countdown.sdsl": {
+    "vars": {
+      "running": "0",
+      "timeLeft": "10"
+    },
+    "lists": {},
+    "said": [
+      "Press ENTER to start the countdown."
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "trig-circle.sdsl": {
+    "vars": {
+      "angle": "450"
+    },
+    "lists": {},
+    "said": [],
+    "sprites": {
+      "Sprite1": {
+        "x": 5.23359562,
+        "y": 99.86295348,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  },
+  "unsafe-asm.sdsl": {
+    "vars": {
+      "ptr": "0x00000000"
+    },
+    "lists": {},
+    "said": [
+      "Dereferencing null pointer...",
+      "If you can read this, reality is broken."
+    ],
+    "sprites": {
+      "Sprite1": {
+        "x": 0,
+        "y": 0,
+        "direction": 90,
+        "size": 100,
+        "visible": true
+      }
+    }
+  }
+}

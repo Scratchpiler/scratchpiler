@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { generateProgram, DEFAULT_FEATURES } from './fuzz/generate.js';
 import { runOracle } from './fuzz/oracle.js';
-import { compareBackends, haveVM, visible } from './backend-harness.js';
+import { execute, haveVM, visible } from './backend-harness.js';
 
 const ALL_FEATURES = Object.fromEntries(Object.keys(DEFAULT_FEATURES).map((k) => [k, true]));
 const skip = !haveVM && 'slvm/testing with scratch-vm is not installed';
@@ -18,23 +18,39 @@ function agreesWithOracle(vm, oracle) {
 }
 
 for (let seed = 0; seed < 15; seed++) {
-    test(`fuzz seed ${seed}: classic, SLVM and the reference interpreter agree`, { skip }, async () => {
+    test(`fuzz seed ${seed}: SLVM and the reference interpreter agree`, { skip }, async () => {
         const source = generateProgram(seed);
-        const result = await compareBackends(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
-        assert.deepEqual(result.classicErrors, [], source);
-        assert.deepEqual(result.slvmErrors, [], source);
-        assert.deepEqual(result.differences, [], source);
-        const oracle = runOracle(source);
-        agreesWithOracle(result.slvm, oracle);
-        agreesWithOracle(result.classic, oracle);
+        const result = await execute(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
+        assert.deepEqual(result.errors, [], source);
+        const oracle = runOracle(source, { initialVars: { p: 0, q: 0 }, initialLists: { L: [] } });
+        agreesWithOracle(result.runtime, oracle);
     });
 }
 
 for (let seed = 50000; seed < 50010; seed++) {
     test(`fuzz seed ${seed} with recursion and for-loop break/continue: SLVM agrees with the reference interpreter`, { skip }, async () => {
         const source = generateProgram(seed, ALL_FEATURES);
-        const result = await compareBackends(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
-        assert.deepEqual(result.slvmErrors, [], source);
-        agreesWithOracle(result.slvm, runOracle(source));
+        const result = await execute(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
+        assert.deepEqual(result.errors, [], source);
+        agreesWithOracle(result.runtime, runOracle(source, { initialVars: { p: 0, q: 0 }, initialLists: { L: [] } }));
+    });
+}
+
+for (const seed of [106652, 107609]) {
+    test(`pointer-subscript fuzz regression ${seed} agrees with the reference interpreter`, { skip }, async () => {
+        const features = { ...ALL_FEATURES, weirdLiterals: false };
+        const source = generateProgram(seed, features);
+        const result = await execute(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
+        assert.deepEqual(result.errors, [], source);
+        agreesWithOracle(result.runtime, runOracle(source, { initialVars: { p: 0, q: 0 }, initialLists: { L: [] } }));
+    });
+}
+
+for (const seed of [...Array.from({ length: 100 }, (_, i) => 200000 + i), 200103, 200604]) {
+    test(`adversarial fuzz seed ${seed}: unusual literals agree with the reference interpreter`, { skip }, async () => {
+        const source = generateProgram(seed, ALL_FEATURES);
+        const result = await execute(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
+        assert.deepEqual(result.errors, [], source);
+        agreesWithOracle(result.runtime, runOracle(source, { initialVars: { p: 0, q: 0 }, initialLists: { L: [] } }));
     });
 }

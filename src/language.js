@@ -462,8 +462,8 @@ export function registerLanguage(monaco) {
         'switch':       { label: 'switch [subject] { case … default … }  (alias for match)', params: [{ label: '[subject]' }] },
         'case':         { label: 'case <value1>, <value2>, … { … }', params: [{ label: '<values>', documentation: 'One or more values to match, separated by commas' }] },
         'default':      { label: 'default { … }  (in match blocks)', params: [] },
-        'break':        { label: 'break  — exit the innermost loop', params: [], documentation: 'Supported in: forever, repeat, while, repeat until, do..while. NOT in for/pyfor.' },
-        'continue':     { label: 'continue  — skip to next iteration', params: [], documentation: 'Supported in: forever, repeat, while, repeat until, do..while. NOT in for/pyfor.' },
+        'break':        { label: 'break  — exit the innermost loop', params: [], documentation: 'Supported in: for, pyfor, forever, repeat, while, repeat until, do..while.' },
+        'continue':     { label: 'continue  — skip to next iteration', params: [], documentation: 'Supported in: for, pyfor, forever, repeat, while, repeat until, do..while.' },
         'wait until':   { label: 'wait until <condition>',          params: [{ label: '<condition>' }] },
         'define':       { label: 'define <name>(<params>) returns { return <value> }', params: [{ label: '<name>', documentation: 'Block name' }, { label: '<params>', documentation: 'Parameters (optional)' }, { label: '<value>', documentation: 'Expression to return' }] },
         'return':       { label: 'return <expr>  (in returns blocks)\nreturn  (bare return exits)', params: [{ label: '<expr>', documentation: 'Value to return (optional)' }] },
@@ -507,7 +507,8 @@ export function registerLanguage(monaco) {
         'listInsert':       { label: 'listInsert(item, index, [list])', params: [{ label: 'item' }, { label: 'index' }, { label: '[list]' }] },
         'listReplace':      { label: 'listReplace(index, [list], item)', params: [{ label: 'index' }, { label: '[list]' }, { label: 'item' }] },
         // dot methods
-        'length':           { label: '[var].length()  —  string length\n[list].length()  —  list length', params: [] },
+        'length':           { label: 'length(value)  |  [var].length()  |  [list].length()', params: [{ label: 'value' }] },
+        'attributeOf':      { label: 'attributeOf(\"property\", \"sprite\")', params: [{ label: 'property' }, { label: 'sprite' }] },
         'len':              { label: '[var].len()  —  string length (alias)\n[list].len()  —  list length (alias)', params: [] },
         'contains':         { label: '[list].contains(item)', params: [{ label: 'item', documentation: 'Value to search for' }] },
         'item':             { label: '[list].item(index)',    params: [{ label: 'index', documentation: '1-based position' }] },
@@ -895,10 +896,6 @@ function detectAsmContext(model, position) {
     return { kind: depth === 1 ? 'opcode' : 'register' };
 }
 
-// Union of real Scratch variables/lists in scope plus compiler-internal temp vars
-// (for/pyfor iterators, scratchroutine params) active at `position` — a deliberately
-// simple source-level heuristic, since the real forScope/routineScope only exist
-// transiently inside a live compile() call against a parsed AST + VM.
 function collectRegistersInScope(model, position) {
     const seen = new Set();
     const registers = [];
@@ -998,10 +995,11 @@ function buildSuggestions(monaco, range, hatRange) {
     push('match {}',               CIK.Snippet, 'Control · match [subject] { case ... }', 'match [${1:score}] {\n\tcase ${2:100} {\n\t\t$3\n\t}\n\tdefault {\n\t\t$0\n\t}\n}', 'Multi-branch comparison — `switch` is an alias. Cases can have multiple comma-separated values.');
     push('case',                   CIK.Snippet, 'Control · case value { }',            'case ${1:value} {\n\t$0\n}',                                    'Case branch in a match block (multiple values separated by commas)');
     push('default',                CIK.Snippet, 'Control · default { }',              'default {\n\t$0\n}',                                            'Default branch in a match block (runs if no cases match)');
-    push('break',                  CIK.Keyword, 'Control · break',                    'break',                                                         'Exit the innermost loop (forever, repeat, while, do..while only)');
-    push('continue',               CIK.Keyword, 'Control · continue',                 'continue',                                                      'Skip to the next iteration of the innermost loop (forever, repeat, while, do..while only)');
+    push('break',                  CIK.Keyword, 'Control · break',                    'break',                                                         'Exit the innermost loop (for, pyfor, forever, repeat, while, until, do..while)');
+    push('continue',               CIK.Keyword, 'Control · continue',                 'continue',                                                      'Skip to the next iteration of the innermost loop (for, pyfor, forever, repeat, while, until, do..while)');
     push('wait until',             CIK.Snippet, 'Control · wait until <cond>',        'wait until ${0:condition}',                                      'Pauses until the condition becomes true');
     push('define name(params) {}', CIK.Snippet, 'Custom block · define name(params) {}', 'define ${1:name}(${2:params}) {\n\t$0\n}',                   'Define a custom block (procedure)');
+    push('define name(params) warp {}', CIK.Snippet, 'Custom block · run without screen refresh', 'define ${1:name}(${2:params}) warp {\n\t$0\n}', 'Run a custom block without screen refresh');
     push('define name(params) returns {}', CIK.Snippet, 'Custom block · define name(params) returns {}', 'define ${1:name}(${2:params}) returns {\n\t$0\n}', 'Define a custom block that returns a value — use `return <expr>` in the body');
     // Variables (space-form preserved)
     push('set [] to',              CIK.Keyword,  'Variables · set [var] to value',   'set [$1] to $0',      'Set a variable to a value');
@@ -1107,6 +1105,8 @@ function buildSuggestions(monaco, range, hatRange) {
     // Operators
     push('not',                    CIK.Keyword, 'Operators', 'not ');
     // Math / trig
+    push('length()', CIK.Function, 'Strings · length(value)', 'length($0)', 'Return the length of a string value');
+    push('attributeOf()', CIK.Function, 'Sensing · attributeOf(property, sprite)', 'attributeOf("${1:property}", "${2:sprite}")', 'Read a sprite property or variable');
     push('abs()',      CIK.Function, 'Math', 'abs($0)');
     push('round()',    CIK.Function, 'Math', 'round($0)');
     push('sqrt()',     CIK.Function, 'Math', 'sqrt($0)');

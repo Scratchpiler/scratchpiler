@@ -153,7 +153,7 @@ repeat [count] {
 
 ## forever
 
-Runs the body forever. Literally. It is an infinite loop that will consume CPU cycles until the browser tab is mercifully terminated or the heat death of the universe occurs. Any code after a `forever` block in the same scope is unreachable. The linter will tell you so, trying to save you from your own logical dead ends.
+Runs the body forever. Literally. It is an infinite loop that will consume CPU cycles until the browser tab is mercifully terminated or the heat death of the universe occurs. Code after a `forever` block is unreachable unless the body contains a `break` that exits that loop. The linter will tell you so, trying to save you from your own logical dead ends.
 
 ```
 on flag {
@@ -319,7 +319,7 @@ clone()                   // alias for createClone() — same thing, fewer chara
 deleteClone()             // delete this clone (from within on clone { })
 ```
 
-`deleteClone()` is a terminator — code after it is unreachable. Once a clone deletes itself, it is garbage collected, and its existence is completely erased from browser memory. Do not put code after this unless you enjoy writing statements that will never feel the warmth of execution.
+`deleteClone()` destroys the current clone and stops its scripts. On an original sprite or the Stage, it does nothing, so following statements still execute.
 
 ---
 
@@ -433,9 +433,7 @@ forever {
 say("n = {[n]}")  // runs after break exits the loop
 ```
 
-Supported inside: `forever`, `repeat N`, `while`, `repeat until`, and `do..while`.
-
-**Not supported inside:** `for` and `pyfor` loops (compile error).
+Supported inside: `for`, `pyfor`, `forever`, `repeat N`, `while`, `repeat until`, and `do..while`.
 
 **Not supported outside any loop:** compile error.
 
@@ -458,13 +456,11 @@ repeat 10 {
 }
 ```
 
-Supported inside: `forever`, `repeat N`, `while`, `repeat until`, and `do..while`.
-
-**Not supported inside:** `for` and `pyfor` loops (compile error).
+Supported inside: `for`, `pyfor`, `forever`, `repeat N`, `while`, `repeat until`, and `do..while`.
 
 **Not supported outside any loop:** compile error.
 
-Compilation: Desugars to a hidden flag variable, which the enclosing loop's generated code checks before executing the body's trailing increment. The decompiler recognizes this pattern and reconstructs it as a bare `continue` statement.
+Compilation: SLVM legalization guards the remaining body with a hidden flag. The loop increment or condition recheck still executes after `continue`. The decompiler recognizes this pattern and reconstructs it as a bare `continue` statement.
 
 ---
 

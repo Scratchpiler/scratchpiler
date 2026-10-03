@@ -185,3 +185,7 @@ answer.length()         // how long the user's response was
 ## No bitwise operators
 
 Scratch has absolutely no bitwise operators. You cannot XOR, AND-mask, or bit-shift in Scratch. If you need bitwise operations, reconsider your life choices and your approach. If reconsidering doesn't help, you will have to implement them using `mod` loops, division, and an abundance of patience. Or simply accept that binary arithmetic is a luxury reserved for developers who aren't writing code inside a browser plugin.
+
+## Evaluation of clamp
+
+`clamp(value, min, max)` evaluates each argument once, from left to right, then returns `max(min, min(value, max))` after numeric casts. It uses a hidden warp procedure with comparisons, avoiding repeated random draws or custom-block calls and avoiding cancellation for very large or small values.

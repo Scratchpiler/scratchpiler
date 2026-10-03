@@ -16,6 +16,7 @@ export const DEFAULT_FEATURES = {
     continueInFor: false,
     breakInFor: false,
     pointers: false,
+    weirdLiterals: false,
 };
 
 export function generateProgram(seed, features = DEFAULT_FEATURES) {
@@ -35,6 +36,9 @@ export function generateProgram(seed, features = DEFAULT_FEATURES) {
 
     const VARS = ['a', 'b', 'c'];
     const STRINGS = ['"x"', '"ab"', '""', '"7"', '"Hi"'];
+    if (features.weirdLiterals) STRINGS.push(...['false', 'FALSE', '0', ' ', 'NaN', 'Infinity', '-Infinity', '1e200', '0x10', 'a"b', 'a\\b', '雪🐈', '{a}', '\n']
+        .map(value => JSON.stringify(value).replace(/{/g, '{{').replace(/}/g, '}}')));
+
     let budget = 28;
     let fresh = 0;
     const returning = [];
@@ -47,6 +51,7 @@ export function generateProgram(seed, features = DEFAULT_FEATURES) {
             return weighted([
                 [4, () => String(int(-3, 9))],
                 [1, () => `${int(0, 9)}.${int(1, 9)}`],
+                [features.weirdLiterals ? 1 : 0, () => pick(['1e200', '-1e200', '1e-200', 'true', 'false'])],
                 [5, () => `[${pick(ctx.reads)}]`],
                 [ctx.param ? 3 : 0, () => ctx.param],
                 [1, () => '[L].length()'],
@@ -59,7 +64,8 @@ export function generateProgram(seed, features = DEFAULT_FEATURES) {
         return weighted([
             [3, () => `(${num(d - 1, ctx)} ${pick(['+', '-', '*'])} ${num(d - 1, ctx)})`],
             [1, () => `(${num(d - 1, ctx)} mod ${int(1, 5)})`],
-            [1, () => `round(${num(d - 1, ctx)} / ${int(1, 4)})`],
+            [1, () => `round(${num(d - 1, ctx)} / ${int(features.weirdLiterals ? 0 : 1, 4)})`],
+            [features.weirdLiterals ? 1 : 0, () => `clamp(${num(d - 1, ctx)}, -5, 5)`],
             [1, () => `abs(${num(d - 1, ctx)})`],
             [1, () => `(${cond(d - 1, ctx)} ? ${num(d - 1, ctx)} : ${num(d - 1, ctx)})`],
             [ctx.callable.length ? 3 : 0, () => callExpr(pick(ctx.callable), num(d - 1, ctx))],

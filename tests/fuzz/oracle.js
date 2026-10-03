@@ -27,17 +27,24 @@ const listIndex = (index, length, extra = 0) => {
     return i >= 1 && i <= length + extra ? i - 1 : -1;
 };
 
-export function runOracle(source, { maxSteps = 200000 } = {}) {
+export function runOracle(source, { maxSteps = 200000, initialVars = {}, initialLists = {} } = {}) {
     const { ast, errors } = parse(tokenize(source));
     if (errors.length) throw new Error(`oracle: parse errors: ${errors.map((e) => e.message).join('; ')}`);
 
-    const vars = new Map();
-    const lists = new Map();
+    const vars = new Map(Object.entries(initialVars));
+    const lists = new Map(Object.entries(initialLists));
     const said = [];
+    const scalarNames = new Set(Object.keys(initialVars));
+    const listNames = new Set(Object.keys(initialLists));
+    walk(ast.blocks, n => {
+        if (n.type === 'SetVarStmt' || n.type === 'ChangeVarStmt') scalarNames.add(n.varName);
+        if (n.listName) listNames.add(n.listName);
+    });
     let usesHeap = false;
     let usesAllocator = false;
     const addressTaken = [];
     walk(ast.blocks, (n) => {
+        if (n.type === 'MemberCall' && n.method === 'item' && n.object.type === 'Var' && scalarNames.has(n.object.name) && !listNames.has(n.object.name)) usesHeap = true;
         if (n.type === 'AddrExpr' || n.type === 'DerefExpr' || n.type === 'DerefSetStmt') usesHeap = true;
         if ((n.type === 'CallExpr' || n.type === 'CallStmt') && (n.name === 'alloc' || n.name === 'free')) usesAllocator = true;
         if (n.type === 'AddrExpr' && !addressTaken.includes(n.varName)) addressTaken.push(n.varName);
@@ -117,6 +124,8 @@ export function runOracle(source, { maxSteps = 200000 } = {}) {
                 const args = node.args.map((a) => evaluate(a, frame));
                 if (defines.has(node.name)) return call(defines.get(node.name), args);
                 if (node.name in MATH) return EVAL[MATH[node.name]](args[0]);
+                if (node.name === 'clamp') return Math.max(toNumber(args[1] ?? 0), Math.min(toNumber(args[0] ?? 0), toNumber(args[2] ?? 100)));
+                if (node.name === 'length') return toString(args[0] ?? '').length;
                 if (node.name === 'round') return EVAL.round(args[0]);
                 if (node.name === 'join') return EVAL.join(args[0] ?? '', args[1] ?? '');
                 if (node.name === 'letterOf') return EVAL.letter(args[0], args[1]);

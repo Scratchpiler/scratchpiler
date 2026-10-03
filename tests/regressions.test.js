@@ -10,9 +10,7 @@ test('populateList / populateArray parse as the documented statement, not a cust
         assert.deepEqual(errors, []);
         assert.equal(ast.blocks[0].body[0].type, 'PopulateListStmt');
     }
-    for (const backend of ['classic', 'slvm']) {
-        const { errors, blocks } = compileSource('on flag {\n    populateList([L], 7, 3, true)\n}\n', makeMockVM({ lists: ['L'] }), 'Sprite1', { backend });
-        assert.deepEqual(errors, [], backend);
-        assert.ok(Object.values(blocks).some((b) => b.opcode === 'data_addtolist'), backend);
-    }
+    const { errors, blocks } = compileSource('on flag {\n    populateList([L], 7, 3, true)\n}\n', makeMockVM({ lists: ['L'] }), 'Sprite1');
+    assert.deepEqual(errors, []);
+    assert.ok(Object.values(blocks).some((b) => b.opcode === 'data_addtolist'));
 });

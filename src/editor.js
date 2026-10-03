@@ -1,3 +1,4 @@
+import { loadSettings } from './settings.js';
 import { LANG_ID, LS_KEY, LS_INJ_KEY } from "./constants.js";
 import { injectedBlockIds } from "./inject-state.js";
 import { acquireVM, scratchIndex, reindex } from "./vm.js";
@@ -45,15 +46,7 @@ export function activeFile() {
 }
 
 const SETTINGS_KEY = 'scratchpiler-settings';
-const DEFAULT_SETTINGS = {
-    theme: 'scratchpiler-dark', fontSize: '14', wrap: true, minimap: false, tabSize: '4', autosave: '1000',
-    lintTypecheck: true, lintUnreachable: true, lintOrphaned: true, lintSemantic: true, lintSmells: true,
-    backend: 'classic',
-};
-const settings = (() => {
-    try { return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
-    catch (_) { return { ...DEFAULT_SETTINGS }; }
-})();
+const settings = loadSettings();
 const EDITOR_FONT = '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 
 const models = new Map();
@@ -479,7 +472,7 @@ export function compileAndInject({ minify = false } = {}) {
 
     let result;
     try {
-        result = compileSourceWithHeaders(source, currentVM, sprite, { backend: settings.backend });
+        result = compileSourceWithHeaders(source, currentVM, sprite);
     } catch (e) {
         console.error('[scratchpiler] compile exception', e);
         logToOutput(`Compiler crashed: ${e.message}`, 'error');
@@ -755,7 +748,6 @@ function applySettings() {
     $('sp-setting-wrap').checked = settings.wrap;
     $('sp-setting-minimap').checked = settings.minimap;
     $('sp-setting-autosave').value = settings.autosave;
-    $('sp-setting-backend').value = settings.backend;
     $('sp-setting-lint-typecheck').checked = settings.lintTypecheck;
     $('sp-setting-lint-unreachable').checked = settings.lintUnreachable;
     $('sp-setting-lint-orphaned').checked = settings.lintOrphaned;
@@ -787,7 +779,6 @@ export function toggleSetting(key) {
 function setupSettings() {
     $('sp-setting-theme').addEventListener('change', e => updateSetting('theme', e.target.value));
     $('sp-setting-autosave').addEventListener('change', e => updateSetting('autosave', e.target.value));
-    $('sp-setting-backend').addEventListener('change', e => updateSetting('backend', e.target.value));
     const step = d => updateSetting('fontSize', String(Math.min(24, Math.max(10, (parseInt(settings.fontSize, 10) || 14) + d))));
     $('sp-fontsize-down').addEventListener('click', () => step(-1));
     $('sp-fontsize-up').addEventListener('click', () => step(1));

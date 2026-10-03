@@ -8,8 +8,7 @@ Scratchpiler's syntax is deliberately, mercifully boring. If you've used JavaScr
 
 ### Numbers
 
-Plain decimal numbers. Negative numbers are written with a leading `-` (which the parser handles as unary minus at compile time, not as part of the token, because parsing negative literals natively was deemed a luxury we could not afford).
-
+Decimal numbers may use scientific notation, such as `1e6`, `-2.5e-3`, and `1E200`. A leading minus is parsed as unary subtraction. Numeric inputs use Scratch casting rules.
 ```
 10
 3.14
@@ -19,8 +18,7 @@ Plain decimal numbers. Negative numbers are written with a leading `-` (which th
 
 ### Strings
 
-Double-quoted. No escape sequences are supported. No `\n`, no `\t`, no hex escapes. This is a Scratch limitation, not a scratchpiler limitation, and there is absolutely nothing either of us can do about it. If you want a newline, you must accept that Scratch believes in flat, single-line thoughts. Much like its target audience.
-
+Double-quoted strings support `\"`, `\\`, `\n`, `\r`, `\t`, `\b`, `\f`, `\/`, and `\uXXXX`. Unknown escapes retain their backslash. Literal braces use `{{` and `}}`; single braces delimit interpolation. Unterminated strings and variable names are syntax errors.
 ```
 "Hello, World!"
 "space"

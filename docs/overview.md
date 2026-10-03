@@ -30,17 +30,14 @@ Linter          Walks the AST looking for structural problems: dead code after
                 won't stop you from doing something foolish. Just like life.
     │
     ▼
-Compiler        Traverses the AST and emits Scratch sb3 block objects. Each
-                node becomes one or more blocks with freshly generated UIDs,
-                wired together with next/parent/input references exactly as
-                Scratch's internal format requires. A labyrinth of JSON objects
-                holding references to other JSON objects.
-
-                With the SLVM backend switched on (Settings → Compiler), this
-                step is instead irgen → SLVM legalize → slc: the AST becomes
-                an intermediate representation, gets checked and lowered, and
-                only then turns into blocks. Same blocks format, fewer
-                surprises in recursive code. See slvm-backend.md.
+IR generation   Resolves source names and expands syntax sugar into structured
+                SLVM IR. Returns and loop exits stay explicit operations.
+    │
+    ▼
+SLVM            Verifies and legalizes the IR, preserving values across calls
+                when needed. The slc emitter creates Scratch block objects,
+                wired with next/parent/input references. Every compile uses
+                this pipeline. See slvm-backend.md.
     │
     ▼
 Injector        Deletes any blocks previously injected by scratchpiler for

@@ -46,16 +46,9 @@ shoot(90, 10)
 setHealthBar([health], [maxHealth])
 ```
 
-The call is resolved against the live Scratch VM — the prototype must already exist in Scratch's block palette for the active sprite. If you try to call a block that doesn't exist, you'll get a compile error: `Custom block not found: blockName`.
+Definitions in the source create their prototypes during compilation. Calls can also resolve an existing prototype in the active sprite. An unknown block produces `Custom block not found: blockName`.
 
-**Workflow for new custom blocks:**
-
-1. Create the block in Scratch's block editor (the usual way — click "Make a Block")
-2. Switch to scratchpiler
-3. Write the `define` body and any calls
-4. Compile
-
-You only need to create the block header in Scratch. Scratchpiler compiles the implementation.
+A definition and its calls may appear in either order. Custom block names and parameter names must be unique within their respective scopes. Native Scratch block names containing spaces or punctuation receive distinct source identifiers during import. Parameters that collide with project variable names receive distinct names on import, preserving the difference between writable variables and read-only arguments. Parameters with spaces or punctuation appear in brackets in the definition, such as `define process([load? now]) { ... }`.
 
 ---
 
@@ -74,7 +67,15 @@ setHealthBar(clamp([hp], 0, [maxHp]), [maxHp])
 
 ## Warp mode
 
-Scratch custom blocks can run in "run without screen refresh" (warp) mode. Scratchpiler reads this setting from the existing prototype block in Scratch — it preserves whatever warp setting was used when the block was created. To change it, edit the block in Scratch's block editor.
+Add `warp` after the parameter list to run without screen refresh:
+
+```sdsl
+define updatePhysics(dt) warp {
+    changeX([velocity] * dt)
+}
+```
+
+A plain definition preserves an existing prototype's warp setting when one is found. Returning definitions run in warp mode automatically. Importing a native warp block includes the `warp` clause, so recompilation preserves its scheduling behavior.
 
 ---
 

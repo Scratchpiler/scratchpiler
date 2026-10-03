@@ -1,4 +1,4 @@
-import { mkOp, ref, lit, sym } from 'slvm';
+import { mkOp, ref, lit, sym, OPS } from 'slvm';
 import { ASM_OPCODES } from './asm-opcodes.js';
 import { fuzzyMatch } from './compiler.js';
 
@@ -131,10 +131,16 @@ export function irgen(ast, env) {
     const prefix = `_scratchpiler_internal_${rand4()}_`;
     let hiddenCount = 0;
     const known = new Map();
+    const declarations = new Map(module.targets.map(target => [target, new Set()]));
 
     const declare = (target, kind, name, internal) => {
-        if (!target.vars.some((v) => v.name === name && v.kind === kind)) target.vars.push({ kind, name, internal });
-        known.set(name, kind);
+        const key = `${kind}:${name}`;
+        if (!declarations.get(target).has(key)) {
+            target.vars.push({ kind, name, internal });
+            declarations.get(target).add(key);
+        }
+        if (!known.has(name)) known.set(name, new Set());
+        known.get(name).add(kind);
         return name;
     };
     const hidden = (tag) => declare(sprite, 'var', `${prefix}${tag}${hiddenCount++}`, true);
@@ -159,14 +165,29 @@ export function irgen(ast, env) {
     const routines = new Map();
     for (const block of ast.blocks) {
         if (block.type === 'EnumDecl') for (const { name, value } of block.entries) enums.set(name, value);
-        if (block.type === 'DefineBlock') defines.set(block.name, block);
-        if (block.type === 'ScratchroutineStmt') routines.set(block.name, block);
+        if (block.type === 'DefineBlock') {
+            if (defines.has(block.name)) fail(block, `Duplicate custom block: ${block.name}`, block.name.length);
+            defines.set(block.name, block);
+            const params = new Set();
+            for (const param of block.paramSpans) {
+                if (params.has(param.name)) fail(param, `Duplicate parameter: ${param.name}`, param.name.length);
+                params.add(param.name);
+            }
+        }
+        if (block.type === 'ScratchroutineStmt') {
+            if (routines.has(block.name)) fail(block, `Duplicate scratchroutine: ${block.name}`, block.name.length);
+            if (new Set(block.params).size !== block.params.length) fail(block, `Duplicate parameter in scratchroutine: ${block.name}`);
+            for (const param of block.paramSpans) {
+                if (['count', 'cancelled'].includes(param.name)) fail(param, `Scratchroutine parameter name is reserved: ${param.name}`, param.name.length);
+            }
+            routines.set(block.name, block);
+        }
         if (block.type === 'StructDecl') for (const field of block.fields) global(`${block.name}.${field}`);
     }
 
     function data(name, kind, node) {
-        if (known.get(name) === kind) return name;
-        const found = env.lookup(name);
+        if (known.get(name)?.has(kind)) return name;
+        const found = env.lookup(name, kind);
         if (!found || found.kind !== kind) {
             return fail(node, kind === 'list'
                 ? `List not found: ${name}. Create it in Scratch first.`
@@ -246,13 +267,17 @@ export function irgen(ast, env) {
     }
 
     const cond = (node) => boolOf(expr(node));
-    const scalar = (name, node) => (b.scope.has(name) ? b.scope.get(name) : data(name, 'var', node));
+    const scalar = (name, node) => {
+        if (b.scope.has(name)) return b.scope.get(name);
+        if (b.params.has(name)) return fail(node, `Parameter ${name} is read-only`, name.length);
+        return data(name, 'var', node);
+    };
 
     function readVar(name, node) {
         if (b.scope.has(name)) return value('var.get', [sym(b.scope.get(name))]);
         if (b.params.has(name)) return value('arg', [{ name }]);
         if (isPromoted(name)) return value('list.get', [sym(heap), lit(promoted.get(name))]);
-        if (known.get(name) === 'list' || (!known.has(name) && env.lookup(name)?.kind === 'list')) {
+        if (!known.get(name)?.has('var') && !env.lookup(name, 'var') && (known.get(name)?.has('list') || env.lookup(name, 'list'))) {
             return value('list.contents', [sym(data(name, 'list', node))]);
         }
         const v = data(name, 'var', node);
@@ -315,7 +340,7 @@ export function irgen(ast, env) {
                 return value('var.get', [sym(tmp)]);
             }
         }
-        return fail(node, `The SLVM backend cannot compile a \`${node.type}\` expression yet`) ?? lit('');
+        return fail(node, `Cannot compile a \`${node.type}\` expression yet`) ?? lit('');
     }
 
     function boolExpr(node) {
@@ -346,28 +371,25 @@ export function irgen(ast, env) {
         }
         if (name in MATH_FUNCTIONS) return value(`math.${MATH_FUNCTIONS[name]}`, [arg(0, 0)]);
         switch (name) {
+            case 'length': return value('length', [arg(0, '')]);
+            case 'attributeOf': return sb('sensing_of', { OBJECT: arg(1, '_stage_') }, { PROPERTY: literalString(args[0], '') }, true);
             case 'round': return value('round', [arg(0, 0)]);
             case 'random': return value('random', [arg(0, 1), arg(1, 10)]);
             case 'join': return value('join', [arg(0, ''), arg(1, '')]);
             case 'letterOf': return value('letter', [arg(0, 1), arg(1, '')]);
             case 'contains': return value('contains', [arg(0, ''), arg(1, '')]);
             case 'touching': {
-                const target = literalString(args[0], 'edge');
-                const menu = target === 'edge' ? '_edge_' : target === 'mouse' ? '_mouse_' : target;
-                return sb('sensing_touchingobject', { TOUCHINGOBJECTMENU: lit(menu) }, {}, true);
+                const target = arg(0, 'edge');
+                if (target.lit === 'edge') target.lit = '_edge_';
+                if (target.lit === 'mouse') target.lit = '_mouse_';
+                return sb('sensing_touchingobject', { TOUCHINGOBJECTMENU: target }, {}, true);
             }
-            case 'key': return sb('sensing_keypressed', { KEY_OPTION: lit(literalString(args[0], 'space')) }, {}, true);
-            case 'distanceTo': return sb('motion_distanceto', { DISTANCETOMENU: lit(literalString(args[0], '_mouse_')) }, {}, true);
+            case 'key': return sb('sensing_keypressed', { KEY_OPTION: arg(0, 'space') }, {}, true);
+            case 'distanceTo': return sb('sensing_distanceto', { DISTANCETOMENU: arg(0, '_mouse_') }, {}, true);
             case 'currentTime': return sb('sensing_current', {}, { CURRENTMENU: literalString(args[0], 'hour').toUpperCase() }, true);
             case 'clamp': {
-                const [v, lo, hi] = [args[0] || { type: 'Num', value: 0 }, args[1] || { type: 'Num', value: 0 }, args[2] || { type: 'Num', value: 100 }];
-                const N = (x) => ({ type: 'Num', value: x });
-                const add = (l, r) => ({ type: 'BinOp', op: '+', left: l, right: r });
-                const sub = (l, r) => ({ type: 'BinOp', op: '-', left: l, right: r });
-                const half = (e) => ({ type: 'BinOp', op: '/', left: e, right: N(2) });
-                const abs = (e) => ({ type: 'CallExpr', name: 'abs', args: [e] });
-                const min = half(sub(add(v, hi), abs(sub(v, hi))));
-                return expr(half(add(add(lo, min), abs(sub(lo, min)))));
+                const callee = clampProcedure();
+                return value('call', [arg(0, 0), arg(1, 0), arg(2, 100)], { callee });
             }
             case 'isRunning': {
                 const rname = args[0] && (args[0].type === 'Str' ? args[0].value : args[0].name);
@@ -376,16 +398,39 @@ export function irgen(ast, env) {
             }
         }
         if (name in SENSING_OF) {
-            return sb('sensing_of', { OBJECT: lit(literalString(args[0], '')) }, { PROPERTY: SENSING_OF[name] }, true);
+            return sb('sensing_of', { OBJECT: arg(0, '') }, { PROPERTY: SENSING_OF[name] }, true);
         }
         return lit('');
     }
 
+    let clampName = null;
+    function clampProcedure() {
+        if (clampName) return clampName;
+        clampName = `${prefix}clamp`;
+        const numericArg = (name, id) => [
+            mkOp('arg', [{ name }], { result: `${id}_arg` }),
+            mkOp('add', [ref(`${id}_arg`), lit(0)], { result: id }),
+        ];
+        const maximum = operand => [
+            mkOp('gt', [ref('lower'), operand], { result: `${operand.ref}_below` }),
+            mkOp('if', [ref(`${operand.ref}_below`)], { regions: [
+                [mkOp('ret', [ref('lower')])], [mkOp('ret', [operand])],
+            ] }),
+        ];
+        sprite.procs.push({ name: clampName, params: ['input', 'lo', 'hi'], warp: true, returns: true, body: [
+            ...numericArg('input', 'input'), ...numericArg('lo', 'lower'), ...numericArg('hi', 'upper'),
+            mkOp('lt', [ref('input'), ref('upper')], { result: 'choose' }),
+            mkOp('if', [ref('choose')], { regions: [maximum(ref('input')), maximum(ref('upper'))] }),
+        ] });
+        return clampName;
+    }
+
     function memberCall(node) {
         const { object, method } = node;
+        if (['length', 'len'].includes(method) && object.type !== 'Var') return value('length', [expr(object)]);
         if (object.type !== 'Var') return fail(node, `.${method}() needs a [variable] or [list] before the dot`, method.length) ?? lit('');
         const listName = object.name;
-        const isList = known.get(listName) === 'list' || (!b.scope.has(listName) && env.lookup(listName)?.kind === 'list');
+        const isList = known.get(listName)?.has('list') || !!env.lookup(listName, 'list');
         if ((method === 'length' || method === 'len') && !isList) return value('length', [expr(object)]);
         if (method === 'item' && !isList && heap) {
             const base = expr(object);
@@ -409,7 +454,24 @@ export function irgen(ast, env) {
     }
 
     function body(stmts) {
-        return nested(() => { for (const s of stmts || []) stmt(s); });
+        return nested(() => statements(stmts));
+    }
+
+    function statements(stmts) {
+        for (const node of stmts || []) {
+            stmt(node);
+            const last = b.region.at(-1);
+            if (!last) continue;
+            if (last.op === 'forever') {
+                const breaks = (region) => region.some(op => op.op === 'break' ||
+                    (!OPS[op.op]?.loop && op.regions.some(breaks)));
+                if (!breaks(last.regions[0])) break;
+            } else if (last.op === 'stop' && ['all', 'this script'].includes(last.args[0]?.lit)) {
+                break;
+            } else if (OPS[last.op]?.terminator) {
+                break;
+            }
+        }
     }
 
     function loopRegion(kind, stmts) {
@@ -551,7 +613,7 @@ export function irgen(ast, env) {
             for (const p of params) {
                 const a = byName[p.name];
                 if (p.valueType === 'variable' || p.valueType === 'list') {
-                    fail(inner, `__asm__: \`${inner.opcode}\` takes a ${p.valueType} field, which the SLVM backend only supports for data_* opcodes`);
+                    fail(inner, `__asm__: \`${inner.opcode}\` takes a ${p.valueType} field, which is only supported for data_* opcodes`);
                     continue;
                 }
                 if (p.kind === 'field') fields[p.name] = a.kind === 'reg' ? a.name : String(a.value);
@@ -565,6 +627,13 @@ export function irgen(ast, env) {
 
     function stmt(node) {
         if (!node) return;
+        if (node.type === 'DeleteCloneStmt' && b.routine) {
+            const count = global(`__sroutine_${b.routine}_count`);
+            emit('var.change', [sym(count), lit(-1)]);
+            sb('control_delete_this_clone');
+            emit('var.change', [sym(count), lit(1)]);
+            return;
+        }
         const simple = SIMPLE_STATEMENTS[node.type];
         if (simple) {
             const [opcode, inputs, fields = {}] = simple;
@@ -660,6 +729,7 @@ export function irgen(ast, env) {
                 const hasValue = node.value !== null && node.value !== undefined;
                 if (!b.proc) {
                     if (hasValue) { fail(node, '`return <value>` is only valid inside a `define … returns { }` block', 6); return; }
+                    if (b.routine) emit('var.change', [sym(global(`__sroutine_${b.routine}_count`)), lit(-1)]);
                     emit('stop', [lit('this script')]);
                     return;
                 }
@@ -676,7 +746,10 @@ export function irgen(ast, env) {
                 emit('wait.until', [], { regions: [condOps] });
                 return;
             }
-            case 'StopStmt': emit('stop', [lit(node.option)]); return;
+            case 'StopStmt':
+                if (b.routine && node.option === 'this script') emit('var.change', [sym(global(`__sroutine_${b.routine}_count`)), lit(-1)]);
+                emit('stop', [lit(node.option)]);
+                return;
             case 'BroadcastStmt': emit('broadcast', [expr(node.msg)]); return;
             case 'BroadcastWaitStmt': emit('broadcast.wait', [expr(node.msg)]); return;
             case 'CallStmt': {
@@ -690,8 +763,8 @@ export function irgen(ast, env) {
                 sb(node.dir === 'left' ? 'motion_turnleft' : 'motion_turnright', { DEGREES: expr(node.degrees) });
                 return;
             case 'GoToStmt': sb('motion_goto', { TO: menuValue(node.target, '_mouse_') }); return;
-            case 'GlideToStmt': sb('motion_glidesecstosprite', { SECS: expr(node.secs), TO: menuValue(node.target, '_mouse_') }); return;
-            case 'PointTowardsStmt': sb('motion_pointtowards', { TOWARDS: lit(literalString(node.target, '_mouse_')) }); return;
+            case 'GlideToStmt': sb('motion_glideto', { SECS: expr(node.secs), TO: menuValue(node.target, '_mouse_') }); return;
+            case 'PointTowardsStmt': sb('motion_pointtowards', { TOWARDS: menuValue(node.target, '_mouse_') }); return;
             case 'CreateCloneStmt': sb('control_create_clone_of', { CLONE_OPTION: menuValue(node.target, '_myself_') }); return;
             case 'SetEffectStmt': sb('looks_seteffectto', { VALUE: expr(node.value) }, { EFFECT: literalString(node.effect, 'color') }); return;
             case 'ChangeEffectStmt': sb('looks_changeeffectby', { CHANGE: expr(node.amount) }, { EFFECT: literalString(node.effect, 'color') }); return;
@@ -728,7 +801,7 @@ export function irgen(ast, env) {
                 const l = data(node.listName, 'list', node);
                 if (l === null) return;
                 const clearFirst = node.clearFirst;
-                const literal = clearFirst.type === 'Num';
+                const literal = clearFirst.type === 'Num' || clearFirst.type === 'Bool';
                 if (!literal || Number(clearFirst.value) !== 0) {
                     const clear = () => emit('list.clear', [sym(l)]);
                     if (literal) clear();
@@ -759,7 +832,10 @@ export function irgen(ast, env) {
             case 'CheckCancelStmt': {
                 if (!b.routine) { fail(node, '`checkCancel()` must be used inside a `scratchroutine` body', 11); return; }
                 const flag = value('var.get', [sym(global(`__sroutine_${b.routine}_cancelled`))]);
-                emit('if', [value('eq', [flag, lit(1)])], { regions: [nested(() => emit('stop', [lit('this script')]))] });
+                emit('if', [value('eq', [flag, lit(1)])], { regions: [nested(() => {
+                    emit('var.change', [sym(global(`__sroutine_${b.routine}_count`)), lit(-1)]);
+                    emit('stop', [lit('this script')]);
+                })] });
                 return;
             }
             case 'BreakpointStmt': {
@@ -777,7 +853,7 @@ export function irgen(ast, env) {
             case 'RawKeyword':
                 return;
         }
-        fail(node, `The SLVM backend cannot compile a \`${node.type}\` statement yet`);
+        fail(node, `Cannot compile a \`${node.type}\` statement yet`);
     }
 
     const HATS = {
@@ -807,13 +883,13 @@ export function irgen(ast, env) {
                     continue;
                 }
             }
-            for (const s of block.body) stmt(s);
+            statements(block.body);
             sprite.scripts.push({ hat, body: b.region });
         } else if (block.type === 'DefineBlock') {
             newRoot(block.params);
             b.proc = block;
-            for (const s of block.body) stmt(s);
-            sprite.procs.push({ name: block.name, params: [...block.params], warp: !!(block.returns || block._forceWarp), returns: !!block.returns, body: b.region });
+            statements(block.body);
+            sprite.procs.push({ name: block.name, params: [...block.params], warp: !!(block.returns || block.warp || block._forceWarp || env.externProc?.(block.name)?.warp), returns: !!block.returns, body: b.region });
         } else if (block.type === 'ScratchroutineStmt') {
             const name = block.name;
             const params = routineParamVars(name);
@@ -824,8 +900,8 @@ export function irgen(ast, env) {
             withScope(Object.fromEntries(block.params.map((p, i) => [p, params[i]])), () => {
                 emit('var.set', [sym(cancelled), lit(0)]);
                 emit('var.change', [sym(count), lit(1)]);
-                for (const s of block.body) stmt(s);
-                emit('var.change', [sym(count), lit(-1)]);
+                statements(block.body);
+                if (!b.region.at(-1) || !['stop', 'forever'].includes(b.region.at(-1).op)) emit('var.change', [sym(count), lit(-1)]);
             });
             sprite.scripts.push({ hat: { event: 'receive', arg: `__sroutine_${name}` }, body: b.region });
         }

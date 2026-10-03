@@ -19,7 +19,7 @@ const REPORTER_BUILTINS = new Set([
 // Function-call reporters usable in expressions (mirrors genCallExpr)
 const EXPR_FN_BUILTINS = new Set([
     'touching', 'key', 'round', 'random', 'join', 'letterOf', 'contains',
-    'distanceTo', 'currentTime', 'clamp', 'yield', 'isRunning',
+    'distanceTo', 'currentTime', 'length', 'attributeOf', 'clamp', 'yield', 'isRunning',
     'abs', 'sqrt', 'floor', 'ceiling', 'ceil', 'sin', 'cos', 'tan',
     'asin', 'acos', 'atan', 'ln', 'log', 'exp', 'pow10',
     'xOf', 'yOf', 'directionOf', 'costumeNumOf', 'costumeNameOf',

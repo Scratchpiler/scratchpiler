@@ -48,7 +48,7 @@ match [score] {                 // switch is an alias
     default { }
 }
 
-break                           // leave the innermost loop (forever, repeat, while, do..while only)
+break                           // leave the innermost loop (for, pyfor, forever, repeat, while, until, do..while)
 continue                        // skip to next iteration of the innermost loop
 
 wait(seconds)

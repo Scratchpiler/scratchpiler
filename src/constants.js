@@ -5,7 +5,7 @@ export const LS_INJ_KEY = 'scratchpiler-injected'; // persisted top-level hat bl
 
 export const KEYWORDS = [
     // Control flow
-    'on','if','else','forever','repeat','until','while','for','from','wait','define','pyfor','in',
+    'on','if','else','forever','repeat','until','while','for','from','wait','define','warp','pyfor','in',
     // Operators
     'and','or','not','mod',
     // Hat events

@@ -197,3 +197,7 @@ setDragMode("not draggable")
 ```
 
 Useful for drag-and-drop games or for preventing accidental dragging of UI elements.
+
+## General property lookup
+
+`attributeOf("property", "sprite")` reads a sprite property or a named variable using Scratch's `sensing_of` reporter. The property must be a string literal. The sprite argument can be a literal or reporter, as can the targets of `distanceTo`, `touching`, and `key`.
