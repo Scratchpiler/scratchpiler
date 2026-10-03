@@ -107,6 +107,14 @@
                             </select></div>
                     </div>
                     <div class="sp-set-group">
+                        <h3>Round trip</h3>
+                        <div class="sp-set"><label for="sp-setting-embed-source">Embed source in comments<small>Keeps your formatting and comments when you pull code back. Minified injects never embed it.</small></label><span class="sp-switch"><input type="checkbox" id="sp-setting-embed-source" /><span></span></span></div>
+                    </div>
+                    <div class="sp-set-group">
+                        <h3>Optimizations</h3>
+                        <div class="sp-set"><label for="sp-setting-optimize">Optimize compiled code<small>Inlines small custom blocks, unrolls small constant loops in warp blocks, and folds constants. Add noinline or nounroll to opt out.</small></label><span class="sp-switch"><input type="checkbox" id="sp-setting-optimize" /><span></span></span></div>
+                    </div>
+                    <div class="sp-set-group">
                         <h3>Checks</h3>
                         <div class="sp-set"><label for="sp-setting-lint-typecheck">Type checking<small>Lists passed where a variable is expected, and the reverse</small></label><span class="sp-switch"><input type="checkbox" id="sp-setting-lint-typecheck" /><span></span></span></div>
                         <div class="sp-set"><label for="sp-setting-lint-unreachable">Unreachable code<small>Blocks after a stop or forever that never run</small></label><span class="sp-switch"><input type="checkbox" id="sp-setting-lint-unreachable" /><span></span></span></div>

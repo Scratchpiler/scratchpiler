@@ -1,27 +1,51 @@
 import { CALL_SIGS } from './compiler.js';
 import { KEYWORDS } from './constants.js';
 import { formatSource } from "./format.js";
+import { readComments, scriptHash } from "./metadata.js";
 let procedureNames = new Map();
 let routineSignatures = new Map();
 let routineVariables = new Map();
 let currentRoutine = null;
 let currentProcedureParams = new Map();
+let blockMetadata = new Map();
+const nounrollOf = (block) => (blockMetadata.get(block.id)?.nounroll ? ' nounroll' : '');
+const originOf = (block) => blockMetadata.get(block.id)?.origin;
 let variableNames = new Set();
 
 const sourceVariable = name => `[${routineVariables.get(name) ?? name}]`;
+const withSourceNames = (names, decompileBody) => {
+    const saved = Object.keys(names).map(name => [name, routineVariables.get(name)]);
+    for (const [name, sourceName] of Object.entries(names)) routineVariables.set(name, sourceName);
+    try {
+        return decompileBody();
+    } finally {
+        for (const [name, previous] of saved) {
+            if (previous === undefined) routineVariables.delete(name);
+            else routineVariables.set(name, previous);
+        }
+    }
+};
 
 const sourceString = value => JSON.stringify(String(value ?? '')).replace(/{/g, '{{').replace(/}/g, '}}');
 const sourceNumber = value => /^-?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/.test(String(value))
     ? String(value) : sourceString(value);
 const procedureName = proccode => procedureNames.get(proccode) ?? proccode.split(' ')[0];
+const rawProcedureName = proccode => proccode.split(' %')[0].trim();
+const CLAMP_HELPER = /^_scratchpiler_internal_[a-z0-9]{4}_clamp %s %s %s$/;
 
 function indexProcedureNames(blocks) {
     const names = new Map();
     const taken = new Set([...KEYWORDS, ...Object.keys(CALL_SIGS)]);
+    for (const definition of Object.values(blocks)) {
+        if (definition.opcode !== 'procedures_definition') continue;
+        const code = blocks[inpBlockId(definition, 'custom_block')]?.mutation?.proccode;
+        if ((code === 'alloc %s' || code === 'free %s') && chainHasSet(definition.next, blocks, '__heap_free')) names.set(code, rawProcedureName(code));
+    }
     for (const block of Object.values(blocks)) {
         if (!['procedures_prototype', 'procedures_call'].includes(block.opcode)) continue;
         const code = block.mutation?.proccode;
         if (!code || names.has(code)) continue;
+        if (CLAMP_HELPER.test(code)) { names.set(code, 'clamp'); continue; }
         const raw = code.replace(/%[sbn]/g, ' ').trim().replace(/[^a-zA-Z0-9_]+/g, '_').replace(/_+$/g, '');
         const base = /^[a-zA-Z_]/.test(raw) ? raw : `block_${raw}`;
         let name = base;
@@ -318,7 +342,7 @@ function decompStmt(block, B, indent) {
         case 'control_repeat': {
             const times = decompInput(block,'TIMES',B,true);
             const body  = decompChain(inpBlockId(block,'SUBSTACK'), B, I + '    ');
-            return `${I}repeat ${times} {\n${body}${I}}\n`;
+            return `${I}repeat ${times}${nounrollOf(block)} {\n${body}${I}}\n`;
         }
         case 'control_forever': {
             const body = decompChain(inpBlockId(block,'SUBSTACK'), B, I + '    ');
@@ -513,20 +537,35 @@ function decompStmt(block, B, indent) {
         }
 
         // Custom block calls
-        case 'procedures_call': {
-            const proccode = (block.mutation && block.mutation.proccode) || '';
-            const name     = procedureName(proccode);
-            const argIds   = JSON.parse((block.mutation && block.mutation.argumentids) || '[]');
-            const argStrs  = argIds.map(aid => {
-                const inputData = block.inputs && block.inputs[aid];
-                return inputData ? decompInputRaw(inputData, B, false) : '""';
-            });
-            return `${I}${name}(${argStrs.join(', ')})\n`;
-        }
+        case 'procedures_call': return `${I}${callExpression(block, B)}\n`;
 
         default:
             return `${I}// unsupported: ${op}\n`;
     }
+}
+
+function callExpression(block, B) {
+    const argIds = JSON.parse(block.mutation?.argumentids || '[]');
+    const args = argIds.map(id => (block.inputs?.[id] ? decompInputRaw(block.inputs[id], B, false) : '""'));
+    return `${procedureName(block.mutation?.proccode ?? '')}(${args.join(', ')})`;
+}
+
+function variableReadsIn(startId, B, variable, followNext) {
+    let reads = 0;
+    for (let id = startId; id && B[id]; id = followNext ? B[id].next : null) {
+        const block = B[id];
+        if (block.opcode === 'data_variable' && fieldVal(block, 'VARIABLE') === variable) reads++;
+        for (const name of Object.keys(block.inputs ?? {})) reads += variableReadsIn(inpBlockId(block, name), B, variable, true);
+    }
+    return reads;
+}
+
+function readsReturnValueOnce(consumer, B, variable) {
+    if (!consumer || variableReadsIn(consumer.id, B, variable, false) !== 1) return false;
+    if (consumer.opcode === 'control_if' || consumer.opcode === 'control_if_else') {
+        return variableReadsIn(inpBlockId(consumer, 'CONDITION'), B, variable, true) === 1;
+    }
+    return !('SUBSTACK' in (consumer.inputs ?? {})) && !('SUBSTACK2' in (consumer.inputs ?? {}));
 }
 
 // Name of the define currently being decompiled (for `return` recognition).
@@ -680,7 +719,7 @@ function decompLoweredLoop(block, condBlock, B, I) {
                         (fieldVal(last, 'VARIABLE') ?? '') === repName) {
                         const n = unquoteNum(decompInput(inner, 'OPERAND2', B, false));
                         const body = decompChain(inpBlockId(block, 'SUBSTACK'), B, I + '    ', ids[ids.length - 1]);
-                        return `${I}repeat ${n} {\n${body}${I}}\n`;
+                        return `${I}repeat ${n}${nounrollOf(block)} {\n${body}${I}}\n`;
                     }
                 }
             }
@@ -755,6 +794,17 @@ function decompChain(startId, B, indent, stopId) {
             }
         }
 
+        // Returning call whose value the very next statement reads once: `call f(args)`
+        // then a statement using `[__ret_f]` becomes that statement with `f(args)` in place.
+        if (block.opcode === 'procedures_call' && block.next) {
+            const returnValue = `__ret_${rawProcedureName(block.mutation?.proccode ?? '')}`;
+            if (readsReturnValueOnce(B[block.next], B, returnValue)) {
+                pendingTern.set(returnValue, substTern(callExpression(block, B)));
+                id = block.next;
+                continue;
+            }
+        }
+
         // Detect hoisted ternary: if/else whose branches each contain exactly
         // one `set [_.._ternN]` of the same temp variable.
         if (block.opcode === 'control_if_else') {
@@ -796,11 +846,11 @@ function decompChain(startId, B, indent, stopId) {
 
         // Detect compiled .sort(): set(gap,1) → repeat_until(phase1_knuth) → repeat_until(phase2_shell)
         if (block.opcode === 'data_setvariableto' &&
-            /^_scratchpiler_internal_[a-z0-9]{4}_gap$/.test(fieldVal(block, 'VARIABLE') ?? '')) {
+            (originOf(block) === 'sort' || /^_scratchpiler_internal_[a-z0-9]{4}_gap$/.test(fieldVal(block, 'VARIABLE') ?? ''))) {
             const valStr  = decompInput(block, 'VALUE', B, true);
             const phase1  = block.next ? B[block.next] : null;
             const phase2  = phase1 && phase1.next ? B[phase1.next] : null;
-            if (valStr === '1' &&
+            if (unquoteNum(valStr) === '1' &&
                 phase1?.opcode === 'control_repeat_until' &&
                 phase2?.opcode === 'control_repeat_until') {
                 // Find sorted list name: BFS through phase2's substack for first replaceitemoflist
@@ -864,7 +914,7 @@ function decompChain(startId, B, indent, stopId) {
         if (block.opcode === 'data_setvariableto') {
             const ctrName = fieldVal(block, 'VARIABLE') ?? '';
             const mCtr = ctrName.match(/^_scratchpiler_internal_([a-z0-9]{4})_pyfor_ctr$/);
-            if (mCtr && decompInput(block, 'VALUE', B, true) === '1') {
+            if ((mCtr || originOf(block) === 'pyfor') && unquoteNum(decompInput(block, 'VALUE', B, true)) === '1') {
                 const nextBlock = block.next && B[block.next];
                 if (nextBlock && nextBlock.opcode === 'control_repeat_until') {
                     // Gather substack blocks
@@ -877,12 +927,12 @@ function decompChain(startId, B, indent, stopId) {
                     const firstBlk  = firstBid && B[firstBid];
                     const lastBid   = substackIds[substackIds.length - 1];
                     const lastBlk   = lastBid && B[lastBid];
-                    const rand4     = mCtr[1];
+                    const rand4     = mCtr?.[1];
                     if (firstBlk && firstBlk.opcode === 'data_setvariableto') {
                         const itemVarName = fieldVal(firstBlk, 'VARIABLE') ?? '';
-                        const mItem = itemVarName.match(
-                            new RegExp(`^_scratchpiler_internal_${rand4}_(.+)$`)
-                        );
+                        const mItem = rand4
+                            ? itemVarName.match(new RegExp(`^_scratchpiler_internal_${rand4}_(.+)$`))
+                            : [itemVarName, itemVarName];
                         // Last block: change ctr by 1
                         const hasFinalIncr = lastBlk && lastBlk.opcode === 'data_changevariableby'
                                              && fieldVal(lastBlk, 'VARIABLE') === ctrName;
@@ -899,9 +949,8 @@ function decompChain(startId, B, indent, stopId) {
                             if (listName) {
                                 const shortName = mItem[1];
                                 // body = substackIds minus first (set item) and last (change ctr)
-                                const bodyIds = substackIds.slice(1, hasFinalIncr ? -1 : undefined);
-                                let body = '';
-                                for (const bid2 of bodyIds) body += decompStmt(B[bid2], B, indent + '    ');
+                                const body = withSourceNames({ [itemVarName]: shortName },
+                                    () => decompChain(substackIds[1] ?? null, B, indent + '    ', hasFinalIncr ? lastBid : undefined));
                                 pushLine(`${indent}pyfor [${shortName}] in [${listName}] {\n${body}${indent}}\n`);
                                 id = nextBlock.next || null;
                                 continue;
@@ -953,7 +1002,7 @@ function decompChain(startId, B, indent, stopId) {
         // Detect compiled for-loop: set(internal_iter) → repeat_until(iter > end, [...body, change(iter, 1)])
         if (block.opcode === 'data_setvariableto') {
             const iterName = fieldVal(block, 'VARIABLE') ?? '';
-            const m = iterName.match(/^_scratchpiler_internal_[a-z0-9]{4}_(.+)$/);
+            const m = iterName.match(/^_scratchpiler_internal_[a-z0-9]{4}_(.+)$/) ?? (originOf(block) === 'for' ? [iterName, iterName] : null);
             if (m) {
                 const nextBlock = block.next && B[block.next];
                 if (nextBlock && nextBlock.opcode === 'control_repeat_until') {
@@ -976,11 +1025,10 @@ function decompChain(startId, B, indent, stopId) {
                             const lastBlk  = lastBid && B[lastBid];
                             const hasIncr  = lastBlk && lastBlk.opcode === 'data_changevariableby'
                                              && fieldVal(lastBlk, 'VARIABLE') === iterName;
-                            const bodyIds  = hasIncr ? substackIds.slice(0, -1) : substackIds;
 
-                            let body = '';
-                            for (const bid of bodyIds) body += decompStmt(B[bid], B, indent + '    ');
-                            pushLine(`${indent}for [${shortName}] from ${startExpr} to ${endExpr} {\n${body}${indent}}\n`);
+                            const body = withSourceNames({ [iterName]: shortName },
+                                () => decompChain(substackIds[0] ?? null, B, indent + '    ', hasIncr ? lastBid : undefined));
+                            pushLine(`${indent}for [${shortName}] from ${startExpr} to ${endExpr}${nounrollOf(nextBlock)} {\n${body}${indent}}\n`);
                             id = nextBlock.next || null;
                             continue;
                         }
@@ -1027,7 +1075,9 @@ function decompScript(hat, B) {
         const proto = protoId && B[protoId];
         if (!proto || !proto.mutation) return null;
         const proccode = proto.mutation.proccode || '';
+        if (CLAMP_HELPER.test(proccode)) return null;
         const name     = procedureName(proccode);
+        const rawName  = rawProcedureName(proccode);
         const params   = JSON.parse(proto.mutation.argumentnames || '[]');
         // The hidden heap allocator defines are compiler-generated: suppress
         // them (they are re-spliced on every compile that uses alloc/free).
@@ -1041,12 +1091,14 @@ function decompScript(hat, B) {
             if (!currentProcedureParams.has(param)) currentProcedureParams.set(param, candidate);
             return candidate;
         });
-        currentDefineName = name;
+        currentDefineName = rawName;
         const body     = decompChain(hat.next, B, '    ');
-        const isReturns = chainHasSet(hat.next, B, `__ret_${name}`);
+        const isReturns = chainHasSet(hat.next, B, `__ret_${rawName}`);
         currentDefineName = null;
         currentProcedureParams = new Map();
-        return `define ${name}(${sourceParams.map(name => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name) && !KEYWORDS.includes(name) ? name : `[${name}]`).join(', ')})${isReturns ? ' returns' : String(proto.mutation.warp) === 'true' ? ' warp' : ''} {\n${body}}`;
+        const scheduling = isReturns ? 'returns' : String(proto.mutation.warp) === 'true' ? 'warp' : null;
+        const modifiers = [scheduling, blockMetadata.get(hat.id)?.noinline ? 'noinline' : null].filter(Boolean).map(modifier => ` ${modifier}`).join('');
+        return `define ${name}(${sourceParams.map(name => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name) && !KEYWORDS.includes(name) ? name : `[${name}]`).join(', ')})${modifiers} {\n${body}}`;
     }
 
     // Hat block
@@ -1140,22 +1192,21 @@ export function decompile(vm, spriteName) {
         .filter(b => b.topLevel && !b.shadow)
         .sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
 
-    // Header-origin scripts (marked with a `scratchpiler:include=name.h`
-    // workspace comment at inject time) collapse back to their #include line.
-    // Without the marker they degrade gracefully to the expanded form.
-    const headerOf = {};
-    for (const c of Object.values(target.comments || {})) {
-        const m = typeof c?.text === 'string' && c.text.match(/^scratchpiler:include=([\w-]+\.h)$/);
-        if (m && c.blockId) headerOf[c.blockId] = m[1];
-    }
+    const { byBlock, decls } = readComments(target);
+    blockMetadata = byBlock;
     const includes = new Set();
     const scripts = [];
+    let restoredFromSource = false;
     for (const r of roots) {
-        if (headerOf[r.id]) { includes.add(headerOf[r.id]); continue; }
-        const s = decompScript(r, B);
+        const meta = byBlock.get(r.id);
+        if (meta?.include) { includes.add(meta.include); continue; }
+        const embedded = meta?.src?.hash === scriptHash(r.id, B) ? meta.src.text : null;
+        restoredFromSource ||= embedded !== null;
+        const s = embedded ?? decompScript(r, B);
         if (s) scripts.push(s);
     }
     const includeLines = [...includes].sort().map(h => `#include <${h}>`).join('\n');
+    const declarations = restoredFromSource && decls ? decls + '\n\n' : '';
     const body = scripts.join('\n\n');
-    return (includeLines ? includeLines + '\n\n' : '') + body + '\n';
+    return (includeLines ? includeLines + '\n\n' : '') + declarations + body + '\n';
 }

@@ -101,7 +101,7 @@ This helps you identify which header has the problem when multiple headers are i
 
 ## Decompiling with headers
 
-When you decompile a sprite that uses headers, Scratchpiler attempts to collapse header-origin scripts back to the `#include` line. This works because the compiler inserts hidden workspace comment markers (`scratchpiler:include=name.h`) to track which scripts came from which header.
+When you decompile a sprite that uses headers, Scratchpiler attempts to collapse header-origin scripts back to the `#include` line. This works because the injector adds a `scratchpiler:include=name.h` line to the comment on each header-origin script to track which scripts came from which header. See [comment-metadata.md](comment-metadata.md).
 
 If those markers are missing or damaged, the scripts decompile expanded — you get the full function bodies inline rather than the tidy `#include` line.
 

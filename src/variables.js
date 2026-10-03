@@ -1,9 +1,10 @@
 import { uid } from "./compiler.js";
+import { INTERNAL_VARIABLE_PREFIX } from "./constants.js";
 
 export const CLOUD_PREFIX = '☁ ';
 const SCRATCH_TYPE = { var: '', list: 'list' };
 
-export const isCompilerVariable = name => name.startsWith('__');
+export const isCompilerVariable = name => name.startsWith('__') || name.startsWith(INTERNAL_VARIABLE_PREFIX);
 
 export function stageOf(vm) {
     return vm.runtime.targets.find(t => t.isStage);

@@ -117,3 +117,40 @@ test('garbage input never throws', () => {
     assert.equal(ctx('@@ $ `').kind, 'general');
     assert.equal(ctx('').kind, 'general');
 });
+
+test('define headers offer the modifiers that are still unused', () => {
+    assert.deepEqual(ctx('define f(a, b) '), { kind: 'modifier', candidates: ['returns', 'warp', 'noinline'] });
+    assert.deepEqual(ctx('define f() wa'), { kind: 'modifier', candidates: ['returns', 'warp', 'noinline'] });
+    assert.deepEqual(ctx('define f() warp '), { kind: 'modifier', candidates: ['returns', 'noinline'] });
+    assert.deepEqual(ctx('define f() returns noinline '), { kind: 'modifier', candidates: ['warp'] });
+    assert.deepEqual(ctx('define f() returns warp noinline '), { kind: 'modifier', candidates: [] });
+    assert.deepEqual(ctx('define f([my arg]) no'), { kind: 'modifier', candidates: ['returns', 'warp', 'noinline'] });
+});
+
+test('define headers offer nothing before the parameter list closes or after the body opens', () => {
+    assert.equal(ctx('define f(a, ').kind, 'general');
+    assert.equal(ctx('define f').kind, 'general');
+    assert.equal(ctx('define f() {').kind, 'general');
+    assert.equal(ctx('define f() { say(1) ').kind, 'general');
+});
+
+test('counted loops offer nounroll once, after the header expression', () => {
+    assert.deepEqual(ctx('repeat 4 '), { kind: 'modifier', candidates: ['nounroll'] });
+    assert.deepEqual(ctx('repeat [n] * 2 no'), { kind: 'modifier', candidates: ['nounroll'] });
+    assert.deepEqual(ctx('repeat abs([n]) '), { kind: 'modifier', candidates: ['nounroll'] });
+    assert.deepEqual(ctx('repeat 4 nounroll '), { kind: 'modifier', candidates: [] });
+    assert.deepEqual(ctx('for [i] from 1 to 10 '), { kind: 'modifier', candidates: ['nounroll'] });
+    assert.deepEqual(ctx('for [i] from 1 to [n] + 1 no'), { kind: 'modifier', candidates: ['nounroll'] });
+    assert.deepEqual(ctx('    for [i] from 1 to 3 nounroll '), { kind: 'modifier', candidates: [] });
+});
+
+test('loop modifiers are not offered where they cannot apply', () => {
+    assert.equal(ctx('repeat ').kind, 'general');
+    assert.equal(ctx('repeat 4').kind, 'general');
+    assert.equal(ctx('repeat 4 +').kind, 'general');
+    assert.equal(ctx('repeat until ([a] > 1) ').kind, 'general');
+    assert.equal(ctx('for [i] from 1 ').kind, 'general');
+    assert.equal(ctx('for [i] from 1 to ').kind, 'general');
+    assert.equal(ctx('while ([a] < 3) ').kind, 'general');
+    assert.equal(ctx('repeat 4 { move(1) ').kind, 'general');
+});

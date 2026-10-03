@@ -1,5 +1,5 @@
 export const DEFAULT_SETTINGS = Object.freeze({
-    theme: 'scratchpiler-dark', fontSize: '14', wrap: true, minimap: false, tabSize: '4', autosave: '1000',
+    theme: 'scratchpiler-dark', fontSize: '14', wrap: true, minimap: false, tabSize: '4', autosave: '1000', embedSource: true, optimize: true,
     lintTypecheck: true, lintUnreachable: true, lintOrphaned: true, lintSemantic: true, lintSmells: true,
 });
 

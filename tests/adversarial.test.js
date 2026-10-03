@@ -357,7 +357,7 @@ test('deleteClone preserves following statements on original sprites and stops c
 });
 
 test('native parameters are renamed when a scalar has the same name', { skip }, async () => {
-    const first = build('define f(n) { set [actual] to 7 say(n) } on flag { f(3) }', makeMockVM({ vars: ['n', 'actual'] }));
+    const first = build('define f(n) { set [actual] to 7 say(n) } on flag { f(3) }', makeMockVM({ vars: ['n', 'actual'] }), 'Sprite1', { optimize: false });
     assert.deepEqual(first.errors, []);
     const variable = Object.values(first.vm.runtime.targets[0].variables).find(variable => variable.name === 'n');
     const set = Object.values(first.blocks).find(block => block.opcode === 'data_setvariableto' && block.fields.VARIABLE.value === 'actual');

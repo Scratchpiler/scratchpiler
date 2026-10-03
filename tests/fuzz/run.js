@@ -27,7 +27,7 @@ if (!haveVM) {
 }
 if (opts.out) fs.mkdirSync(opts.out, { recursive: true });
 
-const totals = { programs: 0, compileErrors: 0, runtimeErrors: 0, mismatches: 0, oracleSkipped: 0, blocks: 0 };
+const totals = { programs: 0, compileErrors: 0, runtimeErrors: 0, mismatches: 0, oracleSkipped: 0, optimizerFallbacks: 0, blocks: 0 };
 
 function disagreements(vm, oracle) {
     const out = [];
@@ -68,6 +68,11 @@ for (let seed = opts.from; seed < opts.from + opts.count; seed++) {
         saveFailure(seed, source, { errors: result.errors });
         continue;
     }
+    if (result.optimizerFallback) {
+        totals.optimizerFallbacks++;
+        console.log(`seed ${seed}: optimizer fallback: ${result.optimizerFallback.split('\n')[0]}`);
+        saveFailure(seed, source, { optimizerFallback: result.optimizerFallback });
+    }
     totals.blocks += Object.keys(result.blocks).length;
     let oracle;
     try {
@@ -85,4 +90,4 @@ for (let seed = opts.from; seed < opts.from + opts.count; seed++) {
     }
 }
 console.log(JSON.stringify(totals));
-process.exitCode = totals.compileErrors || totals.runtimeErrors || totals.mismatches || totals.oracleSkipped ? 1 : 0;
+process.exitCode = totals.compileErrors || totals.runtimeErrors || totals.mismatches || totals.oracleSkipped || totals.optimizerFallbacks ? 1 : 0;

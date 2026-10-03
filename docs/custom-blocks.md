@@ -79,6 +79,28 @@ A plain definition preserves an existing prototype's warp setting when one is fo
 
 ---
 
+## noinline
+
+Add `noinline` to ask the compiler never to inline a definition into its callers:
+
+```sdsl
+define updatePhysics(dt) warp noinline {
+    changeX([velocity] * dt)
+}
+
+define clampHealth(value) returns noinline {
+    return clamp(value, 0, [maxHealth])
+}
+```
+
+`noinline` goes after the parameter list. `returns`, `warp` and `noinline` can come in any order. It never changes what the block does, only whether its calls are replaced by its body.
+
+By default the compiler **inlines** small custom blocks: `set [area] to area(6, 7)` compiles to the multiplication itself instead of a call, a return-value variable and a stop. It leaves a block as a call when it is recursive, large (more than 24 operations), stops its own script, contains `forever`, or is a `warp` block with loops being used in a script. Use `noinline` when you want a block to stay a real, visible custom block at every call site, for example to keep a script readable in the Scratch editor, or to put a breakpoint-style `say` inside it. Turn inlining off for the whole project in Settings → Optimizations. Small constant-count loops inside `warp` and `returns` blocks are also unrolled; see [control-flow.md](control-flow.md#repeat).
+
+The keyword is kept in a comment on the definition, so Pull code from Scratch gives it back (see [comment-metadata.md](comment-metadata.md)). Tab completion offers `returns`, `warp` and `noinline` after the parameter list.
+
+---
+
 ## No return values
 
 Scratch does not support returning values from custom blocks. If your block needs to produce a result, use a dedicated variable as an output channel:

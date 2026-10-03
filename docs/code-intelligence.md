@@ -67,13 +67,15 @@ Completions know where your cursor is:
 - Loop variables are only offered inside their loop. `[i]` will not haunt you at the top level.
 - Enum constants, `define` call snippets with parameter placeholders, and `launch`/`await` snippets for your scratchroutines all appear in the general list.
 - After `launch `, `await ` or `cancel ` only scratchroutines are offered (no more `launch launch anim()`), and `#include <` lists your saved headers.
+- After a `define` parameter list, `returns`, `warp` and `noinline` are offered (only the ones you have not typed yet). After the header of a `repeat` or `for`, `nounroll` is offered. They are offered nowhere else.
+- Compiler variables (`_scratchpiler_internal_…`, `__heap`, `__ret_…`) are never suggested.
 - Nothing pops up inside `//` comments, and words from the file no longer pad the list.
 
 **Tab chains the next step.** Accepting a snippet lands you in its first slot and immediately opens the right popup: a string slot (`play("`, `on receive "`) lists sounds or broadcasts, a `[` slot lists variables, an argument slot shows signature help. Items match on the bare name, so `goTo` finds both `goTo(x, y)` and `goTo("sprite")`. The editor remembers what you picked last and preselects it next time.
 
 ## Signature help & hover
 
-Signature help (and hover docs) now cover *your* blocks, not just the built-ins: type `myBlock(` and the parameter list from your `define` shows up, current argument bolded.
+Hovering `warp`, `noinline` or `nounroll` explains what each does. Signature help (and hover docs) now cover *your* blocks, not just the built-ins: type `myBlock(` and the parameter list from your `define` shows up, current argument bolded.
 
 ---
 

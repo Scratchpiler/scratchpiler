@@ -239,6 +239,14 @@ export function irgen(ast, env) {
         if (BOOL_OPS.has(op) || (op === 'sb' && BOOL_SB.has(extra.opcode))) b.bools.add(id);
         return ref(id);
     };
+    const originTag = (origin, fn) => {
+        const region = b.region;
+        const start = region.length;
+        fn();
+        const head = region.slice(start).find(op => op.result === null);
+        if (head) head.tag = { origin };
+    };
+    const loopHints = (node) => (node.nounroll ? { nounroll: true, tag: { hints: ['nounroll'] } } : {});
     const nested = (fn) => {
         const saved = b.region;
         b.region = [];
@@ -417,7 +425,7 @@ export function irgen(ast, env) {
                 [mkOp('ret', [ref('lower')])], [mkOp('ret', [operand])],
             ] }),
         ];
-        sprite.procs.push({ name: clampName, params: ['input', 'lo', 'hi'], warp: true, returns: true, body: [
+        sprite.procs.push({ name: clampName, params: ['input', 'lo', 'hi'], warp: true, returns: true, noinline: true, body: [
             ...numericArg('input', 'input'), ...numericArg('lo', 'lower'), ...numericArg('hi', 'upper'),
             mkOp('lt', [ref('input'), ref('upper')], { result: 'choose' }),
             mkOp('if', [ref('choose')], { regions: [maximum(ref('input')), maximum(ref('upper'))] }),
@@ -478,11 +486,11 @@ export function irgen(ast, env) {
         return inLoop(kind, () => body(stmts));
     }
 
-    function untilLoop(condNode, stmts, kind, step = []) {
+    function untilLoop(condNode, stmts, kind, step = [], extra = {}) {
         const condOps = nested(() => emit('cond', [cond(condNode)]));
         const bodyOps = loopRegion(kind, stmts);
         const stepOps = body(step);
-        emit('until', [], { regions: stepOps.length ? [condOps, bodyOps, stepOps] : [condOps, bodyOps] });
+        emit('until', [], { regions: stepOps.length ? [condOps, bodyOps, stepOps] : [condOps, bodyOps], ...extra });
     }
 
     const at = (node) => ({ line: node.line, col: node.col });
@@ -504,7 +512,7 @@ export function irgen(ast, env) {
         const iter = hiddenNamed(`_scratchpiler_internal_${rand4()}_${node.varName}`);
         emit('var.set', [sym(iter), expr(node.from)]);
         withScope({ [node.varName]: iter }, () => {
-            untilLoop(S.Bin('>', S.Var(node.varName, node), node.to, node), node.body, 'for', [S.Change(node.varName, S.Num(1, node), node)]);
+            untilLoop(S.Bin('>', S.Var(node.varName, node), node.to, node), node.body, 'for', [S.Change(node.varName, S.Num(1, node), node)], loopHints(node));
         });
     }
 
@@ -657,7 +665,8 @@ export function irgen(ast, env) {
             }
             case 'ChangeVarStmt': {
                 if (isPromoted(node.varName)) {
-                    const sum = value('add', [readVar(node.varName, node), expr(node.value)]);
+                    const amount = expr(node.value);
+                    const sum = value('add', [readVar(node.varName, node), amount]);
                     emit('list.set', [sym(heap), lit(promoted.get(node.varName)), sum]);
                     return;
                 }
@@ -680,7 +689,7 @@ export function irgen(ast, env) {
             }
             case 'RepeatStmt': {
                 const n = expr(node.count);
-                emit('repeat', [n], { regions: [loopRegion('repeat', node.body)] });
+                emit('repeat', [n], { regions: [loopRegion('repeat', node.body)], ...loopHints(node) });
                 return;
             }
             case 'ForeverStmt':
@@ -715,8 +724,8 @@ export function irgen(ast, env) {
                 });
                 return;
             }
-            case 'ForStmt': forLoop(node); return;
-            case 'PyForStmt': pyforLoop(node); return;
+            case 'ForStmt': originTag('for', () => forLoop(node)); return;
+            case 'PyForStmt': originTag('pyfor', () => pyforLoop(node)); return;
             case 'BreakStmt':
             case 'ContinueStmt': {
                 const kw = node.type === 'BreakStmt' ? 'break' : 'continue';
@@ -816,7 +825,7 @@ export function irgen(ast, env) {
                     fail(node, `Unknown statement-level method .${node.method}() — only .sort() / .sort("desc") are supported`, node.method.length);
                     return;
                 }
-                sortList(node);
+                originTag('sort', () => sortList(node));
                 return;
             case 'LaunchStmt':
             case 'AwaitStmt': {
@@ -868,6 +877,8 @@ export function irgen(ast, env) {
             : { event: 'greater', arg: h.sense, threshold: h.threshold }),
     };
 
+    const rootTag = (block, hints = []) => ({ hints, span: block._synthetic ? null : block.span });
+
     for (const block of ast.blocks) {
         if (block.type === 'OnBlock') {
             const hatOf = HATS[block.hat.event];
@@ -884,12 +895,13 @@ export function irgen(ast, env) {
                 }
             }
             statements(block.body);
-            sprite.scripts.push({ hat, body: b.region });
+            sprite.scripts.push({ hat, body: b.region, tag: rootTag(block) });
         } else if (block.type === 'DefineBlock') {
             newRoot(block.params);
             b.proc = block;
             statements(block.body);
-            sprite.procs.push({ name: block.name, params: [...block.params], warp: !!(block.returns || block.warp || block._forceWarp || env.externProc?.(block.name)?.warp), returns: !!block.returns, body: b.region });
+            sprite.procs.push({ name: block.name, params: [...block.params], warp: !!(block.returns || block.warp || block._forceWarp || env.externProc?.(block.name)?.warp), returns: !!block.returns, body: b.region,
+                ...((block.noinline || block._synthetic) && { noinline: true }), tag: rootTag(block, block.noinline ? ['noinline'] : []) });
         } else if (block.type === 'ScratchroutineStmt') {
             const name = block.name;
             const params = routineParamVars(name);

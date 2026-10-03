@@ -14,7 +14,7 @@
 A text-based DSL that compiles directly into Scratch's block VM. Because sometimes you want to write a platformer without playing Tetris with puzzle pieces, or because you've finally realized that Scratch is a turing-complete ISA waiting to be compiled against.
 
 
-Every compile uses SLVM IR for verification and legalization before Scratch block emission. See [the compiler documentation](docs/slvm-backend.md) for the pipeline and verification.
+Every compile uses SLVM IR for verification, inlining of small custom blocks and legalization before Scratch block emission. See [the compiler documentation](docs/slvm-backend.md) for the pipeline and verification.
 
 ---
 
@@ -174,6 +174,7 @@ The original 7,200-line monolith of despair has been shattered into beautifully 
 | [docs/editor.md](docs/editor.md) | The editor itself: explorer, tabs, Variables panel, command palette, find and replace, shortcuts |
 | [docs/overview.md](docs/overview.md) | How the pipeline works |
 | [docs/slvm-backend.md](docs/slvm-backend.md) | The SLVM compiler pipeline, runtime behavior, limitations and verification |
+| [docs/comment-metadata.md](docs/comment-metadata.md) | Source embedding, `noinline`/`nounroll` hints and loop markers kept in Scratch comments |
 | [docs/syntax.md](docs/syntax.md) | Tokens, operators, expressions |
 | [docs/control-flow.md](docs/control-flow.md) | Hat blocks, loops, conditionals |
 | [docs/motion.md](docs/motion.md) | Motion functions and reporters |

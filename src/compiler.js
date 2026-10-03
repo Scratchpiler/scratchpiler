@@ -2,6 +2,7 @@ import { KEYWORDS } from "./constants.js";
 import { scratchIndex } from "./scratch-index.js";
 import { ASM_OPCODES } from "./asm-opcodes.js";
 import { compileWithSLVM } from "./slvm-backend.js";
+import { buildComments } from "./metadata.js";
 
 // [L] DSL Compiler
 
@@ -17,6 +18,7 @@ const TT = {
 };
 
 const KW_SET = new Set(KEYWORDS);
+const DEFINE_MODIFIERS = ['returns', 'warp', 'noinline'];
 
 export function tokenize(src, opts = {}) {
     const tokens = [];
@@ -363,26 +365,26 @@ export function parse(tokens, opts = {}) {
     function parseScript() {
         const blocks = [];
         while (!check(TT.EOF)) {
-            if (checkV('on') || checkV('define')) {
-                blocks.push(parseHatBlock());
-            } else if (checkV('scratchroutine')) {
-                blocks.push(parseScratchroutine());
-            } else if (checkV('struct')) {
-                blocks.push(parseStruct());
-            } else if (checkV('enum') || checkV('enums')) {
-                blocks.push(parseEnum());
-            } else if (check(TT.LBRACE)) {
-                // Bare { ... } block with no hat — parse cleanly, lint will flag it
-                const t = peek();
-                const body = parseBody();
-                blocks.push({ type: 'OrphanedBlock', body, line: t.line, col: t.col });
-            } else {
-                // Top-level statement without a hat — parse it so the rest of the file
-                // continues to work, lint will flag it as orphaned
-                blocks.push(parseStatement());
-            }
+            const first = peek();
+            const node = parseTopLevel();
+            const last = tokens[pos - 1];
+            node.span = { line: first.line, col: first.col, endLine: last.endLine, endCol: last.endCol };
+            blocks.push(node);
         }
         return { type: 'Script', blocks };
+    }
+
+    function parseTopLevel() {
+        if (checkV('on') || checkV('define')) return parseHatBlock();
+        if (checkV('scratchroutine')) return parseScratchroutine();
+        if (checkV('struct')) return parseStruct();
+        if (checkV('enum') || checkV('enums')) return parseEnum();
+        if (check(TT.LBRACE)) {
+            const t = peek();
+            const body = parseBody();
+            return { type: 'OrphanedBlock', body, line: t.line, col: t.col };
+        }
+        return parseStatement();
     }
 
     function parseHatBlock() {
@@ -400,11 +402,11 @@ export function parse(tokens, opts = {}) {
                 if (!tryEat(TT.COMMA)) break;
             }
             eat(TT.RPAREN, '`define name(params)`: expected `)` to close the parameter list');
-            let returns = false;
-            if (checkV('returns')) { pos++; returns = true; }
-            const warp = tryEatV('warp');
+            const modifiers = new Set();
+            for (let next; (next = DEFINE_MODIFIERS.find(name => !modifiers.has(name) && checkV(name))); pos++) modifiers.add(next);
+            const returns = modifiers.has('returns'), warp = modifiers.has('warp'), noinline = modifiers.has('noinline');
             const body = parseBody();
-            return { type: 'DefineBlock', name: nameT.value, params, body, returns, warp,
+            return { type: 'DefineBlock', name: nameT.value, params, body, returns, warp, noinline,
                      line: nameT.line, col: nameT.col,
                      nameEndLine: nameT.endLine, nameEndCol: nameT.endCol, paramSpans };
         }
@@ -536,8 +538,9 @@ export function parse(tokens, opts = {}) {
     function parseRepeat() {
         const t = peek(); pos++;
         const count = parseExpr();
+        const nounroll = tryEatV('nounroll');
         const body = parseBody();
-        return { type: 'RepeatStmt', count, body, line: t.line, col: t.col };
+        return { type: 'RepeatStmt', count, body, nounroll, line: t.line, col: t.col };
     }
 
     function parseRepeatUntil() {
@@ -588,8 +591,9 @@ export function parse(tokens, opts = {}) {
                 message: '`for [var] from expr to expr {}`: expected `to` after start expression' });
         } else { pos++; }
         const toExpr = parseExpr();
+        const nounroll = tryEatV('nounroll');
         const body = parseBody();
-        return { type: 'ForStmt', varName, from: fromExpr, to: toExpr, body, line: t.line, col: t.col,
+        return { type: 'ForStmt', varName, from: fromExpr, to: toExpr, body, nounroll, line: t.line, col: t.col,
                  varSpan: varTok ? { line: varTok.line, col: varTok.col, endLine: varTok.endLine, endCol: varTok.endCol } : null };
     }
 
@@ -1709,7 +1713,7 @@ function scanPointerUse(ast, vm, spriteName) {
     return use;
 }
 
-export function compileSource(source, vm, spriteName) {
+export function compileSource(source, vm, spriteName, { embedSource = false, embedUntilLine = Infinity, optimize = true } = {}) {
     const tokens = tokenize(source);
     const { ast, errors: parseErrors } = parse(tokens);
     if (parseErrors.length > 0) return { blocks: {}, errors: parseErrors };
@@ -1731,5 +1735,15 @@ export function compileSource(source, vm, spriteName) {
     if (ptrUse.ptr || helperInjected) ast._usesHeap = true;
 
     const heapVars = helperInjected ? PTR_TEMP_VARS : ast._usesHeap ? ['__heap_free'] : [];
-    return compileWithSLVM(ast, vm, spriteName, { heapVars, heapStaticSlots: HEAP_STATIC_SLOTS });
+    const compileWith = (passes) => compileWithSLVM(ast, vm, spriteName, { passes, heapVars, heapStaticSlots: HEAP_STATIC_SLOTS });
+    let compiled = compileWith(optimize ? ['O1'] : ['legalize']);
+    let optimizerFallback = null;
+    if (optimize && compiled.errors.some(error => error.message.startsWith('SLVM:'))) {
+        optimizerFallback = compiled.errors[0].message;
+        compiled = compileWith(['legalize']);
+    }
+    if (compiled.errors.length > 0) return compiled;
+    const declSpans = ast.blocks.filter(block => block.type === 'EnumDecl' || block.type === 'StructDecl').map(block => block.span);
+    const comments = buildComments({ tags: compiled.tags, blocks: compiled.blocks, source, embedSource, embedUntilLine, declSpans });
+    return { ...compiled, comments, optimizerFallback };
 }

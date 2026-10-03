@@ -8,7 +8,7 @@ source → include expansion → tokenize → parse → irgen → legalize → s
 
 ## Source and API
 
-Use `compileSource(source, vm, sprite)` or `compileSourceWithHeaders(source, vm, sprite)`. Both return `{ blocks, errors }`; the header version also returns include metadata. Existing callers that pass an obsolete fourth argument still use SLVM. Compilation stops on errors before injection.
+Use `compileSource(source, vm, sprite)` or `compileSourceWithHeaders(source, vm, sprite)`. Both return `{ blocks, comments, errors }`; the header version also returns include metadata. An optional fourth argument takes `{ embedSource }`. `comments` is a list of `{ blockId, text }` that the injector attaches to the emitted blocks; see [comment-metadata.md](comment-metadata.md). Compilation does not depend on them. Compilation stops on errors before injection.
 
 The frontend, source syntax, Monaco providers, headers and injector keep their existing interfaces. `src/compiler.js` handles tokenization, parsing, diagnostics and pointer helper insertion. `src/irgen.js` resolves source constructs into structured IR. `src/slvm-backend.js` connects that IR to the live project and emits Scratch blocks through SLVM.
 
@@ -30,7 +30,17 @@ Motion, looks, sound, pen and sensing use `sb` operations described by `ASM_OPCO
 
 The legalization pipeline runs `lower-ret`, `lower-break`, `rotate-cond`, `materialize-bool` and `spill`. It verifies after each pass, then `slc` verifies legal IR before emitting blocks. Values are materialized only when their uses or intervening effects require storage. Compiler variables retain recognizable names for the decompiler.
 
-Optimization passes such as `constfold` and `dce` remain available in SLVM, but are not enabled in Scratchpiler's default pipeline. This migration preserves evaluation and scheduling behavior while changing the compiler architecture.
+## Optimization
+
+Compilation runs SLVM's `O1` pipeline by default: `inline`, `constfold`, `unroll`, `constfold`, `dce`, then the legalization passes. Pass `{ optimize: false }` to `compileSource` (or turn off Settings → Optimizations → Optimize compiled code) to run legalization alone.
+
+- **Inlining** replaces a call to a small, non-recursive custom block with the block's body. A call such as `area(6, 7)` becomes `6 * 7`, which `constfold` then reduces to `42`. The definition stays in the project. A block is left as a call when it is recursive, has more than 24 operations, stops its own script, contains `forever`, has an early `return` that cannot be folded into an `if`/`else`, or is a `warp` block with loops being inlined into a script. The call is also left alone inside a loop condition. See [SLVM's inliner](../../slvm/docs/optimizations.md#1-inlining-returning-procs-then-folding--o1) for the full rules.
+- **Unrolling** replaces a loop that has a constant trip count with copies of its body: `repeat 3 { … }`, or `for [i] from 1 to 4 { … }` with literal integer bounds, where each `[i]` becomes that iteration's number. It only happens inside `warp` and returning custom blocks, because a warp loop never yields. A loop in a script or in a plain custom block yields every iteration, so other scripts can run in between; removing those yields could be observed, and the compiler never does it. A loop stays when it has more than 16 trips, would grow past 40 operations, contains `break` or `continue`, or is marked `nounroll`. See [SLVM's unroller](../../slvm/docs/optimizations.md#1b-unrolling-counted-loops).
+- **`noinline`** on a definition always keeps its calls (see [custom-blocks.md](custom-blocks.md#noinline)). The compiler's own helpers behind `clamp()`, `alloc()` and `free()` are always `noinline`, so they decompile back to the builtin.
+- **Evaluation and scheduling are preserved.** Warp atomicity, argument evaluation order and Scratch's casts all survive inlining; the differential fuzzer and the real-VM tests check this.
+- **Fallback.** If an optimized compile fails SLVM's own verification, the compiler retries without optimization and records the reason in `optimizerFallback` on the result. The fuzzer and tests assert it is always `null`, so a fallback means a compiler bug.
+
+Inlining and unrolling change what Pull code from Scratch shows when no embedded source is available: an inlined body appears in its caller, and an unrolled loop appears as repeated statements, because blocks cannot be un-inlined or rolled back up. With source embedding on, an unedited script still comes back exactly as you wrote it. See [comment-metadata.md](comment-metadata.md).
 
 ## Restrictions
 
@@ -55,7 +65,7 @@ node tests/fuzz/run.js --count 500 --out /tmp/scratchpiler-fuzz
 node tests/fuzz/run.js --from 50000 --count 500 --feature recursion --feature breakInFor --feature continueInFor --feature pointers
 ```
 
-Fixed seeds also run in `npm test`. The fixture results guard existing examples; the independent interpreter checks newly generated programs without retaining the removed compiler.
+Fixed seeds also run in `npm test`, and they assert that no program needed the optimizer fallback. The fixture results guard existing examples; the independent interpreter checks newly generated programs without retaining the removed compiler.
 
 ## Migration regressions
 

@@ -6,6 +6,7 @@ import { tokenize } from "./compiler.js";
 import { ASM_OPCODES } from "./asm-opcodes.js";
 import { getAnalysis, visibleSymbols } from "./analyzer.js";
 import { listHeaders } from "./headers.js";
+import { isCompilerVariable } from "./variables.js";
 import { completionContext, structFields, isComparisonNoise } from "./completion-context.js";
 
 export function registerLanguage(monaco) {
@@ -160,6 +161,16 @@ export function registerLanguage(monaco) {
             );
 
             if (ctx.kind === 'comment' || ctx.kind === 'member') return { suggestions: [] };
+
+            if (ctx.kind === 'modifier') {
+                return {
+                    suggestions: ctx.candidates.map(name => ({
+                        label: name, kind: monaco.languages.CompletionItemKind.Keyword,
+                        detail: MODIFIER_DOCS[name].detail, documentation: { value: MODIFIER_DOCS[name].documentation },
+                        insertText: name, range,
+                    })),
+                };
+            }
 
             if (ctx.kind === 'include') {
                 const closed = model.getLineContent(position.lineNumber)[word.endColumn - 1] === '>';
@@ -468,6 +479,9 @@ export function registerLanguage(monaco) {
         'define':       { label: 'define <name>(<params>) returns { return <value> }', params: [{ label: '<name>', documentation: 'Block name' }, { label: '<params>', documentation: 'Parameters (optional)' }, { label: '<value>', documentation: 'Expression to return' }] },
         'return':       { label: 'return <expr>  (in returns blocks)\nreturn  (bare return exits)', params: [{ label: '<expr>', documentation: 'Value to return (optional)' }] },
         'returns':      { label: 'returns  — declare that a custom block returns a value', params: [], documentation: 'Used after parameter list in define: define name(params) returns { … }' },
+        'warp':         { label: 'warp  — run a custom block without screen refresh', params: [], documentation: 'Used after the parameter list in define: define name(params) warp { … }' },
+        'noinline':     { label: 'noinline  — never inline this custom block', params: [], documentation: 'Used after the parameter list in define: define name(params) noinline { … }. The compiler inlines small custom blocks by default; this keeps every call.' },
+        'nounroll':     { label: 'nounroll  — never unroll this loop', params: [], documentation: 'Used after the header of repeat and for: repeat 4 nounroll { … }. A hint: it does not change what the loop does.' },
         // function calls
         'move':             { label: 'move(steps)',               params: [{ label: 'steps' }] },
         'turnRight':        { label: 'turnRight(degrees)',         params: [{ label: 'degrees' }] },
@@ -809,6 +823,13 @@ export function registerLanguage(monaco) {
     });
 }
 
+const MODIFIER_DOCS = {
+    returns: { detail: 'define modifier', documentation: 'The custom block returns a value. Use `return <expr>` in the body.' },
+    warp: { detail: 'define modifier', documentation: 'Run the custom block without screen refresh.' },
+    noinline: { detail: 'define modifier', documentation: 'Never inline this custom block into its callers. The compiler inlines small blocks by default.' },
+    nounroll: { detail: 'loop modifier', documentation: 'Never unroll this loop. A hint: it does not change what the loop does.' },
+};
+
 const SUGGEST_COMMAND = { id: 'editor.action.triggerSuggest', title: 'Suggest' };
 const HINTS_COMMAND   = { id: 'editor.action.triggerParameterHints', title: 'Parameter hints' };
 
@@ -854,7 +875,7 @@ function projectVariables() {
     return [
         ...scratchIndex.globalVariables,
         ...(activeName && activeName !== '__stage__' ? (scratchIndex.spriteVariables[activeName] ?? []) : []),
-    ];
+    ].filter(variable => !isCompilerVariable(variable.name));
 }
 
 function callSnippet(name, params) {
@@ -905,10 +926,10 @@ function collectRegistersInScope(model, position) {
         registers.push({ name, source });
     };
 
-    for (const v of scratchIndex.globalVariables) add(v.name, `Global ${v.type}`);
+    for (const v of scratchIndex.globalVariables) if (!isCompilerVariable(v.name)) add(v.name, `Global ${v.type}`);
     const activeName = getActiveSpriteNameFromDropdown();
     if (activeName) {
-        for (const v of (scratchIndex.spriteVariables[activeName] ?? [])) add(v.name, `${activeName} ${v.type}`);
+        for (const v of (scratchIndex.spriteVariables[activeName] ?? [])) if (!isCompilerVariable(v.name)) add(v.name, `${activeName} ${v.type}`);
     }
 
     const src = model.getValue();

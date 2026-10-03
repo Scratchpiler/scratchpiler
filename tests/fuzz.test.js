@@ -22,6 +22,7 @@ for (let seed = 0; seed < 15; seed++) {
         const source = generateProgram(seed);
         const result = await execute(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
         assert.deepEqual(result.errors, [], source);
+        assert.equal(result.optimizerFallback, null, source);
         const oracle = runOracle(source, { initialVars: { p: 0, q: 0 }, initialLists: { L: [] } });
         agreesWithOracle(result.runtime, oracle);
     });
@@ -32,6 +33,17 @@ for (let seed = 50000; seed < 50010; seed++) {
         const source = generateProgram(seed, ALL_FEATURES);
         const result = await execute(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
         assert.deepEqual(result.errors, [], source);
+        assert.equal(result.optimizerFallback, null, source);
+        agreesWithOracle(result.runtime, runOracle(source, { initialVars: { p: 0, q: 0 }, initialLists: { L: [] } }));
+    });
+}
+
+for (let seed = 70000; seed < 70012; seed++) {
+    test(`fuzz seed ${seed} with loops inside warp procs: SLVM agrees with the reference interpreter`, { skip }, async () => {
+        const source = generateProgram(seed, { ...DEFAULT_FEATURES, warpLoops: true });
+        const result = await execute(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
+        assert.deepEqual(result.errors, [], source);
+        assert.equal(result.optimizerFallback, null, source);
         agreesWithOracle(result.runtime, runOracle(source, { initialVars: { p: 0, q: 0 }, initialLists: { L: [] } }));
     });
 }
@@ -42,6 +54,7 @@ for (const seed of [106652, 107609]) {
         const source = generateProgram(seed, features);
         const result = await execute(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
         assert.deepEqual(result.errors, [], source);
+        assert.equal(result.optimizerFallback, null, source);
         agreesWithOracle(result.runtime, runOracle(source, { initialVars: { p: 0, q: 0 }, initialLists: { L: [] } }));
     });
 }
@@ -51,6 +64,7 @@ for (const seed of [...Array.from({ length: 100 }, (_, i) => 200000 + i), 200103
         const source = generateProgram(seed, ALL_FEATURES);
         const result = await execute(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
         assert.deepEqual(result.errors, [], source);
+        assert.equal(result.optimizerFallback, null, source);
         agreesWithOracle(result.runtime, runOracle(source, { initialVars: { p: 0, q: 0 }, initialLists: { L: [] } }));
     });
 }

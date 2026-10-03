@@ -149,6 +149,10 @@ repeat [count] {
 }
 ```
 
+A loop with a constant count can be **unrolled**: the compiler writes out the body once per iteration instead of looping. This only ever happens inside `warp` and `returns` custom blocks, where loops never yield to other scripts anyway, so it cannot change what your program does. Loops in scripts and in plain custom blocks are never unrolled. A loop is left alone if it runs more than 16 times, would become large (more than 40 operations), or uses `break` or `continue`.
+
+Add `nounroll` after the count to keep a loop as a real loop: `repeat 4 nounroll { ... }`. The same keyword works on `for`: `for [i] from 1 to 4 nounroll { ... }`. It does not change what the loop does. See [comment-metadata.md](comment-metadata.md).
+
 ---
 
 ## forever

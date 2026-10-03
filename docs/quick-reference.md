@@ -465,6 +465,14 @@ true  false                           // boolean literals
 // Everything after // is stripped by the tokenizer, never to be seen by the VM.
 ```
 
+With source embedding on, the text of each script (comments included) is also saved in a Scratch comment and restored by Pull. See [comment-metadata.md](comment-metadata.md).
+
+```
+define f(x) returns noinline { ... }   // keep every call; small blocks are inlined by default
+repeat 4 nounroll { ... }              // keep this a real loop; small constant loops in warp blocks are unrolled
+for [i] from 1 to 4 nounroll { ... }
+```
+
 ---
 
 ## Key names (for `on key` and `key()`)

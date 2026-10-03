@@ -167,5 +167,5 @@ export function compileWithSLVM(ast, vm, spriteName, { passes = ['legalize'], he
         signature.value = [...routine.params];
     }
     const own = out.targets.find((t) => t.kind === (spriteName === '__stage__' ? 'stage' : 'sprite'));
-    return { blocks: own.blocks, errors: [] };
+    return { blocks: own.blocks, tags: own.tags, errors: [] };
 }

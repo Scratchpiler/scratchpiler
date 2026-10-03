@@ -19,7 +19,7 @@ Everything below has a keyboard shortcut. Hover any button and its tooltip tells
   - **Scratch is up to date** — what's in Scratch matches what's in the editor.
   - **Changed since last inject** — you've edited since you last compiled. Hover it to see which sprites. Their tabs and explorer rows get a dot too.
   - **Not injected yet** — nothing to compare against. Blank slate. Very zen.
-- **Compile & Inject** — `Ctrl+Enter`. Shift+click (or `Ctrl+Shift+Enter`) compiles minified, renaming every variable to gibberish for reasons that are between you and your conscience. The arrow next to it also offers **Pull code from Scratch** and **Format document**. When a header is open, the button becomes **Check Header**.
+- **Compile & Inject** — `Ctrl+Enter`. Shift+click (or `Ctrl+Shift+Enter`) compiles minified, renaming every variable to gibberish for reasons that are between you and your conscience, and leaving the source text out of the project's comments. The arrow next to it also offers **Pull code from Scratch** and **Format document**. When a header is open, the button becomes **Check Header**.
 
 ---
 
@@ -134,6 +134,8 @@ The `{ }` icon in the left rail. Headers open in their own tabs next to your spr
 
 - **Editor** — theme, font size, indent width, line wrap, minimap, and how soon your code is saved.
 All compilation uses SLVM automatically. Settings from earlier versions keep editor preferences; the retired backend choice is ignored. See [slvm-backend.md](slvm-backend.md) for the pipeline and verification.
+- **Round trip** — **Embed source in comments** (on by default) saves each script's original text in a Scratch comment so Pull code from Scratch can give it back with your formatting and `//` comments. Minified injects never embed it. See [comment-metadata.md](comment-metadata.md).
+- **Optimizations** — **Optimize compiled code** (on by default) inlines small custom blocks, unrolls small constant loops inside `warp` blocks, and folds constants. See [slvm-backend.md](slvm-backend.md#optimization), and mark a block `noinline` to opt it out.
 - **Checks** — toggle each family of warnings. See [linter.md](linter.md) for what they catch, and [code-intelligence.md](code-intelligence.md) for the smarter ones.
 - **Maintenance**:
   - **Re-index project** — rescans sprites, variables and custom blocks when the explorer looks out of date.

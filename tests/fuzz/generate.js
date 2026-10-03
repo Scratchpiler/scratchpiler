@@ -17,6 +17,7 @@ export const DEFAULT_FEATURES = {
     breakInFor: false,
     pointers: false,
     weirdLiterals: false,
+    warpLoops: false,
 };
 
 export function generateProgram(seed, features = DEFAULT_FEATURES) {
@@ -190,6 +191,11 @@ export function generateProgram(seed, features = DEFAULT_FEATURES) {
             body.push(`return (${self.join(` ${pick(['+', '-', '*'])} `)}) ${pick(['+', '-'])} ${num(1, ctx)}`);
             recursive.add(name);
         } else {
+            if (features.warpLoops && chance(0.6)) {
+                const i = `i${fresh++}`;
+                body.push(...block(`repeat ${int(0, 4)}`, [`change [c] by ${num(1, ctx)}`]));
+                body.push(...block(`for [${i}] from ${int(0, 2)} to ${int(1, 4)}`, [`change [b] by [${i}]`, `change [c] by ${num(1, ctx)}`]));
+            }
             if (chance(0.5)) body.push(...block(`if ${cond(1, ctx)}`, [`return ${num(1, ctx)}`]));
             body.push(`return ${num(2, ctx)}`);
         }
@@ -201,6 +207,13 @@ export function generateProgram(seed, features = DEFAULT_FEATURES) {
         budget -= 4;
         lines.push(...block('define p0(x)', stmts(1, ctx, int(1, 3))), '');
         plain.push('p0');
+    }
+
+    if (features.warpLoops) {
+        const ctx = { reads: VARS, param: 'x', callable: [...returning], plain: [], loop: null };
+        budget -= 6;
+        lines.push(...block('define w0(x) warp', stmts(2, ctx, int(1, 3))), '');
+        plain.push('w0');
     }
 
     const ctx = { reads: VARS, param: null, callable: [...returning], plain: [...plain], loop: null };

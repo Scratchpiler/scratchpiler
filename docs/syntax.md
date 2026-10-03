@@ -47,11 +47,13 @@ Six-digit hex colors with a `#` prefix. These generate Scratch `colour_picker` b
 
 ### Comments
 
-Line comments only, starting with `//`. Comments are stripped during tokenization and do not appear in compiled output. They will not survive compilation. Tragic. Like tears in the rain, or variables you forgot to create in the editor.
+Line comments only, starting with `//`. Comments are stripped during tokenization and do not appear in the compiled blocks.
+
+They are not lost for good, though. With **Embed source in comments** on (the default), each script's original text, `//` comments included, is saved in a Scratch comment on that script, and Pull code from Scratch restores it as long as the script has not been edited in Scratch. See [comment-metadata.md](comment-metadata.md).
 
 ```
-// This is a comment. It will not survive compilation.
-move(10)  // This comment also disappears. It had so much to say.
+// Kept in the script's source comment.
+move(10)  // So is this one, until you edit the script in Scratch.
 ```
 
 ---

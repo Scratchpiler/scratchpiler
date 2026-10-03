@@ -472,7 +472,7 @@ export function compileAndInject({ minify = false } = {}) {
 
     let result;
     try {
-        result = compileSourceWithHeaders(source, currentVM, sprite);
+        result = compileSourceWithHeaders(source, currentVM, sprite, { embedSource: settings.embedSource && !minify, optimize: settings.optimize });
     } catch (e) {
         console.error('[scratchpiler] compile exception', e);
         logToOutput(`Compiler crashed: ${e.message}`, 'error');
@@ -494,7 +494,7 @@ export function compileAndInject({ minify = false } = {}) {
         const renamed = minifyBlocks(result.blocks, currentVM, sprite);
         logToOutput(`Minified: ${plural(renamed, 'variable')} renamed to gibberish`, 'ok');
     }
-    injectBlocks(result.blocks, currentVM, sprite, result.headerRoots);
+    injectBlocks(result.blocks, currentVM, sprite, result.headerRoots, result.comments);
 
     const blocks = Object.values(result.blocks);
     const scripts = blocks.filter(b => b.topLevel && !b.shadow).length;
@@ -748,6 +748,8 @@ function applySettings() {
     $('sp-setting-wrap').checked = settings.wrap;
     $('sp-setting-minimap').checked = settings.minimap;
     $('sp-setting-autosave').value = settings.autosave;
+    $('sp-setting-embed-source').checked = settings.embedSource;
+    $('sp-setting-optimize').checked = settings.optimize;
     $('sp-setting-lint-typecheck').checked = settings.lintTypecheck;
     $('sp-setting-lint-unreachable').checked = settings.lintUnreachable;
     $('sp-setting-lint-orphaned').checked = settings.lintOrphaned;
@@ -787,7 +789,7 @@ function setupSettings() {
         if (b) updateSetting('tabSize', b.dataset.value);
     });
     const toggles = {
-        'sp-setting-wrap': 'wrap', 'sp-setting-minimap': 'minimap',
+        'sp-setting-wrap': 'wrap', 'sp-setting-minimap': 'minimap', 'sp-setting-embed-source': 'embedSource', 'sp-setting-optimize': 'optimize',
         'sp-setting-lint-typecheck': 'lintTypecheck', 'sp-setting-lint-unreachable': 'lintUnreachable',
         'sp-setting-lint-orphaned': 'lintOrphaned', 'sp-setting-lint-semantic': 'lintSemantic', 'sp-setting-lint-smells': 'lintSmells',
     };

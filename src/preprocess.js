@@ -130,9 +130,9 @@ export function mapExpandedError(ex, err) {
 // compileSource with #include expansion. Drop-in superset of compileSource:
 // returns { blocks, errors, headerRoots } where headerRoots maps define /
 // scratchroutine names that came from headers to their header file name.
-export function compileSourceWithHeaders(source, vm, spriteName) {
+export function compileSourceWithHeaders(source, vm, spriteName, options = {}) {
     const ex = expand(source);
-    if (ex.errors.length > 0) return { blocks: {}, errors: ex.errors, headerRoots: {} };
-    const r = compileSource(ex.text, vm, spriteName);
-    return { blocks: r.blocks, errors: r.errors.map(e => mapExpandedError(ex, e)), headerRoots: ex.headerRoots };
+    if (ex.errors.length > 0) return { blocks: {}, comments: [], errors: ex.errors, headerRoots: {} };
+    const r = compileSource(ex.text, vm, spriteName, { ...options, embedUntilLine: ex.userLineCount });
+    return { blocks: r.blocks, comments: r.comments ?? [], optimizerFallback: r.optimizerFallback ?? null, errors: r.errors.map(e => mapExpandedError(ex, e)), headerRoots: ex.headerRoots };
 }

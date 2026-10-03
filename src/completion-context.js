@@ -38,6 +38,40 @@ const HAT_SLOTS = { receive: 'broadcasts', backdrop: 'backdrops', key: 'keys' };
 
 const MAX_LOOKBACK_LINES = 8;
 
+const DEFINE_MODIFIERS = ['returns', 'warp', 'noinline'];
+const LOOP_MODIFIERS = ['nounroll'];
+const OPERATOR_WORDS = new Set(['and', 'or', 'not', 'mod', 'from', 'to', 'by', 'in']);
+const STATEMENT_BREAKS = new Set(['{', '}', ';']);
+
+const endsOperand = t => ['NUM', 'VAR', ')', 'STR', 'ISTR'].includes(t.type) || (isWord(t) && !OPERATOR_WORDS.has(t.value));
+
+// Modifier words that may still follow the header being typed, or null when the
+// cursor is not at the end of a `define` / `repeat` / `for` header.
+function modifierCandidates(head) {
+    const breakAt = head.findLastIndex(t => STATEMENT_BREAKS.has(t.type));
+    const statement = head.slice(breakAt + 1);
+    const [first, second] = statement;
+    if (!first || !isWord(first)) return null;
+    const unused = (all, taken) => all.filter(name => !taken.includes(name));
+    if (first.value === 'define') {
+        const close = statement.findIndex(t => t.type === ')');
+        if (close < 0) return null;
+        const taken = statement.slice(close + 1);
+        if (!taken.every(t => DEFINE_MODIFIERS.includes(t.value) && isWord(t))) return null;
+        return unused(DEFINE_MODIFIERS, taken.map(t => t.value));
+    }
+    const tail = statement.at(-1);
+    const hasModifier = statement.some(t => LOOP_MODIFIERS.includes(t.value));
+    if (first.value === 'repeat' && second && second.value !== 'until' && endsOperand(tail)) {
+        return hasModifier ? [] : LOOP_MODIFIERS;
+    }
+    if (first.value === 'for') {
+        const to = statement.findIndex((t, i) => i > 0 && isWord(t) && t.value === 'to');
+        if (to > 0 && statement.length > to + 1 && endsOperand(tail)) return hasModifier ? [] : LOOP_MODIFIERS;
+    }
+    return null;
+}
+
 function lexLine(line) {
     let toks;
     try { toks = tokenize(line, { quiet: true }); } catch (_) { return null; }
@@ -131,7 +165,7 @@ export function isComparisonNoise(ctx, wordText, triggerCharacter) {
 // argument list that spans lines can still be traced back to its callee.
 //
 // kinds: comment | string | structField | varName | include | routine |
-//        listMethod | penMethod | member | general
+//        listMethod | penMethod | member | modifier | general
 export function completionContext(prefix, lineAbove) {
     let toks;
     try { toks = tokenize(prefix, { comments: true, quiet: true }); } catch (_) { return { kind: 'general' }; }
@@ -174,6 +208,10 @@ export function completionContext(prefix, lineAbove) {
         return { kind: 'routine', withCall: tail.value !== 'cancel' };
     }
     if (tail.type === '(' && before && before.value === 'isRunning') return { kind: 'routine', withCall: false };
+
+    const needsSpaceFirst = !partial && !/\s$/.test(prefix);
+    const modifiers = needsSpaceFirst ? null : modifierCandidates(head);
+    if (modifiers) return { kind: 'modifier', candidates: modifiers };
 
     return {
         kind: 'general',

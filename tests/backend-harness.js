@@ -6,15 +6,15 @@ export const SPRITE = 'Sprite1';
 export const haveVM = hasScratchVM;
 export const compileWith = compileSourceWithHeaders;
 
-export function build(source, vm = makeMockVM(), sprite = SPRITE) {
-    const { blocks, errors } = provisionAndCompile(compileWith, source, vm, sprite);
+export function build(source, vm = makeMockVM(), sprite = SPRITE, options = {}) {
+    const { blocks, errors, comments, optimizerFallback } = provisionAndCompile((src, machine, name) => compileWith(src, machine, name, options), source, vm, sprite);
     const targets = vm.runtime.targets.map((t) => ({
         kind: t.isStage ? 'stage' : 'sprite',
         name: t.isStage ? 'Stage' : t.sprite.name,
         variables: Object.values(t.variables).map((v) => ({ id: v.id, name: v.name, type: v.type, value: v.value })),
         blocks: (sprite === '__stage__' ? t.isStage : !t.isStage && t.sprite.name === sprite) ? blocks : {},
     }));
-    return { errors, compiled: { targets }, blocks, vm };
+    return { errors, compiled: { targets }, blocks, comments, vm, optimizerFallback };
 }
 
 export const runInScratchVM = run;
@@ -24,7 +24,7 @@ export const visible = (obj) => Object.fromEntries(Object.entries(obj)
     .filter(([k]) => !isHidden(k))
     .map(([k, v]) => [k, Array.isArray(v) ? v.map(String) : String(v)]));
 
-export async function execute(source, runOptions, project = {}) {
-    const result = build(source, makeMockVM(project));
+export async function execute(source, runOptions, project = {}, compileOptions = {}) {
+    const result = build(source, makeMockVM(project), SPRITE, compileOptions);
     return { ...result, runtime: result.errors.length ? null : await runInScratchVM(result.compiled, runOptions) };
 }

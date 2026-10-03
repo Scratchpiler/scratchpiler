@@ -1,11 +1,26 @@
 import { updateStatus } from "./editor.js";
 import { injectedBlockIds, persistInjectedIds, restoreInjectedIds } from "./inject-state.js";
+import { writeComments, removeStaleComments } from "./metadata.js";
 
 export { formatSource } from "./format.js";
 
 // [M] Block Injector
 
-export function injectBlocks(blockMap, vm, spriteName, headerRoots) {
+function headerOf(block, blockMap, headerRoots) {
+    if (block.opcode === 'procedures_definition') {
+        const input = block.inputs?.custom_block;
+        const protoId = input ? (Array.isArray(input) ? input[1] : (input.block ?? input.shadow)) : null;
+        const name = ((blockMap[protoId]?.mutation?.proccode) || '').split(' ')[0];
+        return headerRoots[name] || null;
+    }
+    if (block.opcode === 'event_whenbroadcastreceived') {
+        const match = (block.fields?.BROADCAST_OPTION?.value ?? '').match(/^__sroutine_(.+)$/);
+        return match ? (headerRoots[match[1]] || null) : null;
+    }
+    return null;
+}
+
+export function injectBlocks(blockMap, vm, spriteName, headerRoots = {}, comments = []) {
     const target = spriteName === '__stage__'
         ? vm.runtime.targets.find(t => t.isStage)
         : (vm.runtime.targets.find(t => !t.isStage && t.sprite.name === spriteName) || vm.editingTarget);
@@ -74,15 +89,7 @@ export function injectBlocks(blockMap, vm, spriteName, headerRoots) {
         try { target.blocks.deleteBlock(id); } catch (_) {}
     }
 
-    // Drop stale header-marker comments (their block is gone or being replaced)
-    if (target.comments) {
-        for (const [cid, c] of Object.entries(target.comments)) {
-            if (typeof c?.text === 'string' && c.text.startsWith('scratchpiler:include=') &&
-                (!c.blockId || idsToDelete.has(c.blockId) || !target.blocks._blocks?.[c.blockId])) {
-                try { delete target.comments[cid]; } catch (_) {}
-            }
-        }
-    }
+    removeStaleComments(target, idsToDelete);
 
     // Collect the top-level hat/define block IDs from the new blockMap so we
     // can persist them for cleanup on the next injection (even after a reload).
@@ -102,40 +109,16 @@ export function injectBlocks(blockMap, vm, spriteName, headerRoots) {
         }
     }
 
-    // Mark header-origin scripts with a workspace comment so the decompiler
-    // can collapse them back to `#include <name.h>`.
-    if (headerRoots && Object.keys(headerRoots).length > 0) {
-        const rootHeader = (b) => {
-            if (b.opcode === 'procedures_definition') {
-                const inp = b.inputs?.custom_block;
-                const protoId = inp ? (Array.isArray(inp) ? inp[1] : (inp.block ?? inp.shadow)) : null;
-                const name = ((blockMap[protoId]?.mutation?.proccode) || '').split(' ')[0];
-                return headerRoots[name] || null;
-            }
-            if (b.opcode === 'event_whenbroadcastreceived') {
-                const m = (b.fields?.BROADCAST_OPTION?.value ?? '').match(/^__sroutine_(.+)$/);
-                return m ? (headerRoots[m[1]] || null) : null;
-            }
-            return null;
-        };
-        for (const b of Object.values(blockMap)) {
-            if (!b.topLevel || b.shadow) continue;
-            const hdr = rootHeader(b);
-            if (!hdr) continue;
-            const cid = b.id + '_hdr';
-            try {
-                if (typeof target.createComment === 'function') {
-                    target.createComment(cid, b.id, `scratchpiler:include=${hdr}`,
-                        (b.x ?? 50), Math.max((b.y ?? 50) - 60, 0), 220, 48, true);
-                } else {
-                    target.comments = target.comments || {};
-                    target.comments[cid] = { id: cid, blockId: b.id, text: `scratchpiler:include=${hdr}`,
-                        x: b.x ?? 50, y: Math.max((b.y ?? 50) - 60, 0), width: 220, height: 48, minimized: true };
-                }
-                const created = target.blocks._blocks?.[b.id];
-                if (created) created.comment = cid;
-            } catch (_) {}
-        }
+    const includes = {};
+    for (const block of Object.values(blockMap)) {
+        if (!block.topLevel || block.shadow) continue;
+        const header = headerOf(block, blockMap, headerRoots);
+        if (header) includes[block.id] = header;
+    }
+    try {
+        writeComments(target, blockMap, comments, includes);
+    } catch (e) {
+        console.warn('[scratchpiler] comment write failed', e);
     }
 
     // Track only the top-level hat/define IDs for this sprite and persist them

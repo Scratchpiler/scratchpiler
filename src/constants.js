@@ -1,11 +1,12 @@
 export const MONACO_CDN = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min';
 export const LANG_ID    = 'scratchpiler';
 export const LS_KEY     = 'scratchpiler-content';
+export const INTERNAL_VARIABLE_PREFIX = '_scratchpiler_internal_';
 export const LS_INJ_KEY = 'scratchpiler-injected'; // persisted top-level hat block IDs per sprite
 
 export const KEYWORDS = [
     // Control flow
-    'on','if','else','forever','repeat','until','while','for','from','wait','define','warp','pyfor','in',
+    'on','if','else','forever','repeat','until','while','for','from','wait','define','warp','noinline','nounroll','pyfor','in',
     // Operators
     'and','or','not','mod',
     // Hat events

@@ -126,3 +126,31 @@ test('every call snippet parses cleanly', () => {
     }
     assert.deepEqual(bad, []);
 });
+
+test('modifiers complete only in a define or counted-loop header', () => {
+    assert.deepEqual(labels('define f(a) '), ['returns', 'warp', 'noinline']);
+    assert.deepEqual(labels('define f(a) returns n'), ['warp', 'noinline']);
+    assert.deepEqual(labels('define f(a) returns warp '), ['noinline']);
+    assert.deepEqual(labels('on flag {\n  repeat 3 '), ['nounroll']);
+    assert.deepEqual(labels('on flag {\n  for [i] from 1 to 3 '), ['nounroll']);
+    assert.ok(!labels('on flag {\n  ').some(label => ['noinline', 'nounroll'].includes(label)));
+    assert.ok(!labels('on flag {\n  while ([a] < 1) ').includes('nounroll'));
+});
+
+test('modifier items are keywords with documentation', () => {
+    const [item] = complete('define f() ').items.filter(i => i.label === 'noinline');
+    assert.equal(item.insertText, 'noinline');
+    assert.equal(item.kind, 'Keyword');
+    assert.match(item.documentation.value, /inline/);
+});
+
+test('compiler variables are never suggested', () => {
+    setProject({
+        sprites: [CAT], active: 'Cat',
+        globalVariables: [{ name: 'score', type: 'var' }, { name: '__heap', type: 'list' }, { name: '_scratchpiler_internal_ab12_i', type: 'var' }, { name: '__ret_f', type: 'var' }],
+        spriteVariables: { Cat: [{ name: '_scratchpiler_internal_slvm_spill0', type: 'var' }, { name: 'hp', type: 'var' }] },
+    });
+    const names = labels('set [');
+    assert.ok(names.includes('score]') && names.includes('hp]'));
+    assert.deepEqual(names.filter(name => /__|_scratchpiler_internal_/.test(name)), []);
+});
