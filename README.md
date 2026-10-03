@@ -170,6 +170,7 @@ The original 7,200-line monolith of despair has been shattered into beautifully 
 | [docs/quick-reference.md](docs/quick-reference.md) | All syntax and functions on one page |
 | [docs/editor.md](docs/editor.md) | The editor itself: explorer, tabs, Variables panel, command palette, find and replace, shortcuts |
 | [docs/overview.md](docs/overview.md) | How the pipeline works |
+| [docs/slvm-backend.md](docs/slvm-backend.md) | The experimental SLVM compiler backend: what it fixes, what it can't do yet, how it works |
 | [docs/syntax.md](docs/syntax.md) | Tokens, operators, expressions |
 | [docs/control-flow.md](docs/control-flow.md) | Hat blocks, loops, conditionals |
 | [docs/motion.md](docs/motion.md) | Motion functions and reporters |

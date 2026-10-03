@@ -28,7 +28,7 @@ export const KEYWORDS = [
     'stopAll','stopThis','stopOtherScripts','createClone','deleteClone',
     // Data
     'showVariable','hideVariable','showList','hideList',
-    'listAdd','listDelete','listInsert','listReplace','listDeleteAll',
+    'listAdd','listDelete','listInsert','listReplace','listDeleteAll','populateList','populateArray',
     // Sensing
     'setDragMode',
     // Reporters

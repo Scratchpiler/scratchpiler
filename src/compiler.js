@@ -2,6 +2,7 @@ import { KEYWORDS } from "./constants.js";
 import { scratchIndex } from "./scratch-index.js";
 import { ASM_OPCODES } from "./asm-opcodes.js";
 import { lowerAST } from "./lower.js";
+import { compileWithSLVM } from "./slvm-backend.js";
 
 // [L] DSL Compiler
 
@@ -3946,7 +3947,7 @@ function genHat(hat, id, scriptX, isStage) {
 // `alloc(n)`/`free(p)` are hidden warp defines spliced in below: first-fit
 // free-list allocator with a size header at p-1, grow-on-exhaustion, no
 // coalescing. `__heap_free` is the free-list head (0/empty = null).
-const PTR_HELPERS_SRC = `
+export const PTR_HELPERS_SRC = `
 define alloc(n) returns {
     set [__alloc_prev] to 0
     set [__alloc_cur] to [__heap_free]
@@ -4000,7 +4001,7 @@ function scanPointerUse(ast) {
     return use;
 }
 
-export function compileSource(source, vm, spriteName) {
+export function compileSource(source, vm, spriteName, { backend = 'classic' } = {}) {
     const tokens = tokenize(source);
     const { ast, errors: parseErrors } = parse(tokens);
     if (parseErrors.length > 0) return { blocks: {}, errors: parseErrors };
@@ -4021,6 +4022,11 @@ export function compileSource(source, vm, spriteName) {
         }
     }
     if (ptrUse.ptr || helperInjected) ast._usesHeap = true;
+
+    if (backend === 'slvm') {
+        const heapVars = helperInjected ? PTR_TEMP_VARS : ast._usesHeap ? ['__heap_free'] : [];
+        return compileWithSLVM(ast, vm, spriteName, { heapVars, heapStaticSlots: HEAP_STATIC_SLOTS });
+    }
 
     const { errors: lowerErrors } = lowerAST(ast);
     if (lowerErrors.length > 0) return { blocks: {}, errors: lowerErrors };
