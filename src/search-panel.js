@@ -1,14 +1,16 @@
 import { monacoEditor, currentVM, activeFile, modelFor, replaceModelText, savedSpriteCode, writeSavedSpriteCode, allSpriteNames, openFile, fileKey, fileLabel, refreshSyncState, setView } from "./editor.js";
 import { listHeaders, readHeader, writeHeader } from "./headers.js";
-import { decompile } from "./decompiler.js";
+import { decompile, decompileAsync } from "./decompiler.js";
 import { escapeHtml, plural, toast, logToOutput } from "./ui-dom.js";
 
 const $ = id => document.getElementById(id);
 const REPLACE_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h11a4 4 0 0 1 0 8H8M8 15l3-3M8 15l3 3"/></svg>';
 const options = { matchCase: false, wholeWord: false };
 const decompiledSources = new Map();
+const pendingDecompiles = new Map();
 let results = [];
 let searchTimer = null;
+let searchRun = 0;
 
 const findInput = () => $('scratchpiler-search-input');
 const replaceInput = () => $('scratchpiler-replace-input');
@@ -38,6 +40,19 @@ function searchableFiles() {
     const files = [...allSpriteNames().map(name => ({ kind: 'sprite', name })), ...listHeaders().map(name => ({ kind: 'header', name }))];
     if (!active) return files;
     return [active, ...files.filter(f => fileKey(f) !== fileKey(active))];
+}
+
+const needsDecompile = file => file.kind === 'sprite' && !!currentVM && !modelFor(file)
+    && !savedSpriteCode(file.name)?.trim() && !decompiledSources.has(file.name);
+
+function decompileInBackground(name) {
+    if (!pendingDecompiles.has(name)) {
+        pendingDecompiles.set(name, decompileAsync(currentVM, name)
+            .catch(() => '')
+            .then(text => { decompiledSources.set(name, text); })
+            .finally(() => pendingDecompiles.delete(name)));
+    }
+    return pendingDecompiles.get(name);
 }
 
 function readFile(file) {
@@ -72,6 +87,14 @@ function hitPreview(hit, replacement, showReplacement) {
 }
 
 export function runSearch() {
+    const run = ++searchRun;
+    const cold = buildMatcher() ? searchableFiles().filter(needsDecompile) : [];
+    if (!cold.length) { renderResults(); return; }
+    $('sp-sr-summary').textContent = `Decompiling ${plural(cold.length, 'sprite')} from Scratch…`;
+    Promise.all(cold.map(file => decompileInBackground(file.name))).then(() => { if (run === searchRun) renderResults(); });
+}
+
+function renderResults() {
     const re = buildMatcher();
     const replacement = replaceInput().value;
     const showReplacement = replacement !== '' || document.activeElement === replaceInput();

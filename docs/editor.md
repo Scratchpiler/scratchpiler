@@ -90,7 +90,7 @@ Arrow keys move, Enter picks, Escape leaves. Note that `Ctrl+K` belongs to the p
 
 ## Find and replace
 
-`Ctrl+Shift+F`. Searches **every sprite and every header**, including sprites you haven't opened yet (they're decompiled on the fly for the search, not saved).
+`Ctrl+Shift+F`. Searches **every sprite and every header**, including sprites you haven't opened yet (they're decompiled on the fly for the search, not saved). The first search after opening the panel shows "Decompiling…" while that happens; the page stays responsive and the results appear when it finishes.
 
 - **Aa** matches case. **ab** matches whole words only. If nothing is found and one of those is on, the panel says so instead of leaving you to wonder.
 - As soon as you type a replacement, every result shows a preview: the old text struck through, the new text next to it.
@@ -119,6 +119,8 @@ The status bar mirrors the error and warning counts, shows when you last injecte
 `Alt+Shift+P`, the compile menu, or the hover button on a sprite. Decompiles the sprite's current blocks into the editor. It's an ordinary edit, so **Ctrl+Z undoes it** if the decompiler's opinions about formatting upset you. Afterwards the sync indicator says Scratch is up to date, because it is.
 
 Sprites with no saved code are decompiled automatically the first time you open them.
+
+Decompiling runs in short slices between the page's own work, so a large sprite doesn't freeze Scratch or the editor. The status bar shows progress, and the editor is read-only until the text arrives (Compile & Inject waits too, so an empty editor can't be injected over your blocks). A single enormous script is still decompiled in one piece, so that one script is the unit of the longest pause.
 
 ---
 

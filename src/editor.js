@@ -13,7 +13,7 @@ import {
 import { lint, typeCheckDiagnostics } from "./compiler.js";
 import { compileSourceWithHeaders, expand } from "./preprocess.js";
 import { readHeader, writeHeader } from "./headers.js";
-import { decompile } from "./decompiler.js";
+import { decompileAsync } from "./decompiler.js";
 import { injectBlocks } from "./injector.js";
 import { getAnalysis, semanticDiagnostics, smellDiagnostics } from "./analyzer.js";
 import { registerSemanticProviders } from "./semantic-providers.js";
@@ -130,18 +130,43 @@ function saveActiveFile() {
     if (file) saveFile(file);
 }
 
-function initialSpriteText(sprite) {
+function cachedSpriteText(sprite) {
     const cached = savedSpriteCode(sprite);
-    if (cached !== null && cached.trim() !== '') return cached;
-    if (!currentVM) return '';
+    return cached !== null && cached.trim() !== '' ? cached : null;
+}
+
+const decompiling = new Map();
+
+function syncReadOnly() {
+    const file = activeFile();
+    const busy = file?.kind === 'sprite' && decompiling.has(file.name);
+    monacoEditor?.updateOptions({ readOnly: busy, readOnlyMessage: { value: 'Decompiling from Scratch…' } });
+}
+
+function decompileSprite(sprite) {
+    if (!decompiling.has(sprite)) {
+        setStatusMessage(`Decompiling ${spriteLabel(sprite)}…`);
+        decompiling.set(sprite, decompileAsync(currentVM, sprite, {
+            onProgress: fraction => setStatusMessage(`Decompiling ${spriteLabel(sprite)}… ${Math.round(fraction * 100)}%`),
+        }).finally(() => { decompiling.delete(sprite); syncReadOnly(); }));
+        syncReadOnly();
+    }
+    return decompiling.get(sprite);
+}
+
+async function fillFromScratch(sprite) {
+    const file = { kind: 'sprite', name: sprite };
     try {
-        const code = decompile(currentVM, sprite);
+        const code = await decompileSprite(sprite);
+        const model = modelFor(file);
+        if (!model || model.getValue() !== '') return;
+        model.setValue(code);
         recordInjectedSource(sprite, code);
         setStatusMessage(`Decompiled ${spriteLabel(sprite)} from Scratch`);
-        return code;
+        refreshSyncState();
+        scheduleLint(0);
     } catch (e) {
         console.warn('[scratchpiler] decompile failed for', sprite, e);
-        return '';
     }
 }
 
@@ -167,6 +192,7 @@ function showFile(file, text) {
     }
     ensureTab(file);
     onActiveFileChanged();
+    syncReadOnly();
 }
 
 const cursorAndScrollOnly = viewState => ({ ...viewState, contributionsState: {} });
@@ -181,7 +207,10 @@ function switchScratchEditingTarget(sprite) {
 
 export function selectSidebarSprite(sprite) {
     if (!sprite || !monacoEditor) { currentSpriteContext = sprite || currentSpriteContext; return; }
-    showFile({ kind: 'sprite', name: sprite }, () => initialSpriteText(sprite));
+    const file = { kind: 'sprite', name: sprite };
+    const needsDecompile = !modelFor(file) && cachedSpriteText(sprite) === null && !!currentVM;
+    showFile(file, () => cachedSpriteText(sprite) ?? '');
+    if (needsDecompile) fillFromScratch(sprite);
 }
 
 export function openHeader(name) {
@@ -466,6 +495,7 @@ export function compileAndInject({ minify = false } = {}) {
     if (!currentVM) { toast('Scratch isn’t connected yet. Try again in a moment.', 'error'); return; }
     const sprite = currentSpriteContext;
     if (!sprite) { toast('Open a sprite to compile it', 'warn'); return; }
+    if (decompiling.has(sprite)) { toast(`Still decompiling ${spriteLabel(sprite)}. Try again in a moment.`, 'warn'); return; }
     const model = monacoEditor.getModel();
     const source = model.getValue();
     setStatusMessage(minify ? 'Compiling (minified)…' : 'Compiling…');
@@ -561,14 +591,16 @@ function minifyBlocks(blocks, vm, spriteName) {
     return nameMap.size;
 }
 
-export function pullFromScratch() {
+export async function pullFromScratch() {
     if (editingHeader) { toast('Headers are stored in your userscript manager, not in Scratch', 'warn'); return; }
     if (!currentVM) { toast('Scratch isn’t connected yet. Try again in a moment.', 'error'); return; }
     const sprite = currentSpriteContext;
     if (!sprite || !monacoEditor) return;
     try {
-        const code = decompile(currentVM, sprite);
-        replaceModelText(monacoEditor.getModel(), code);
+        const code = await decompileSprite(sprite);
+        const model = modelFor({ kind: 'sprite', name: sprite });
+        if (!model) return;
+        replaceModelText(model, code);
         recordInjectedSource(sprite, code);
         saveFile({ kind: 'sprite', name: sprite });
         refreshSyncState();

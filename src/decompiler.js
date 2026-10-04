@@ -33,16 +33,21 @@ const procedureName = proccode => procedureNames.get(proccode) ?? proccode.split
 const rawProcedureName = proccode => proccode.split(' %')[0].trim();
 const CLAMP_HELPER = /^_scratchpiler_internal_[a-z0-9]{4}_clamp %s %s %s$/;
 
-function indexProcedureNames(blocks) {
+const SCAN_CHUNK = 4096;
+
+function* indexProcedureNames(blocks) {
     const names = new Map();
     const taken = new Set([...KEYWORDS, ...Object.keys(CALL_SIGS)]);
+    let scanned = 0;
     for (const definition of Object.values(blocks)) {
+        if (++scanned % SCAN_CHUNK === 0) yield 0;
         if (definition.opcode !== 'procedures_definition') continue;
         const code = blocks[inpBlockId(definition, 'custom_block')]?.mutation?.proccode;
         if ((code === 'alloc %s' || code === 'free %s') && chainHasSet(definition.next, blocks, '__heap_free')) names.set(code, rawProcedureName(code));
     }
     for (const block of Object.values(blocks)) {
-        if (!['procedures_prototype', 'procedures_call'].includes(block.opcode)) continue;
+        if (++scanned % SCAN_CHUNK === 0) yield 0;
+        if (block.opcode !== 'procedures_prototype' && block.opcode !== 'procedures_call') continue;
         const code = block.mutation?.proccode;
         if (!code || names.has(code)) continue;
         if (CLAMP_HELPER.test(code)) { names.set(code, 'clamp'); continue; }
@@ -1152,7 +1157,10 @@ function decompScript(hat, B) {
     return `${header} {\n${body}}`;
 }
 
-export function decompile(vm, spriteName) {
+const captureState = () => ({ procedureNames, routineSignatures, routineVariables, currentRoutine, currentProcedureParams, blockMetadata, variableNames, currentDefineName, ptabNames });
+const restoreState = state => ({ procedureNames, routineSignatures, routineVariables, currentRoutine, currentProcedureParams, blockMetadata, variableNames, currentDefineName, ptabNames } = state);
+
+function* decompileSteps(vm, spriteName) {
     const target = spriteName === '__stage__'
         ? vm.runtime.targets.find(t => t.isStage)
         : (vm.runtime.targets.find(t => !t.isStage && t.sprite.name === spriteName) || vm.editingTarget);
@@ -1187,20 +1195,28 @@ export function decompile(vm, spriteName) {
             .map(variable => variable.name.slice(prefix.length));
         routineSignatures.set(name, params);
     }
-    procedureNames = indexProcedureNames(B);
+    const setup = captureState();
+    yield 0;
+    restoreState(setup);
+    const names = yield* indexProcedureNames(B);
+    restoreState(setup);
+    procedureNames = names;
     const roots = Object.values(B)
         .filter(b => b.topLevel && !b.shadow)
         .sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
 
     const { byBlock, decls } = readComments(target);
     blockMetadata = byBlock;
+    const state = captureState();
     const includes = new Set();
     const scripts = [];
     let restoredFromSource = false;
-    for (const r of roots) {
+    for (const [index, r] of roots.entries()) {
+        yield index / roots.length;
+        restoreState(state);
         const meta = byBlock.get(r.id);
         if (meta?.include) { includes.add(meta.include); continue; }
-        const embedded = meta?.src?.hash === scriptHash(r.id, B) ? meta.src.text : null;
+        const embedded = meta?.src && meta.src.hash === scriptHash(r.id, B) ? meta.src.text : null;
         restoredFromSource ||= embedded !== null;
         const s = embedded ?? decompScript(r, B);
         if (s) scripts.push(s);
@@ -1209,4 +1225,27 @@ export function decompile(vm, spriteName) {
     const declarations = restoredFromSource && decls ? decls + '\n\n' : '';
     const body = scripts.join('\n\n');
     return (includeLines ? includeLines + '\n\n' : '') + declarations + body + '\n';
+}
+
+export function decompile(vm, spriteName) {
+    const steps = decompileSteps(vm, spriteName);
+    for (let step = steps.next(); ; step = steps.next()) if (step.done) return step.value;
+}
+
+const nextTask = () => globalThis.scheduler?.yield?.() ?? new Promise(resolve => setTimeout(resolve));
+
+// Same output as decompile(), but hands control back to the page whenever a
+// slice runs past sliceMs, so a big sprite does not freeze the UI. A single
+// script is still decompiled in one go. Pass a signal to abandon the run.
+export async function decompileAsync(vm, spriteName, { sliceMs = 8, onProgress, signal } = {}) {
+    const steps = decompileSteps(vm, spriteName);
+    let sliceStart = performance.now();
+    for (let step = steps.next(); ; step = steps.next()) {
+        if (step.done) return step.value;
+        if (performance.now() - sliceStart < sliceMs) continue;
+        onProgress?.(step.value);
+        await nextTask();
+        signal?.throwIfAborted();
+        sliceStart = performance.now();
+    }
 }
