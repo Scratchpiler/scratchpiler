@@ -9,7 +9,7 @@ const FONT_URL = 'https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@
 
 export const escapeHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 export const plural = (n, word, pluralWord = word + 's') => `${Number(n).toLocaleString()} ${n === 1 ? word : pluralWord}`;
-export const spriteLabel = name => !name ? '' : name === '__stage__' ? 'Stage' : name;
+export const spriteLabel = name => !name ? '' : name === '__stage__' ? 'Stage' : name.trim() ? name : `“${name}”`;
 const $ = id => document.getElementById(id);
 
 export function buildOverlayDOM() {
@@ -179,7 +179,9 @@ export function setBottomPanel(open, tab = bottomTab) {
     document.querySelectorAll('#scratchpiler-overlay .sp-btab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.bottom === tab)));
     $('sp-problems-view').hidden = tab !== 'problems';
     $('sp-output-log').hidden = tab !== 'output';
-    $('sp-output-clear-btn').style.visibility = tab === 'output' ? 'visible' : 'hidden';
+    $('sp-output-clear-btn').style.display = tab === 'output' ? '' : 'none';
+    $('sp-prob-hints').style.display = tab === 'problems' ? '' : 'none';
+    if (open) document.dispatchEvent(new CustomEvent('scratchpiler:bottom-open'));
 }
 
 export function setupBottomPanel() {

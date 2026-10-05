@@ -126,6 +126,7 @@ Blocks are injected into the selected sprite. Variables must already exist in Sc
 - **Hover docs** — hover a function name to see its signature and documentation, including your own `define`s and scratchroutines
 - **Autocomplete** — full Monaco IntelliSense for all functions, variables, costumes, and aliases — scope-aware, so parameters and loop variables are only offered where they actually exist
 - **Code intelligence** — a real semantic analyzer: go-to-definition (F12), find-all-references, rename (F2), semantic highlighting, unknown-name/arity/shadowing diagnostics, and code-smell hints (unused blocks, busy-waits, magic numbers)
+- **Project-wide analysis** — reads every sprite in the background (with a progress bar): broadcasts link to their receivers (`3 listeners` hints, F12, Shift+F12), variables and messages rename across all sprites and in Scratch, `Ctrl+T` finds any script or block, an event flow map shows how scripts start each other, and checks catch broadcasts nobody receives, unused variables and green-flag ordering races. The compiler uses it too, to unroll loops in scripts that no other script can observe
 
 ---
 

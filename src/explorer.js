@@ -21,9 +21,10 @@ const closedSections = new Set(['Costumes', 'Backdrops', 'Sounds']);
 let adding = null;
 let addScope = 'local';
 let lastSignature = '';
+let lastListSignature = '';
 
 const thumbnailCache = new Map();
-function thumbnailUrl(sprite) {
+export function thumbnailUrl(sprite) {
     if (!currentVM) return null;
     const target = targetForSprite(currentVM, sprite);
     const costume = target?.getCostumes?.()[target.currentCostume];
@@ -63,12 +64,16 @@ const livePreview = v => v.kind === 'list'
     ? plural(Array.isArray(v.value) ? v.value.length : 0, 'item')
     : String(v.value ?? '');
 
-function explorerSignature() {
+const spriteListSignature = () => JSON.stringify([
+    allSpriteNames(), selectedSprite(), editingHeader,
+    allSpriteNames().map(s => [isSpriteDirty(s), problemCounts.get(s), thumbnailUrl(s)]),
+]);
+
+function detailsSignature() {
     const sprite = selectedSprite();
     const vars = spriteVariables(sprite);
     return JSON.stringify([
-        allSpriteNames(), sprite, editingHeader,
-        allSpriteNames().map(s => [isSpriteDirty(s), problemCounts.get(s), thumbnailUrl(s)]),
+        sprite,
         [...vars.local, ...vars.global].map(v => [v.id, v.name, v.kind, v.isCloud]),
         scratchIndex.customBlocks[sprite], scratchIndex.sprites.find(s => s.name === sprite), scratchIndex.stage,
         [...closedSections], adding, addScope,
@@ -79,10 +84,14 @@ export function renderExplorer() {
     const list = $('scratchpiler-sprites-list');
     if (!list) return;
     if ($('sp-details')?.contains(document.activeElement) && document.activeElement.matches('input')) return;
-    const signature = explorerSignature();
+    const listSignature = spriteListSignature();
+    if (listSignature !== lastListSignature) {
+        lastListSignature = listSignature;
+        renderSpriteList(list);
+    }
+    const signature = detailsSignature();
     if (signature === lastSignature) return;
     lastSignature = signature;
-    renderSpriteList(list);
     renderDetails();
 }
 

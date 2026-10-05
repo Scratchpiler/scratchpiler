@@ -134,5 +134,5 @@ export function compileSourceWithHeaders(source, vm, spriteName, options = {}) {
     const ex = expand(source);
     if (ex.errors.length > 0) return { blocks: {}, comments: [], errors: ex.errors, headerRoots: {} };
     const r = compileSource(ex.text, vm, spriteName, { ...options, embedUntilLine: ex.userLineCount });
-    return { blocks: r.blocks, comments: r.comments ?? [], optimizerFallback: r.optimizerFallback ?? null, errors: r.errors.map(e => mapExpandedError(ex, e)), headerRoots: ex.headerRoots };
+    return { blocks: r.blocks, comments: r.comments ?? [], optimizerFallback: r.optimizerFallback ?? null, usedProjectFacts: !!r.usedProjectFacts, errors: r.errors.map(e => mapExpandedError(ex, e)), headerRoots: ex.headerRoots };
 }

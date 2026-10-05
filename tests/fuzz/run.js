@@ -1,24 +1,27 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { generateProgram, DEFAULT_FEATURES } from './generate.js';
-import { execute, haveVM, visible } from '../backend-harness.js';
+import { execute, haveVM, visible, projectFactsFor } from '../backend-harness.js';
 import { runOracle, OracleLimit } from './oracle.js';
 
-const USAGE = `usage: node tests/fuzz/run.js [--from N] [--count N] [--out dir] [--feature name ...]
+const USAGE = `usage: node tests/fuzz/run.js [--from N] [--count N] [--out dir] [--feature name ...] [--project-facts]
 
 Generates random Scratchpiler programs, compiles through SLVM, and compares a
 headless scratch-vm execution with the independent source interpreter. Failing
 programs and reports are written to --out. Any failure produces a nonzero exit.
+--project-facts compiles with facts from Scratchpiler's project analysis, so
+loops in the script itself can be unrolled.
 features: ${Object.keys(DEFAULT_FEATURES).join(', ')}`;
 
 const argv = process.argv.slice(2);
-const opts = { from: 0, count: 100, out: null, features: { ...DEFAULT_FEATURES } };
+const opts = { from: 0, count: 100, out: null, features: { ...DEFAULT_FEATURES }, projectFacts: false };
 for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--from') opts.from = Number(argv[++i]);
     else if (a === '--count') opts.count = Number(argv[++i]);
     else if (a === '--out') opts.out = argv[++i];
     else if (a === '--feature') opts.features[argv[++i]] = true;
+    else if (a === '--project-facts') opts.projectFacts = true;
     else { console.log(USAGE); process.exit(a === '-h' || a === '--help' ? 0 : 2); }
 }
 if (!haveVM) {
@@ -27,7 +30,8 @@ if (!haveVM) {
 }
 if (opts.out) fs.mkdirSync(opts.out, { recursive: true });
 
-const totals = { programs: 0, compileErrors: 0, runtimeErrors: 0, mismatches: 0, oracleSkipped: 0, optimizerFallbacks: 0, blocks: 0 };
+const totals = { programs: 0, compileErrors: 0, runtimeErrors: 0, mismatches: 0, oracleSkipped: 0, optimizerFallbacks: 0, blocks: 0, withProjectFacts: 0 };
+const PROJECT = { lists: ['L'], vars: ['p', 'q'] };
 
 function disagreements(vm, oracle) {
     const out = [];
@@ -55,7 +59,8 @@ for (let seed = opts.from; seed < opts.from + opts.count; seed++) {
     totals.programs++;
     let result;
     try {
-        result = await execute(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] });
+        const compileOptions = opts.projectFacts ? { projectFacts: projectFactsFor(source, PROJECT) } : {};
+        result = await execute(source, { maxFrames: 2000 }, PROJECT, compileOptions);
     } catch (error) {
         totals.runtimeErrors++;
         console.log(`seed ${seed}: ${error.message}`);
@@ -74,6 +79,7 @@ for (let seed = opts.from; seed < opts.from + opts.count; seed++) {
         saveFailure(seed, source, { optimizerFallback: result.optimizerFallback });
     }
     totals.blocks += Object.keys(result.blocks).length;
+    if (result.usedProjectFacts) totals.withProjectFacts++;
     let oracle;
     try {
         oracle = runOracle(source, { initialVars: { p: 0, q: 0 }, initialLists: { L: [] } });

@@ -191,7 +191,7 @@ function commitRename(row, input) {
     const result = renameVariable(currentVM, row.dataset.target, row.dataset.id, input.value);
     if (result.unchanged) { input.value = input.dataset.orig; return; }
     if (result.error) { input.value = input.dataset.orig; toast(result.error, 'warn'); return; }
-    const { refs, files } = rewriteVariableReferences(result.oldName, result.newName, { global: result.scope === 'global', sprite: result.spriteName });
+    const { refs, files } = rewriteVariableReferences(result.oldName, result.newName, { global: result.scope === 'global', sprite: result.spriteName, kind: result.kind });
     reindex(currentVM);
     lastSignature = '';
     renderVariablesPanel();

@@ -54,6 +54,8 @@ Middle-click closes a tab. Right-click offers **Close others** and **Close to th
 
 `Ctrl+Shift+V`, or the ▦ button. It docks on the right and starts closed. Drag its left edge to make it wider.
 
+When the window is too narrow to fit it beside a usable editor, it floats over the code instead of squeezing it.
+
 It shows every variable and list the current sprite can see, and the values are **live**: while the project runs, they update several times a second and flash when they change. This is the closest Scratch will ever get to a debugger watch window, so savor it.
 
 - **Change a value** — click it, type, press Enter (or click away). Escape puts it back.
@@ -72,7 +74,7 @@ When the project pauses at a `breakpoint`, an amber bar appears under the top ba
 `Ctrl+K`. Type anything and it fuzzy-matches across:
 
 - sprites and headers
-- custom blocks, scratchroutines and `on …` scripts in every sprite (it jumps to the line)
+- custom blocks, scratchroutines, `on …` scripts, enums and structs in every sprite, including ones you haven't opened (it jumps to the line)
 - variables and lists (it opens them in the Variables panel)
 - every command in the editor
 
@@ -82,6 +84,7 @@ Prefixes narrow it down:
 |---|---|
 | `>` | commands only (`Ctrl+Shift+P` opens it this way) |
 | `@` | sprites and headers only (`Ctrl+P`) |
+| `#` | symbols in every sprite only (`Ctrl+T`) |
 | `:` | a line number in the current file (`Ctrl+G` outside the editor) |
 
 Arrow keys move, Enter picks, Escape leaves. Note that `Ctrl+K` belongs to the palette now, so Monaco's two-key `Ctrl+K …` shortcuts don't work. We felt this was a fair trade.
@@ -107,10 +110,35 @@ Every edit in an open file goes through the editor's normal undo, so Ctrl+Z work
 
 The bottom panel. `Ctrl+J` shows or hides it, and dragging its top edge resizes it. Clicking the active tab collapses it; clicking any tab brings it back.
 
-- **Problems** (`Ctrl+Shift+M`) lists every error, warning and hint in all open files, grouped by file. Click one to jump to it. The warning icon in the left rail shows the count, and turns red when something is actually broken.
+- **Problems** (`Ctrl+Shift+M`) lists every error, warning and hint in **every sprite**, open or not, one line each, grouped by sprite. Groups for sprites you haven't opened start collapsed; the colored counts on the right say what's inside, and clicking the header opens it (it remembers). Click a problem to open that sprite at that spot. **Hints** in the panel's header hides or shows the blue ones. A **Project** group at the end lists variables and lists that nothing uses; clicking one opens it in the Variables panel. The warning icon in the left rail shows the count, and turns red when something is actually broken.
 - **Output** is the log: what was injected, pulled, renamed, replaced, or crashed. It only opens itself for errors, so it won't keep popping up to announce that things went fine.
 
-The status bar mirrors the error and warning counts, shows when you last injected, and shows your cursor position. Click the position to jump to a line.
+The status bar mirrors the error and warning counts, shows when you last injected, and shows your cursor position. Click the position to jump to a line. **No wrap / Wrap** next to it switches between scrolling long lines sideways and wrapping them (`Alt+Z` does the same).
+
+### Project analysis
+
+The first time you open the overlay, Scratchpiler reads **every sprite**: the ones you have open, the ones saved in this browser, and the rest decompiled from Scratch in the background. A thin orange line runs across the top of the editor and the status bar says *Analyzing Player · 4/12* while it works. The editor stays usable, and the cross-sprite features switch on as soon as it finishes. After that, only the sprite you're editing is re-read as you type. If blocks change in Scratch itself, just those sprites are decompiled again. **Analyze project again** in the palette starts over.
+
+That analysis is what powers broadcast links, `N listeners` hints, cross-sprite references and rename, the project-wide checks and the event flow view. See [code-intelligence.md](code-intelligence.md#across-sprites).
+
+---
+
+## Event flow
+
+The graph icon in the left rail (or **Show event flow** in the palette). It covers the editor with a map of how your scripts start each other, read left to right:
+
+- **Columns.** *Starts* holds the scripts you trigger (green flag, keys, clicks, backdrops, timer). Then come the *Messages* they broadcast, then the scripts those messages run, and so on. Each column says how many scripts or messages it holds.
+- **Sprites.** Within a column, each sprite's scripts sit together under its thumbnail and name.
+- **Hat blocks.** Scripts are drawn as Scratch hat blocks. Scripts you trigger are amber and bold; scripts started by a message are quieter; `when I start as a clone` is orange and scratchroutines are pink, like their Scratch categories.
+- **Messages** are yellow pills. One with several receivers shows how many, and one with three or more is drawn larger, since it's where a lot of the project fans out.
+- **Links.** A solid line is `broadcast`, a dashed yellow one is `broadcastAndWait`, and orange links `createClone` to the clone scripts it starts.
+
+Scripts that neither send nor receive anything are listed underneath.
+
+- **Hover** a card or message to light up just its links. **Click** it to keep them highlighted. A panel shows what starts it, what it starts, and which variables it reads and writes (including through custom blocks it calls).
+- **Double-click**, or **Open in editor**, to jump to the script.
+- **Filter** by sprite, script or message name. **Ctrl+scroll** or the − / + buttons zoom; clicking the percentage fits the graph to the window again.
+- **Esc** goes back to the code.
 
 ---
 
@@ -134,11 +162,11 @@ The `{ }` icon in the left rail. Headers open in their own tabs next to your spr
 
 `Ctrl+,`, or the sliders icon at the bottom of the left rail.
 
-- **Editor** — theme, font size, indent width, line wrap, minimap, and how soon your code is saved.
+- **Editor** — theme, font size, indent width, line wrap, minimap, and how soon your code is saved. Long lines scroll sideways by default; turn on **Wrap long lines** (or press `Alt+Z`, or click **No wrap** in the status bar) to wrap them instead. (Earlier versions wrapped by default and saved that choice, so this version resets it once.) Wrapped lines keep their indentation while there's room; in deeply nested code in a narrow editor they start at the left edge instead, so a line never turns into a column a few characters wide.
 All compilation uses SLVM automatically. Settings from earlier versions keep editor preferences; the retired backend choice is ignored. See [slvm-backend.md](slvm-backend.md) for the pipeline and verification.
 - **Round trip** — **Embed source in comments** (on by default) saves each script's original text in a Scratch comment so Pull code from Scratch can give it back with your formatting and `//` comments. Minified injects never embed it. See [comment-metadata.md](comment-metadata.md).
-- **Optimizations** — **Optimize compiled code** (on by default) inlines small custom blocks, unrolls small constant loops inside `warp` blocks, and folds constants. See [slvm-backend.md](slvm-backend.md#optimization), and mark a block `noinline` to opt it out.
-- **Checks** — toggle each family of warnings. See [linter.md](linter.md) for what they catch, and [code-intelligence.md](code-intelligence.md) for the smarter ones.
+- **Optimizations** — **Optimize compiled code** (on by default) inlines small custom blocks, unrolls small constant loops inside `warp` blocks, and folds constants. See [slvm-backend.md](slvm-backend.md#optimization), and mark a block `noinline` to opt it out. **Whole-program optimizations** (on by default, and only available while optimization is on) also unrolls small loops in scripts when the project analysis shows no other script can see their variables or interrupt them; see [slvm-backend.md](slvm-backend.md#whole-program-optimization).
+- **Checks** — toggle each family of warnings, split into checks within one sprite and **Project checks** across sprites. See [linter.md](linter.md) for what they catch, and [code-intelligence.md](code-intelligence.md) for the smarter ones.
 - **Maintenance**:
   - **Re-index project** — rescans sprites, variables and custom blocks when the explorer looks out of date.
   - **Clear saved code** — forgets the code saved in this browser. Sprites are decompiled fresh from Scratch when you open them again.
@@ -167,7 +195,7 @@ Menus work with the arrow keys, and Escape closes them without also closing the 
 
 ## Escape, and other ways to leave
 
-**Esc** closes whatever is on top: a menu, the palette, Search Nowhere, or Monaco's own popups (autocomplete, find, rename). Only when nothing else is open does it close the overlay. If you're typing in a sidebar field, Escape belongs to that field.
+**Esc** closes whatever is on top: a menu, the palette, Search Nowhere, the event flow, or Monaco's own popups (autocomplete, find, rename, hover, the references peek). Only when nothing else is open does it close the overlay. If you're typing in a sidebar field, Escape belongs to that field.
 
 **Alt+M** toggles the overlay from anywhere. Your open tabs and unsaved edits are still there when you come back.
 

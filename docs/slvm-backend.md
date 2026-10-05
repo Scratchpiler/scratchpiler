@@ -38,9 +38,23 @@ Compilation runs SLVM's `O1` pipeline by default: `inline`, `constfold`, `unroll
 - **Unrolling** replaces a loop that has a constant trip count with copies of its body: `repeat 3 { … }`, or `for [i] from 1 to 4 { … }` with literal integer bounds, where each `[i]` becomes that iteration's number. It only happens inside `warp` and returning custom blocks, because a warp loop never yields. A loop in a script or in a plain custom block yields every iteration, so other scripts can run in between; removing those yields could be observed, and the compiler never does it. A loop stays when it has more than 16 trips, would grow past 40 operations, contains `break` or `continue`, or is marked `nounroll`. See [SLVM's unroller](../../slvm/docs/optimizations.md#1b-unrolling-counted-loops).
 - **`noinline`** on a definition always keeps its calls (see [custom-blocks.md](custom-blocks.md#noinline)). The compiler's own helpers behind `clamp()`, `alloc()` and `free()` are always `noinline`, so they decompile back to the builtin.
 - **Evaluation and scheduling are preserved.** Warp atomicity, argument evaluation order and Scratch's casts all survive inlining; the differential fuzzer and the real-VM tests check this.
+- **Whole-program optimization** — see below.
 - **Fallback.** If an optimized compile fails SLVM's own verification, the compiler retries without optimization and records the reason in `optimizerFallback` on the result. The fuzzer and tests assert it is always `null`, so a fallback means a compiler bug.
 
 Inlining and unrolling change what Pull code from Scratch shows when no embedded source is available: an inlined body appears in its caller, and an unrolled loop appears as repeated statements, because blocks cannot be un-inlined or rolled back up. With source embedding on, an unedited script still comes back exactly as you wrote it. See [comment-metadata.md](comment-metadata.md).
+
+### Whole-program optimization
+
+SLVM sees one sprite at a time, so on its own it can never prove that a loop in a script is private: some other sprite might read the loop's variables between iterations. The editor's [project analysis](code-intelligence.md#across-sprites) can, and it hands SLVM two facts (`compileSource(…, { projectFacts })`, built by `slvmFacts()` in `src/project-analysis.js`):
+
+- **confined variables**: variables and lists that only one script (plus the custom blocks only it calls) ever reads or writes, anywhere in the project, `attributeOf` included. A global counts only if that script can't run in several clones at once. Cloud variables never count. Hidden loop variables are confined when the code that owns them runs in one thread.
+- **uninterrupted scripts and blocks**: code that no other script can stop or restart: nothing else broadcasts its message (and no broadcast uses a computed name), switches to its backdrop, or runs `stop all`, `stop other scripts in sprite` or `delete this clone` around it. A custom block qualifies when exactly one such script calls it.
+
+With those, a constant loop in an uninterrupted script whose body only touches confined state (no motion, looks, sound, pen, waits, broadcasts or custom block calls) is unrolled like a loop in a `warp` block. No other script can see the difference in values; what changes is that the loop finishes in one scheduler step instead of one per iteration. A confined variable also never needs a spill temp around a yield, because nothing else can change it.
+
+The facts are only used when they describe exactly what's in Scratch: the compiled text must match the analyzed text, and every other sprite's code must be unchanged since it was injected or decompiled. Otherwise the compile goes ahead without them and Output says why. Turn it off with Settings → Optimizations → Whole-program optimizations.
+
+On the fuzzer's programs it removes about 1.4% of blocks. Real projects gain where they have small constant loops in scripts over private state; the CatOS, Paper Minecraft, physics-engine and Linux-emulator projects used for testing compiled to the same block counts, because their loops either draw or touch shared variables, which is exactly when unrolling would be visible.
 
 ## Restrictions
 
@@ -64,6 +78,14 @@ The roundtrip and Blockly XML suites check recompilation, decompiler stability, 
 node tests/fuzz/run.js --count 500 --out /tmp/scratchpiler-fuzz
 node tests/fuzz/run.js --from 50000 --count 500 --feature recursion --feature breakInFor --feature continueInFor --feature pointers
 ```
+
+`--project-facts` compiles each program with facts from the project analysis, so the fuzzer also covers unrolling inside scripts:
+
+```sh
+node tests/fuzz/run.js --count 2000 --project-facts --feature warpLoops --feature recursion --feature pointers
+```
+
+`tests/project-compile.test.js` checks which loops unroll (and which must not) with real analysis facts, and runs the result in scratch-vm.
 
 Fixed seeds also run in `npm test`, and they assert that no program needed the optimizer fallback. The fixture results guard existing examples; the independent interpreter checks newly generated programs without retaining the removed compiler.
 

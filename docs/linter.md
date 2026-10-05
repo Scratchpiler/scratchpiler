@@ -101,14 +101,14 @@ Using a list-specific function on a variable:
 ```
 set [score] to 0
 
-listAdd("item", [score])   // ⚠ Warning: [score] is a variable, not a list
-append([score], "item")    // ⚠ Warning: same
+listAdd("item", [score])   // ⚠ `listAdd` needs a list; `[score]` is a variable
+append([score], "item")    // ⚠ same
 ```
 
 Using a variable-specific function on a list:
 
 ```
-showVariable([myList])     // ⚠ Warning: [myList] is a list — use showList() instead
+showVariable([myList])     // ⚠ `showVariable` needs a variable; `[myList]` is a list
 ```
 
 ### Dot methods on non-lists
@@ -116,7 +116,7 @@ showVariable([myList])     // ⚠ Warning: [myList] is a list — use showList()
 The `.contains()`, `.item()`, `.indexOf()`, and `.sort()` methods require a list receiver. Using them on a variable:
 
 ```
-set [len] to [score].length()    // ⚠ Warning: [score] is a variable, not a list
+set [first] to [score].item(1)   // ⚠ `.item()` needs a list; `[score]` is a variable
 ```
 
 (`.length()` on a string variable is fine — the type checker doesn't flag it because both strings and lists have a length concept.)
@@ -126,7 +126,7 @@ set [len] to [score].length()    // ⚠ Warning: [score] is a variable, not a li
 `pyfor [item] in [name]` requires `[name]` to be a list. If it's a variable:
 
 ```
-pyfor [x] in [score] {   // ⚠ Warning: [score] is a variable, not a list
+pyfor [x] in [score] {   // ⚠ `pyfor` needs a list; `[score]` is a variable
     say([x])
 }
 ```
@@ -150,8 +150,9 @@ Lint rules can be toggled individually under **Checks** in **Settings** (the sli
 | **Orphaned blocks** | Statements and blocks outside any hat block |
 | **Semantic checks** | Unknown names, wrong argument counts, shadowing, duplicates — see [code-intelligence.md](code-intelligence.md) |
 | **Code smells** | Unused blocks, busy-waits, magic numbers, dead sets — see [code-intelligence.md](code-intelligence.md) |
+| **Project checks** | Broadcasts nobody receives, scripts nothing starts, unused variables, green-flag ordering races — see [code-intelligence.md](code-intelligence.md#across-sprites) |
 
-All five are on by default. Turning them off does not affect compilation — only what the editor underlines.
+All six are on by default. Turning them off does not affect compilation — only what the editor underlines.
 
 ---
 

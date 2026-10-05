@@ -82,7 +82,23 @@ function prepareHeap(stage, staticSlots, findStageVariable) {
     };
 }
 
-export function compileWithSLVM(ast, vm, spriteName, { passes = ['legalize'], heapVars = [], heapStaticSlots = 64 } = {}) {
+export function applyProjectFacts(module, spriteName, facts, hiddenOwners) {
+    const confined = new Set(facts.confined.map(v => `${v.owner}\u0001${v.kind}\u0001${v.name}`));
+    const ownedByOneThread = owner => !!owner && (owner.script !== undefined || facts.singleThreadProcs.has(owner.proc));
+    for (const target of module.targets) {
+        const owner = target.kind === 'stage' ? '__stage__' : spriteName;
+        for (const decl of target.vars) {
+            const isConfined = decl.internal
+                ? ownedByOneThread(hiddenOwners.get(decl.name))
+                : confined.has(`${owner}\u0001${decl.kind === 'list' ? 'list' : 'variable'}\u0001${decl.name}`);
+            if (isConfined) decl.confined = true;
+        }
+        for (const script of target.scripts) if (facts.uninterruptedScripts.has(script.source)) script.uninterrupted = true;
+        for (const proc of target.procs) if (!proc.extern && facts.uninterruptedProcs.has(proc.name)) proc.uninterrupted = true;
+    }
+}
+
+export function compileWithSLVM(ast, vm, spriteName, { passes = ['legalize'], heapVars = [], heapStaticSlots = 64, facts = null } = {}) {
     const { stage, sprite } = vmTargets(vm, spriteName);
     if (!sprite) return { blocks: {}, errors: [{ line: 1, col: 1, len: 1, message: `Sprite not found: ${spriteName}` }] };
     let findStageVariable = indexVariables(stage);
@@ -128,8 +144,9 @@ export function compileWithSLVM(ast, vm, spriteName, { passes = ['legalize'], he
     let out;
     let emitted = false;
     try {
-        const { module, errors } = irgen(ast, env);
+        const { module, errors, hiddenOwners } = irgen(ast, env);
         if (errors.length) return { blocks: {}, errors };
+        if (facts) applyProjectFacts(module, spriteName, facts, hiddenOwners);
         runPipeline(module, passes);
         out = slc(module, {
             uid,

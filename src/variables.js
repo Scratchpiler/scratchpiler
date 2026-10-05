@@ -103,7 +103,7 @@ export function renameVariable(vm, targetId, variableId, rawName) {
         }
     }
     refreshScratchWorkspace(vm);
-    return { oldName, newName, scope: target.isStage ? 'global' : 'local', spriteName: target.isStage ? '__stage__' : target.sprite.name };
+    return { oldName, newName, kind: kind === 'list' ? 'list' : 'variable', scope: target.isStage ? 'global' : 'local', spriteName: target.isStage ? '__stage__' : target.sprite.name };
 }
 
 export function setVariableValue(vm, targetId, variableId, value) {
@@ -138,4 +138,22 @@ export function projectRunState(vm) {
     const pausedFlag = stage && Object.values(stage.variables).find(v => v.name === '__dbg_at__');
     if (pausedFlag && pausedFlag.value == 1) return 'paused';
     return vm.runtime.threads.length > 0 ? 'running' : 'stopped';
+}
+
+export function renameBroadcast(vm, oldName, newName) {
+    const stage = stageOf(vm);
+    const messages = Object.values(stage.variables).filter(v => v.type === 'broadcast_msg');
+    const message = messages.find(v => v.name.toUpperCase() === oldName.toUpperCase());
+    if (!message) return { missing: true };
+    if (messages.some(v => v !== message && v.name.toUpperCase() === newName.toUpperCase())) return { error: `A message named "${newName}" already exists` };
+    message.name = newName;
+    for (const t of vm.runtime.targets) {
+        for (const block of Object.values(t.blocks._blocks || {})) {
+            for (const field of Object.values(block.fields || {})) {
+                if (field.id === message.id) field.value = newName;
+            }
+        }
+    }
+    refreshScratchWorkspace(vm);
+    return { oldName, newName };
 }
