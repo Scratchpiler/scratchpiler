@@ -143,8 +143,14 @@ export function irgen(ast, env) {
         known.get(name).add(kind);
         return name;
     };
-    const hidden = (tag) => declare(sprite, 'var', `${prefix}${tag}${hiddenCount++}`, true);
-    const hiddenNamed = (name) => declare(sprite, 'var', name, true);
+    const hiddenOwners = new Map();
+    const ownHidden = (name) => {
+        const owner = b?.owner ?? null;
+        hiddenOwners.set(name, hiddenOwners.has(name) && hiddenOwners.get(name) !== owner ? null : owner);
+        return declare(sprite, 'var', name, true);
+    };
+    const hidden = (tag) => ownHidden(`${prefix}${tag}${hiddenCount++}`);
+    const hiddenNamed = (name) => ownHidden(name);
     const global = (name) => declare(stage, 'var', name, false);
 
     const heap = ast._usesHeap ? declare(stage, 'list', '__heap', false) : null;
@@ -218,8 +224,9 @@ export function irgen(ast, env) {
 
     let b = null;
 
-    function newRoot(params) {
+    function newRoot(params, owner) {
         b = {
+            owner,
             n: 0,
             region: [],
             bools: new Set(),
@@ -884,7 +891,7 @@ export function irgen(ast, env) {
             const hatOf = HATS[block.hat.event];
             const hat = hatOf ? hatOf(block.hat) : fail(block.hat, `Unknown event \`${block.hat.event}\``);
             if (!hat) continue;
-            newRoot([]);
+            newRoot([], { script: `${block.line}:${block.col}` });
             if (hat.threshold) {
                 const threshold = hat.threshold;
                 delete hat.threshold;
@@ -895,9 +902,9 @@ export function irgen(ast, env) {
                 }
             }
             statements(block.body);
-            sprite.scripts.push({ hat, body: b.region, tag: rootTag(block) });
+            sprite.scripts.push({ hat, body: b.region, tag: rootTag(block), source: b.owner.script });
         } else if (block.type === 'DefineBlock') {
-            newRoot(block.params);
+            newRoot(block.params, block._synthetic ? null : { proc: block.name });
             b.proc = block;
             statements(block.body);
             sprite.procs.push({ name: block.name, params: [...block.params], warp: !!(block.returns || block.warp || block._forceWarp || env.externProc?.(block.name)?.warp), returns: !!block.returns, body: b.region,
@@ -907,7 +914,7 @@ export function irgen(ast, env) {
             const params = routineParamVars(name);
             const cancelled = global(`__sroutine_${name}_cancelled`);
             const count = global(`__sroutine_${name}_count`);
-            newRoot([]);
+            newRoot([], { script: `${block.line}:${block.col}` });
             b.routine = name;
             withScope(Object.fromEntries(block.params.map((p, i) => [p, params[i]])), () => {
                 emit('var.set', [sym(cancelled), lit(0)]);
@@ -915,9 +922,9 @@ export function irgen(ast, env) {
                 statements(block.body);
                 if (!b.region.at(-1) || !['stop', 'forever'].includes(b.region.at(-1).op)) emit('var.change', [sym(count), lit(-1)]);
             });
-            sprite.scripts.push({ hat: { event: 'receive', arg: `__sroutine_${name}` }, body: b.region });
+            sprite.scripts.push({ hat: { event: 'receive', arg: `__sroutine_${name}` }, body: b.region, source: b.owner.script });
         }
     }
 
-    return { module: errors.length ? null : module, errors };
+    return { module: errors.length ? null : module, errors, hiddenOwners };
 }

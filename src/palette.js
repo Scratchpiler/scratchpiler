@@ -5,6 +5,9 @@ import { escapeHtml, plural, spriteLabel, openScrim, closeScrims, setBottomPanel
 import { setDock, isDockOpen, revealVariable } from "./variables-panel.js";
 import { startAdding, startCreatingHeader } from "./explorer.js";
 import { variablesInScope, isCompilerVariable } from "./variables.js";
+import { projectAnalysis, analyzeProject } from "./project-service.js";
+import { projectSymbols } from "./project-analysis.js";
+import { openEventFlow } from "./event-flow.js";
 
 const $ = id => document.getElementById(id);
 let items = [];
@@ -26,10 +29,13 @@ function commands() {
         { group: 'Commands', text: 'Toggle bottom panel', keys: 'Ctrl J', icon: '▁', run: () => setBottomPanel(!isBottomOpen()) },
         { group: 'Commands', text: 'Show problems', keys: 'Ctrl Shift M', icon: '!', run: () => setBottomPanel(true, 'problems') },
         { group: 'Commands', text: 'Show output', icon: '›', run: () => setBottomPanel(true, 'output') },
-        { group: 'Commands', text: 'Toggle line wrap', icon: '↩', run: () => toggleSetting('wrap') },
+        { group: 'Commands', text: 'Toggle line wrap', keys: 'Alt Z', icon: '↩', run: () => toggleSetting('wrap') },
         { group: 'Commands', text: 'Toggle minimap', icon: '▥', run: () => toggleSetting('minimap') },
         { group: 'Commands', text: 'Open settings', keys: 'Ctrl ,', icon: '⚙', run: () => setView('settings') },
         { group: 'Commands', text: 'Re-index project', icon: '↻', run: reindexProject },
+        { group: 'Commands', text: 'Show event flow', icon: '⇄', run: openEventFlow },
+        { group: 'Commands', text: 'Go to symbol in project', keys: 'Ctrl T', icon: '#', run: () => openPalette('#') },
+        { group: 'Commands', text: 'Analyze project again', icon: '↻', run: () => analyzeProject(currentVM) },
         { group: 'Commands', text: 'Clear saved code', icon: '⌫', run: clearSavedCode },
         { group: 'Commands', text: 'Open .sdsl file…', icon: '⤓', run: importFromLocalFile },
         { group: 'Commands', text: 'Save as .sdsl file…', keys: 'Ctrl Shift S', icon: '⤒', run: exportToLocalFile },
@@ -49,9 +55,26 @@ function files() {
     ];
 }
 
+const SYMBOL_ICONS = { define: 'ƒ', routine: '↻', script: '⚑', enumMember: '#', struct: '{}' };
+const symbolCache = new WeakMap();
+function projectSymbolItems(linked) {
+    if (!symbolCache.has(linked)) {
+        symbolCache.set(linked, projectSymbols(linked).map(sym => ({
+            group: 'Symbols in the project',
+            text: sym.kind === 'define' ? `${sym.name}()` : sym.label,
+            sub: `${spriteLabel(sym.sprite)}, line ${sym.line}`,
+            icon: SYMBOL_ICONS[sym.kind] ?? '·',
+            run: () => revealPosition({ kind: 'sprite', name: sym.sprite }, sym.line, sym.col),
+        })));
+    }
+    return symbolCache.get(linked);
+}
+
 const DEFINITION = /^\s*(define|scratchroutine)\s+(\w+)\s*(\([^)]*\))?/;
 const HAT = /^\s*on\s+(.+?)\s*\{/;
 function symbols() {
+    const linked = projectAnalysis();
+    if (linked) return projectSymbolItems(linked);
     const found = [];
     const sources = [
         ...allSpriteNames().map(name => ({ file: { kind: 'sprite', name }, text: modelFor({ kind: 'sprite', name })?.getValue() ?? savedSpriteCode(name) ?? '' })),
@@ -115,6 +138,7 @@ function render() {
     if (raw.startsWith(':')) { items = lineItem(raw.slice(1)); draw(); return; }
     if (raw.startsWith('>')) { pool = commands(); query = raw.slice(1).trim(); }
     else if (raw.startsWith('@')) { pool = files(); query = raw.slice(1).trim(); }
+    else if (raw.startsWith('#')) { pool = symbols(); query = raw.slice(1).trim(); }
     else pool = query ? [...files(), ...symbols(), ...variables(), ...commands()] : [...files(), ...commands().slice(0, 6)];
     items = query ? pool.map(it => ({ ...it, marks: fuzzyMatch(query, it.text) })).filter(it => it.marks) : pool;
     draw();

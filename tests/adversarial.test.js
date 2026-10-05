@@ -205,6 +205,15 @@ for (const owner of ['sprite', 'stage']) {
     });
 }
 
+test('code no longer wraps by default, and the old saved default is dropped once', () => {
+    const load = saved => loadSettings({ getItem: () => JSON.stringify(saved) });
+    assert.equal(DEFAULT_SETTINGS.wrap, false);
+    assert.equal(load({ wrap: true, fontSize: '16' }).wrap, false);
+    assert.equal(load({ wrap: true, fontSize: '16' }).fontSize, '16');
+    assert.equal(load({ wrap: true, version: 2 }).wrap, true);
+    assert.equal(load({ wrap: false }).version, 2);
+});
+
 test('old backend preferences cannot select the removed compiler', () => {
     for (const backend of ['classic', 'slvm', 'unknown']) {
         const settings = loadSettings({ getItem: () => JSON.stringify({ backend, fontSize: '19', wrap: false }) });

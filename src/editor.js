@@ -23,6 +23,11 @@ import { setupPalette, openPalette } from "./palette.js";
 import { setupVariablesPanel, setDock, isDockOpen, renderVariablesPanel, tickVariablesPanel } from "./variables-panel.js";
 import { projectRunState } from "./variables.js";
 import { setupTooltips } from "./tooltips.js";
+import { configureProjectService, analyzeProject, projectAnalysis, projectChangedInScratch, forgetDecompiledSources, decompiledSource, updateSpriteSource, onProjectChange, projectProgress, projectFactsFor, stableMessageCounts } from "./project-service.js";
+import { diagnosticsFor as projectDiagnosticsFor, STAGE, parseVarKey, varKey, renameEdits } from "./project-analysis.js";
+import { renderProblemsView, toggleProblemGroup, toggleProblemHints, problemsShowHints } from "./problems-view.js";
+import { revealVariable } from "./variables-panel.js";
+import { setupEventFlow, isEventFlowOpen, closeEventFlow } from "./event-flow.js";
 
 export let monacoEditor = null;
 export let overlayVisible = false;
@@ -56,11 +61,39 @@ let lintTimer = null;
 function modelEntry(file) { return models.get(fileKey(file)); }
 export function modelFor(file) { return modelEntry(file)?.model ?? null; }
 
+const uriFor = file => monaco.Uri.from({
+    scheme: 'scratchpiler',
+    path: file.kind === 'sprite' && file.name === '__stage__' ? '/stage/Stage' : `/${file.kind}/${file.name}`,
+});
+
+export function fileForUri(uri) {
+    if (uri?.scheme !== 'scratchpiler') return null;
+    const kind = uri.path.split('/')[1];
+    if (kind === 'stage') return { kind: 'sprite', name: '__stage__' };
+    return kind ? { kind, name: uri.path.slice(kind.length + 2) } : null;
+}
+
 function createModel(file, text) {
-    const model = monaco.editor.createModel(text, LANG_ID);
+    const model = monaco.editor.createModel(text, LANG_ID, uriFor(file));
     model.updateOptions({ tabSize: parseInt(settings.tabSize, 10) || 4, insertSpaces: true });
     models.set(fileKey(file), { file, model, viewState: null });
+    model.onDidChangeContent(() => {
+        if (monacoEditor?.getModel() === model) return;
+        saveFile(file);
+        scheduleLint();
+    });
     return model;
+}
+
+export function ensureSpriteModel(sprite) {
+    const file = { kind: 'sprite', name: sprite };
+    const existing = modelFor(file);
+    if (existing) return existing;
+    const fromScratch = cachedSpriteText(sprite) === null ? decompiledSource(sprite) : null;
+    const text = cachedSpriteText(sprite) ?? fromScratch;
+    if (text === null) return null;
+    if (fromScratch !== null && injectedSource(sprite) === null) recordInjectedSource(sprite, fromScratch);
+    return createModel(file, text);
 }
 
 function disposeModel(file) {
@@ -171,6 +204,7 @@ async function fillFromScratch(sprite) {
 }
 
 function showFile(file, text) {
+    closeEventFlow();
     const current = activeFile();
     if (current) {
         const entry = modelEntry(current);
@@ -208,6 +242,7 @@ function switchScratchEditingTarget(sprite) {
 export function selectSidebarSprite(sprite) {
     if (!sprite || !monacoEditor) { currentSpriteContext = sprite || currentSpriteContext; return; }
     const file = { kind: 'sprite', name: sprite };
+    ensureSpriteModel(sprite);
     const needsDecompile = !modelFor(file) && cachedSpriteText(sprite) === null && !!currentVM;
     showFile(file, () => cachedSpriteText(sprite) ?? '');
     if (needsDecompile) fillFromScratch(sprite);
@@ -392,27 +427,65 @@ const SEVERITY = () => ({
     [monaco.MarkerSeverity.Hint]: 'info',
 });
 export const problemCounts = new Map();
+let problemsStale = false;
+export function renderProblemsIfStale() {
+    if (problemsStale) { problemsStale = false; renderProblems(); }
+}
+
+const markerItems = model => {
+    const severity = SEVERITY();
+    return monaco.editor.getModelMarkers({ resource: model.uri, owner: LANG_ID })
+        .map(m => ({ line: m.startLineNumber, col: m.startColumn, message: m.message, severity: severity[m.severity] }));
+};
+
+function problemGroups() {
+    const linked = projectAnalysis();
+    const groups = [];
+    for (const sprite of allSpriteNames()) {
+        const file = { kind: 'sprite', name: sprite };
+        const model = modelFor(file);
+        const projectFile = linked?.files.get(sprite);
+        const items = model ? markerItems(model) : projectFile ? fileDiagnostics(sprite, projectFile.analysis) : [];
+        groups.push({ key: fileKey(file), label: spriteLabel(sprite), note: model ? '' : 'not open', collapsedByDefault: !model, items });
+    }
+    for (const { file, model } of models.values()) {
+        if (file.kind === 'header') groups.push({ key: fileKey(file), label: file.name, note: 'header', items: markerItems(model) });
+    }
+    if (linked && settings.lintProject) {
+        const index = linked.index;
+        const idOf = (owner, kind, name) => (owner === STAGE ? index.globalVariables : index.spriteVariables[owner] ?? [])
+            .find(v => v.name === name && v.type === kind)?.id;
+        groups.push({
+            key: 'project', label: 'Project', note: 'variables and lists',
+            items: linked.diagnostics.project.map(item => ({
+                ...item, varId: idOf(item.owner, item.kind, parseVarKey(item.varKey).name), owner: item.owner,
+                where: `${spriteLabel(item.owner)} · ${item.kind === 'list' ? 'list' : 'variable'}`,
+            })),
+        });
+    }
+    return groups;
+}
 
 function renderProblems() {
     if (!monacoEditor) return;
-    const severity = SEVERITY();
-    const groups = [];
+    const groups = problemGroups();
     let errors = 0, warnings = 0;
-    for (const { file, model } of models.values()) {
-        const markers = monaco.editor.getModelMarkers({ resource: model.uri, owner: LANG_ID })
-            .sort((a, b) => a.startLineNumber - b.startLineNumber || a.startColumn - b.startColumn);
-        const fileErrors = markers.filter(m => m.severity === monaco.MarkerSeverity.Error).length;
-        const fileWarnings = markers.filter(m => m.severity === monaco.MarkerSeverity.Warning).length;
-        if (file.kind === 'sprite') problemCounts.set(file.name, { errors: fileErrors, warnings: fileWarnings });
+    problemCounts.clear();
+    for (const group of groups) {
+        const fileErrors = group.items.filter(i => i.severity === 'error').length;
+        const fileWarnings = group.items.filter(i => i.severity === 'warning').length;
+        if (group.key.startsWith('sprite:')) problemCounts.set(group.key.slice(7), { errors: fileErrors, warnings: fileWarnings });
         errors += fileErrors; warnings += fileWarnings;
-        if (markers.length) groups.push({ file, markers });
     }
-    const view = $('sp-problems-view');
-    view.innerHTML = groups.length ? groups.map(({ file, markers }) =>
-        `<div class="sp-prob-file">${escapeHtml(fileLabel(file))}</div>` + markers.map(m =>
-            `<div class="sp-prob" data-key="${escapeHtml(fileKey(file))}" data-line="${m.startLineNumber}" data-col="${m.startColumn}">
-                <span class="sp-sev sp-${severity[m.severity]}"></span><span>${escapeHtml(m.message)}</span><span class="sp-loc">Ln ${m.startLineNumber}, Col ${m.startColumn}</span></div>`).join('')).join('')
-        : `<div class="sp-empty">${models.size ? 'No problems in open files.' : 'Open a sprite to check it for problems.'}</div>`;
+    const analyzing = projectProgress().running;
+    if (isBottomOpen()) {
+        renderProblemsView($('sp-problems-view'), groups, {
+            emptyText: analyzing ? 'Checking the project…' : projectAnalysis() ? 'No problems in the project.' : 'Open a sprite to check it for problems.',
+        });
+    } else {
+        problemsStale = true;
+    }
+    $('sp-prob-hints').setAttribute('aria-pressed', String(problemsShowHints()));
 
     const total = errors + warnings;
     $('sp-problems-count').textContent = total;
@@ -438,55 +511,157 @@ export function revealPosition(file, line, col = 1) {
 
 function setupProblemsView() {
     $('sp-problems-view').addEventListener('click', e => {
+        const header = e.target.closest('.sp-pg-h');
+        if (header) { toggleProblemGroup(header.dataset.group); renderProblems(); return; }
         const row = e.target.closest('.sp-prob');
         if (!row) return;
-        const tab = tabByKey(row.dataset.key) ?? models.get(row.dataset.key)?.file;
-        if (tab) revealPosition(tab, +row.dataset.line, +row.dataset.col);
+        if (row.dataset.var) {
+            const item = projectAnalysis()?.diagnostics.project.find(p => p.varKey && row.title.includes(parseVarKey(p.varKey).name));
+            if (item && item.owner !== STAGE) selectSidebarSprite(item.owner);
+            revealVariable(row.dataset.var, 'name');
+            return;
+        }
+        const [kind, ...rest] = row.dataset.key.split(':');
+        revealPosition(tabByKey(row.dataset.key) ?? { kind, name: rest.join(':') }, +row.dataset.line, +row.dataset.col);
     });
+    $('sp-prob-hints').addEventListener('click', () => { toggleProblemHints(); renderProblems(); });
+    document.addEventListener('scratchpiler:bottom-open', renderProblemsIfStale);
     $('sp-sb-problems').addEventListener('click', () => setBottomPanel(true, 'problems'));
 }
 
 function scheduleLint(delay = 350) {
     clearTimeout(lintTimer);
-    lintTimer = setTimeout(lintActiveModel, delay);
+    lintTimer = setTimeout(lintOpenModels, delay);
 }
 
-function toMarker(item, severity, model, wholeLine = false) {
+function toMarker(item, model) {
+    const S = monaco.MarkerSeverity;
+    const line = Math.min(item.line, model.getLineCount());
     return {
-        startLineNumber: item.line, startColumn: item.col,
-        endLineNumber: item.line, endColumn: wholeLine ? model.getLineMaxColumn(item.line) : item.col + (item.len || 1),
-        message: item.message, severity,
+        startLineNumber: line, startColumn: item.col,
+        endLineNumber: line, endColumn: item.wholeLine ? model.getLineMaxColumn(line) : item.col + (item.len || 1),
+        message: item.message,
+        severity: { error: S.Error, warning: S.Warning, info: S.Info }[item.severity],
+        tags: item.tags?.includes('unnecessary') ? [monaco.MarkerTag.Unnecessary] : undefined,
     };
 }
 
-function lintActiveModel() {
-    const model = monacoEditor?.getModel();
-    if (!model) { renderProblems(); return; }
-    if (editingHeader) { refreshSyncState(); return; }
+const localDiagnosticsCache = new WeakMap();
+const lintSettingsKey = () => ['lintUnreachable', 'lintOrphaned', 'lintTypecheck', 'lintSemantic', 'lintSmells'].map(k => settings[k] ? 1 : 0).join('');
+
+function localDiagnostics(sprite, analysis) {
+    const cached = localDiagnosticsCache.get(analysis);
+    if (cached?.settings === lintSettingsKey()) return cached.items;
+    const { ast, parseErrors } = analysis;
+    const severity = level => item => ({ ...item, severity: level });
+    const items = [
+        ...parseErrors.map(severity('error')),
+        ...lint(ast).filter(w => (w.category !== 'Unreachable' || settings.lintUnreachable) && (w.category !== 'Orphaned' || settings.lintOrphaned))
+            .map(w => ({ ...w, severity: 'warning', wholeLine: w.category === 'Unreachable' || w.category === 'Orphaned' })),
+        ...(settings.lintTypecheck ? typeCheckDiagnostics(ast, sprite) : []).map(severity('warning')),
+        ...(settings.lintSemantic ? semanticDiagnostics(analysis) : []).map(severity('warning')),
+        ...(settings.lintSmells ? smellDiagnostics(analysis) : []).map(severity('info')),
+    ];
+    localDiagnosticsCache.set(analysis, { settings: lintSettingsKey(), items });
+    return items;
+}
+
+function fileDiagnostics(sprite, analysis) {
+    const linked = settings.lintProject ? projectAnalysis() : null;
+    const projectFile = linked?.files.get(sprite);
+    const project = projectFile && projectFile.analysis.src === analysis.src ? projectDiagnosticsFor(linked, sprite) : [];
+    return [...localDiagnostics(sprite, analysis), ...project];
+}
+
+let linting = false;
+function lintOpenModels() {
+    if (!monacoEditor) return;
+    linting = true;
     try {
-        const sprite = currentSpriteContext;
-        const analysis = getAnalysis(model, sprite);
-        const { ast, parseErrors } = analysis;
-        const lintWarnings = lint(ast).filter(w => {
-            const msg = w.message || '';
-            if (!settings.lintUnreachable && msg.startsWith('Unreachable')) return false;
-            if (!settings.lintOrphaned && msg.startsWith('Orphaned')) return false;
-            return true;
-        });
-        const typeWarnings = settings.lintTypecheck ? typeCheckDiagnostics(ast, sprite) : [];
-        const semanticWarnings = settings.lintSemantic ? semanticDiagnostics(analysis) : [];
-        const smellHints = settings.lintSmells ? smellDiagnostics(analysis) : [];
-        const S = monaco.MarkerSeverity;
-        monaco.editor.setModelMarkers(model, LANG_ID, [
-            ...parseErrors.map(e => toMarker(e, S.Error, model)),
-            ...lintWarnings.map(w => toMarker(w, S.Warning, model, true)),
-            ...typeWarnings.map(w => toMarker(w, S.Warning, model)),
-            ...semanticWarnings.map(w => toMarker(w, S.Warning, model)),
-            ...smellHints.map(w => toMarker(w, S.Info, model)),
-        ]);
-    } catch (_) {}
+        for (const { file, model } of models.values()) {
+            if (file.kind !== 'sprite') continue;
+            updateSpriteSource(file.name, model.getValue(), getAnalysis(model, file.name));
+        }
+        for (const { file, model } of models.values()) {
+            if (file.kind !== 'sprite') continue;
+            try {
+                const items = fileDiagnostics(file.name, getAnalysis(model, file.name));
+                monaco.editor.setModelMarkers(model, LANG_ID, items.map(item => toMarker(item, model)));
+            } catch (error) {
+                console.warn('[scratchpiler] lint failed for', file.name, error);
+            }
+        }
+    } finally {
+        linting = false;
+    }
+    refreshInlayHints();
+    fitWrappingIndent();
     renderProblems();
     refreshSyncState();
+}
+
+const inlayListeners = new Set();
+export const onInlayHintsChange = listener => { inlayListeners.add(listener); return { dispose: () => inlayListeners.delete(listener) }; };
+let hintedCounts = null;
+function refreshInlayHints() {
+    const counts = stableMessageCounts();
+    if (counts === hintedCounts) return;
+    hintedCounts = counts;
+    inlayListeners.forEach(listener => listener());
+}
+
+const MIN_WRAPPED_COLUMNS = 40;
+let wrappingIndent = 'same';
+function fitWrappingIndent() {
+    const model = monacoEditor?.getModel();
+    if (!model || !settings.wrap) return;
+    const fontInfo = monacoEditor.getOption(monaco.editor.EditorOption.fontInfo);
+    const columns = Math.floor(monacoEditor.getLayoutInfo().contentWidth / fontInfo.typicalHalfwidthCharacterWidth);
+    let deepest = 0;
+    for (const line of model.getLinesContent()) {
+        if (line.length <= columns) continue;
+        deepest = Math.max(deepest, line.length - line.trimStart().length);
+    }
+    const next = columns - deepest >= MIN_WRAPPED_COLUMNS ? 'same' : 'none';
+    if (next === wrappingIndent) return;
+    wrappingIndent = next;
+    monacoEditor.updateOptions({ wrappingIndent });
+}
+
+const MIN_EDITOR_WIDTH = 560;
+function fitSidePanels() {
+    const main = $('sp-main');
+    const dockOpen = !main.classList.contains('sp-no-dock');
+    const rail = main.querySelector('.sp-rail')?.offsetWidth ?? 48;
+    const side = main.classList.contains('sp-no-side') ? 0 : $('scratchpiler-sidebar').offsetWidth;
+    const dock = parseInt(getComputedStyle(main).getPropertyValue('--sp-dock-w'), 10) || 320;
+    main.classList.toggle('sp-dock-float', dockOpen && main.clientWidth - rail - side - dock < MIN_EDITOR_WIDTH);
+}
+
+function setupResponsivePanels() {
+    const main = $('sp-main');
+    if (typeof ResizeObserver === 'function') new ResizeObserver(fitSidePanels).observe(main);
+    else addEventListener('resize', fitSidePanels);
+    new MutationObserver(fitSidePanels).observe(main, { attributes: true, attributeFilter: ['class', 'style'] });
+    new MutationObserver(fitSidePanels).observe($('scratchpiler-overlay'), { attributes: true, attributeFilter: ['style'] });
+    fitSidePanels();
+}
+
+function renderAnalysisProgress() {
+    const { running, done, total, label } = projectProgress();
+    const bar = $('sp-analysis');
+    bar.classList.toggle('sp-on', running);
+    const fraction = total ? Math.min(1, done / total) : 0;
+    bar.style.setProperty('--sp-progress', fraction.toFixed(3));
+    $('sp-sb-analysis').hidden = !running;
+    $('sp-sb-analysis-text').textContent = running ? `Analyzing ${label ? spriteLabel(label) : 'project'} · ${Math.floor(done)}/${total}` : '';
+    $('sp-sb-analysis').style.setProperty('--sp-progress', fraction.toFixed(3));
+}
+
+function onProjectAnalysisChange() {
+    renderAnalysisProgress();
+    if (linting) return;
+    scheduleLint(projectProgress().running ? 400 : 0);
 }
 
 export function compileAndInject({ minify = false } = {}) {
@@ -502,7 +677,12 @@ export function compileAndInject({ minify = false } = {}) {
 
     let result;
     try {
-        result = compileSourceWithHeaders(source, currentVM, sprite, { embedSource: settings.embedSource && !minify, optimize: settings.optimize });
+        updateSpriteSource(sprite, source);
+        const { facts, reason } = settings.optimize && settings.optimizeProject
+            ? projectFactsFor(sprite, (other, text) => injectedSource(other) === text)
+            : { facts: null, reason: null };
+        if (reason) logToOutput(`Whole-program optimizations skipped: ${reason}`, 'info');
+        result = compileSourceWithHeaders(source, currentVM, sprite, { embedSource: settings.embedSource && !minify, optimize: settings.optimize, projectFacts: facts });
     } catch (e) {
         console.error('[scratchpiler] compile exception', e);
         logToOutput(`Compiler crashed: ${e.message}`, 'error');
@@ -639,7 +819,9 @@ export function clearSavedCode() {
     const cleared = removeLocalStorageKeys(k => k.startsWith('scratchpiler-content-') || k.startsWith(`${LS_INJ_KEY}-`) || k === LS_KEY);
     forgetInjectedSources();
     injectedBlockIds.clear();
+    forgetDecompiledSources();
     reloadAllSprites();
+    analyzeProject(currentVM);
     toast(`Cleared ${plural(cleared, 'saved entry', 'saved entries')}. Sprites are decompiled fresh from Scratch.`);
     logToOutput('Cleared saved code from this browser', 'info');
 }
@@ -667,7 +849,44 @@ export function resetAllChanges() {
     logToOutput(message, 'warn');
 }
 
-export function rewriteVariableReferences(oldName, newName, { global, sprite }) {
+export function noteCrossSpriteRename(textBefore) {
+    setTimeout(() => {
+        for (const [sprite, text] of textBefore) {
+            if (injectedSource(sprite) === text) recordInjectedSource(sprite, spriteSource(sprite));
+        }
+        if (currentVM) reindex(currentVM);
+        refreshSyncState();
+        renderVariablesPanel();
+        scheduleLint(0);
+    });
+}
+
+function applySpanEdits(model, changes) {
+    model.pushEditOperations([], changes.map(c => ({
+        range: new monaco.Range(c.span.line, c.span.col, c.span.endLine ?? c.span.line, c.span.endCol),
+        text: c.text,
+    })), () => null);
+}
+
+export function rewriteVariableReferences(oldName, newName, { global, sprite, kind = 'variable' }) {
+    const linked = projectProgress().running ? null : projectAnalysis();
+    const key = varKey(global ? STAGE : sprite, kind, oldName);
+    if (linked?.variables.has(key)) {
+        let refs = 0, files = 0;
+        for (const [name, changes] of renameEdits(linked, { kind: 'variable', key }, newName)) {
+            const model = ensureSpriteModel(name);
+            if (!model) continue;
+            const before = model.getValue();
+            applySpanEdits(model, changes);
+            if (injectedSource(name) === before) recordInjectedSource(name, model.getValue());
+            saveFile({ kind: 'sprite', name });
+            refs += changes.length;
+            files++;
+        }
+        refreshSyncState();
+        scheduleLint(0);
+        return { refs, files };
+    }
     const needle = `[${oldName}]`, replacement = `[${newName}]`;
     let refs = 0, files = 0;
     for (const s of global ? allSpriteNames() : [sprite]) {
@@ -771,6 +990,7 @@ function setupTopBar() {
     $('scratchpiler-close-btn').addEventListener('click', closeOverlay);
     $('sp-debug-resume-btn').addEventListener('click', resumeDebugger);
     $('sp-sb-cursor').addEventListener('click', () => openPalette(':'));
+    $('sp-sb-wrap').addEventListener('click', () => toggleSetting('wrap'));
 }
 
 function applySettings() {
@@ -782,6 +1002,10 @@ function applySettings() {
     $('sp-setting-autosave').value = settings.autosave;
     $('sp-setting-embed-source').checked = settings.embedSource;
     $('sp-setting-optimize').checked = settings.optimize;
+    $('sp-setting-optimize-project').checked = settings.optimizeProject;
+    $('sp-setting-optimize-project').disabled = !settings.optimize;
+    $('sp-setting-optimize-project').closest('.sp-set').classList.toggle('sp-off', !settings.optimize);
+    $('sp-setting-lint-project').checked = settings.lintProject;
     $('sp-setting-lint-typecheck').checked = settings.lintTypecheck;
     $('sp-setting-lint-unreachable').checked = settings.lintUnreachable;
     $('sp-setting-lint-orphaned').checked = settings.lintOrphaned;
@@ -789,6 +1013,8 @@ function applySettings() {
     $('sp-setting-lint-smells').checked = settings.lintSmells;
     document.querySelectorAll('#sp-setting-tabsize button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.value === String(tabSize))));
     $('sp-sb-indent').textContent = `Spaces: ${tabSize}`;
+    $('sp-sb-wrap').textContent = settings.wrap ? 'Wrap' : 'No wrap';
+    $('sp-sb-wrap').setAttribute('aria-pressed', String(settings.wrap));
     if (!monacoEditor) return;
     monaco.editor.setTheme(settings.theme);
     monacoEditor.updateOptions({
@@ -796,6 +1022,7 @@ function applySettings() {
         wordWrap: settings.wrap ? 'on' : 'off',
         minimap: { enabled: settings.minimap },
     });
+    fitWrappingIndent();
     for (const { model } of models.values()) model.updateOptions({ tabSize, insertSpaces: true });
 }
 
@@ -824,6 +1051,7 @@ function setupSettings() {
         'sp-setting-wrap': 'wrap', 'sp-setting-minimap': 'minimap', 'sp-setting-embed-source': 'embedSource', 'sp-setting-optimize': 'optimize',
         'sp-setting-lint-typecheck': 'lintTypecheck', 'sp-setting-lint-unreachable': 'lintUnreachable',
         'sp-setting-lint-orphaned': 'lintOrphaned', 'sp-setting-lint-semantic': 'lintSemantic', 'sp-setting-lint-smells': 'lintSmells',
+        'sp-setting-lint-project': 'lintProject', 'sp-setting-optimize-project': 'optimizeProject',
     };
     for (const [id, key] of Object.entries(toggles)) $(id).addEventListener('change', e => updateSetting(key, e.target.checked));
 
@@ -852,6 +1080,8 @@ function setupSettings() {
     applySettings();
 }
 
+let analysisStarted = false;
+
 export function openOverlay() {
     $('scratchpiler-overlay').style.display = 'block';
     overlayVisible = true;
@@ -859,6 +1089,9 @@ export function openOverlay() {
     if (trigger) trigger.style.display = 'none';
     renderExplorer();
     if (!activeFile()) selectSidebarSprite(currentSpriteContext || '__stage__');
+    if (currentVM && monacoEditor) {
+        if (!analysisStarted) { analysisStarted = true; analyzeProject(currentVM); } else projectChangedInScratch();
+    }
     monacoEditor?.layout();
     monacoEditor?.focus();
 }
@@ -903,13 +1136,13 @@ function resumeDebugger() {
 }
 
 const MONACO_WIDGETS_BY_CLASS = '.suggest-widget.visible, .find-widget.visible, .rename-box, .parameter-hints-widget.visible';
-const MONACO_WIDGETS_BY_VISIBILITY = '.quick-input-widget, .context-view';
+const MONACO_WIDGETS_BY_VISIBILITY = '.quick-input-widget, .context-view, .monaco-hover:not(.hidden), .peekview-widget';
 function monacoWidgetOpen() {
     const container = $('scratchpiler-editor-container');
     if (!container) return false;
     if (container.querySelector(MONACO_WIDGETS_BY_CLASS)) return true;
     if ([...container.querySelectorAll('.shadow-root-host')].some(host => host.shadowRoot?.querySelector('.monaco-menu'))) return true;
-    return [...container.querySelectorAll(MONACO_WIDGETS_BY_VISIBILITY)].some(el => el.getClientRects().length > 0);
+    return [...container.querySelectorAll(MONACO_WIDGETS_BY_VISIBILITY)].some(el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden');
 }
 const focusInEditor = () => $('scratchpiler-editor-container')?.contains(document.activeElement);
 const focusInField = () => {
@@ -922,6 +1155,7 @@ function handleEscape(e) {
     if (isMenuOpen()) { stop(); closeMenu(); return; }
     if (isScrimOpen()) { stop(); closeScrims(); return; }
     if (searchNowhereOpen) { stop(); closeSearchNowhere(); return; }
+    if (overlayVisible && isEventFlowOpen()) { stop(); closeEventFlow(); return; }
     if (!overlayVisible || monacoWidgetOpen() || focusInField()) return;
     stop();
     closeOverlay();
@@ -933,6 +1167,7 @@ function registerHotkeys() {
         { when: e => e.lower === 's' && e.mod && !e.shiftKey, run: () => compileAndInject() },
         { when: e => e.lower === 's' && e.mod && e.shiftKey, run: exportToLocalFile },
         { when: e => e.lower === 'k' && e.mod && !e.shiftKey, run: () => openPalette('') },
+        { when: e => e.lower === 't' && e.mod && !e.shiftKey, run: () => openPalette('#') },
         { when: e => e.lower === 'p' && e.mod && e.shiftKey, run: () => openPalette('>') },
         { when: e => e.lower === 'p' && e.mod && !e.shiftKey, run: () => openPalette('@') },
         { when: e => e.lower === 'g' && e.mod && !focusInEditor(), run: () => openPalette(':') },
@@ -945,6 +1180,7 @@ function registerHotkeys() {
         { when: e => e.key === ',' && e.mod, run: () => setView('settings') },
         { when: e => e.key === '/' && e.mod && !focusInEditor(), run: () => openScrim('sp-keys-scrim') },
         { when: e => e.lower === 'p' && e.altKey && e.shiftKey && !e.mod, run: pullFromScratch },
+        { when: e => e.code === 'KeyZ' && e.altKey && !e.shiftKey && !e.mod, run: () => toggleSetting('wrap') },
         { when: e => e.key === 'F8' && runState === 'paused', run: resumeDebugger },
     ];
 
@@ -956,7 +1192,7 @@ function registerHotkeys() {
         }
         if (e.key === 'Escape') { handleEscape(e); return; }
         if (!overlayVisible || isScrimOpen() || searchNowhereOpen) return;
-        const info = { key: e.key, lower: e.key.toLowerCase(), mod: e.ctrlKey || e.metaKey, shiftKey: e.shiftKey, altKey: e.altKey };
+        const info = { key: e.key, code: e.code, lower: e.key.toLowerCase(), mod: e.ctrlKey || e.metaKey, shiftKey: e.shiftKey, altKey: e.altKey };
         const binding = bindings.find(b => b.when(info));
         if (!binding) return;
         e.preventDefault();
@@ -978,7 +1214,9 @@ function registerHotkeys() {
 
 function createEditor() {
     registerLanguage(monaco);
-    registerSemanticProviders(monaco, () => currentSpriteContext);
+    registerSemanticProviders(monaco);
+    configureProjectService({ getSource: sprite => modelFor({ kind: 'sprite', name: sprite })?.getValue() ?? cachedSpriteText(sprite) });
+    onProjectChange(onProjectAnalysisChange);
 
     monacoEditor = monaco.editor.create($('scratchpiler-editor-container'), {
         model: null,
@@ -1041,6 +1279,8 @@ function createEditor() {
     });
 
     monaco.editor.onDidChangeMarkers(() => renderProblems());
+    monacoEditor.onDidLayoutChange(fitWrappingIndent);
+    monacoEditor.onDidChangeModel(fitWrappingIndent);
     applySettings();
 }
 
@@ -1054,8 +1294,13 @@ function onVMFound(vm) {
         forgetInjectedSources();
         injectedBlockIds.clear();
         reindex(vm);
+        forgetDecompiledSources();
+        analysisStarted = false;
+        if (overlayVisible && monacoEditor) { analysisStarted = true; analyzeProject(vm); }
         if (overlayVisible) refreshSyncState();
     });
+    vm.runtime.on('PROJECT_CHANGED', projectChangedInScratch);
+    if (overlayVisible && monacoEditor && !analysisStarted) { analysisStarted = true; analyzeProject(vm); }
     setInterval(tickRuntime, 200);
     if (overlayVisible && currentSpriteContext && !editingHeader && !spriteSource(currentSpriteContext).trim()) {
         reloadSprite(currentSpriteContext);
@@ -1084,6 +1329,8 @@ export function bootstrap() {
     setupPalette();
     setupVariablesPanel();
     setupTooltips();
+    setupEventFlow();
+    setupResponsivePanels();
     setInterval(updateLastInjectLabel, 15000);
 
     loadMonaco(loaded => {

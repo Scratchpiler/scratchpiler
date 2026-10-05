@@ -345,6 +345,8 @@ export function parse(tokens, opts = {}) {
         return `"${t.value}"`;
     }
 
+    const spanOfToken = t => ({ line: t.line, col: t.col, endLine: t.endLine, endCol: t.endCol });
+
     // ctx overrides callCtx for one eat() call when you need a specific message
     function eat(type, ctx) {
         if (peek().type === type) return tokens[pos++];
@@ -423,7 +425,7 @@ export function parse(tokens, opts = {}) {
         if (checkV('click'))   { pos++; return { event: 'click', line: t.line, col: t.col }; }
         if (checkV('clone'))   { pos++; return { event: 'clone', line: t.line, col: t.col }; }
         if (checkV('key'))     { pos++; const key = eat(TT.STR, '`on key "..."`: expected a quoted key name, e.g. `on key "space"`').value; return { event: 'key', key, line: t.line, col: t.col }; }
-        if (checkV('receive')) { pos++; const msg = eat(TT.STR, '`on receive "..."`: expected a quoted message name').value; return { event: 'receive', msg, line: t.line, col: t.col }; }
+        if (checkV('receive')) { pos++; const msgTok = eat(TT.STR, '`on receive "..."`: expected a quoted message name'); return { event: 'receive', msg: msgTok.value, msgSpan: msgTok.type === TT.STR ? spanOfToken(msgTok) : null, line: t.line, col: t.col }; }
         if (checkV('backdrop')){ pos++; const bg  = eat(TT.STR, '`on backdrop "..."`: expected a quoted backdrop name').value; return { event: 'backdrop', backdrop: bg, line: t.line, col: t.col }; }
         if (checkV('timer'))   { pos++; eat(TT.GT, '`on timer > n`: expected `>` after `timer`'); const threshold = parseExpr(); return { event: 'greaterThan', sense: 'TIMER', threshold, line: t.line, col: t.col }; }
         if (checkV('loudness')){ pos++; eat(TT.GT, '`on loudness > n`: expected `>` after `loudness`'); const threshold = parseExpr(); return { event: 'greaterThan', sense: 'LOUDNESS', threshold, line: t.line, col: t.col }; }
@@ -949,6 +951,10 @@ export function parse(tokens, opts = {}) {
 
     function eatOptionalStr()  { return check(TT.STR) ? eat(TT.STR).value : null; }
     function eatOptionalNum()  { return check(TT.NUM) ? eat(TT.NUM).value : null; }
+    function eatVarWithSpan() {
+        const tok = eat(TT.VAR);
+        return { value: tok.value, span: tok.type === TT.VAR ? spanOfToken(tok) : null };
+    }
     function eatOptionalVar()  { return check(TT.VAR) ? eat(TT.VAR).value : null; }
 
     function args0(ln, cl) { eat(TT.LPAREN); eat(TT.RPAREN); return [ln, cl]; }
@@ -1067,7 +1073,7 @@ export function parse(tokens, opts = {}) {
         if (v === 'changePenColorParam') { const [p,n] = args2(ln,cl); return { type: 'ChangePenColorParamStmt', param: p, amount: n, line: ln, col: cl }; }
 
         // New list ops
-        if (v === 'listDeleteAll') { eat(TT.LPAREN); const listName = eat(TT.VAR).value; eat(TT.RPAREN); return { type: 'ListDeleteAllStmt', listName, line: ln, col: cl }; }
+        if (v === 'listDeleteAll') { eat(TT.LPAREN); const { value: listName, span: listSpan } = eatVarWithSpan(); eat(TT.RPAREN); return { type: 'ListDeleteAllStmt', listName, listSpan, line: ln, col: cl }; }
 
         // Motion rotation style
         if (v === 'setRotationStyle') { const [s] = args1(ln,cl); return { type: 'SetRotationStyleStmt', style: s, line: ln, col: cl }; }
@@ -1108,27 +1114,27 @@ export function parse(tokens, opts = {}) {
             return { type: 'ChangeVarStmt', varName: varT.value, value: parseExpr(), line: ln, col: cl,
                      varSpan: { line: varT.line, col: varT.col, endLine: varT.endLine, endCol: varT.endCol } };
         }
-        if (v === 'showVariable') { eat(TT.LPAREN); const va = eat(TT.VAR).value; eat(TT.RPAREN); return { type: 'ShowVarStmt', name: va, line: ln, col: cl }; }
-        if (v === 'hideVariable') { eat(TT.LPAREN); const va = eat(TT.VAR).value; eat(TT.RPAREN); return { type: 'HideVarStmt', name: va, line: ln, col: cl }; }
-        if (v === 'showList')     { eat(TT.LPAREN); const va = eat(TT.VAR).value; eat(TT.RPAREN); return { type: 'ShowListStmt', name: va, line: ln, col: cl }; }
-        if (v === 'hideList')     { eat(TT.LPAREN); const va = eat(TT.VAR).value; eat(TT.RPAREN); return { type: 'HideListStmt', name: va, line: ln, col: cl }; }
+        if (v === 'showVariable') { eat(TT.LPAREN); const { value: va, span: nameSpan } = eatVarWithSpan(); eat(TT.RPAREN); return { type: 'ShowVarStmt', name: va, nameSpan, line: ln, col: cl }; }
+        if (v === 'hideVariable') { eat(TT.LPAREN); const { value: va, span: nameSpan } = eatVarWithSpan(); eat(TT.RPAREN); return { type: 'HideVarStmt', name: va, nameSpan, line: ln, col: cl }; }
+        if (v === 'showList')     { eat(TT.LPAREN); const { value: va, span: nameSpan } = eatVarWithSpan(); eat(TT.RPAREN); return { type: 'ShowListStmt', name: va, nameSpan, line: ln, col: cl }; }
+        if (v === 'hideList')     { eat(TT.LPAREN); const { value: va, span: nameSpan } = eatVarWithSpan(); eat(TT.RPAREN); return { type: 'HideListStmt', name: va, nameSpan, line: ln, col: cl }; }
 
         // Lists
         if (v === 'listAdd') {
-            eat(TT.LPAREN); const item = parseExpr(); eat(TT.COMMA); const listName = eat(TT.VAR).value; eat(TT.RPAREN);
-            return { type: 'ListAddStmt', listName, item, line: ln, col: cl };
+            eat(TT.LPAREN); const item = parseExpr(); eat(TT.COMMA); const { value: listName, span: listSpan } = eatVarWithSpan(); eat(TT.RPAREN);
+            return { type: 'ListAddStmt', listName, listSpan, item, line: ln, col: cl };
         }
         if (v === 'listDelete') {
-            eat(TT.LPAREN); const idx = parseExpr(); eat(TT.COMMA); const listName = eat(TT.VAR).value; eat(TT.RPAREN);
-            return { type: 'ListDeleteStmt', listName, index: idx, line: ln, col: cl };
+            eat(TT.LPAREN); const idx = parseExpr(); eat(TT.COMMA); const { value: listName, span: listSpan } = eatVarWithSpan(); eat(TT.RPAREN);
+            return { type: 'ListDeleteStmt', listName, listSpan, index: idx, line: ln, col: cl };
         }
         if (v === 'listInsert') {
-            eat(TT.LPAREN); const item = parseExpr(); eat(TT.COMMA); const idx = parseExpr(); eat(TT.COMMA); const listName = eat(TT.VAR).value; eat(TT.RPAREN);
-            return { type: 'ListInsertStmt', listName, item, index: idx, line: ln, col: cl };
+            eat(TT.LPAREN); const item = parseExpr(); eat(TT.COMMA); const idx = parseExpr(); eat(TT.COMMA); const { value: listName, span: listSpan } = eatVarWithSpan(); eat(TT.RPAREN);
+            return { type: 'ListInsertStmt', listName, listSpan, item, index: idx, line: ln, col: cl };
         }
         if (v === 'listReplace') {
-            eat(TT.LPAREN); const idx = parseExpr(); eat(TT.COMMA); const listName = eat(TT.VAR).value; eat(TT.COMMA); const item = parseExpr(); eat(TT.RPAREN);
-            return { type: 'ListReplaceStmt', listName, index: idx, item, line: ln, col: cl };
+            eat(TT.LPAREN); const idx = parseExpr(); eat(TT.COMMA); const { value: listName, span: listSpan } = eatVarWithSpan(); eat(TT.COMMA); const item = parseExpr(); eat(TT.RPAREN);
+            return { type: 'ListReplaceStmt', listName, listSpan, index: idx, item, line: ln, col: cl };
         }
 
         // Ergonomic aliases
@@ -1156,28 +1162,28 @@ export function parse(tokens, opts = {}) {
         if (v === 'sendAndWait') { const [m] = args1(ln,cl); return { type: 'BroadcastWaitStmt', msg: m, line: ln, col: cl }; }
         // List aliases: append/push → listAdd, remove → listDelete, insert → listInsert, replace → listReplace, clear/pop → listDeleteAll
         if (v === 'append' || v === 'push') {
-            eat(TT.LPAREN); const listName = eat(TT.VAR).value; eat(TT.COMMA); const item = parseExpr(); eat(TT.RPAREN);
-            return { type: 'ListAddStmt', listName, item, line: ln, col: cl };
+            eat(TT.LPAREN); const { value: listName, span: listSpan } = eatVarWithSpan(); eat(TT.COMMA); const item = parseExpr(); eat(TT.RPAREN);
+            return { type: 'ListAddStmt', listName, listSpan, item, line: ln, col: cl };
         }
         if (v === 'remove') {
-            eat(TT.LPAREN); const listName = eat(TT.VAR).value; eat(TT.COMMA); const idx = parseExpr(); eat(TT.RPAREN);
-            return { type: 'ListDeleteStmt', listName, index: idx, line: ln, col: cl };
+            eat(TT.LPAREN); const { value: listName, span: listSpan } = eatVarWithSpan(); eat(TT.COMMA); const idx = parseExpr(); eat(TT.RPAREN);
+            return { type: 'ListDeleteStmt', listName, listSpan, index: idx, line: ln, col: cl };
         }
         if (v === 'insert') {
-            eat(TT.LPAREN); const listName = eat(TT.VAR).value; eat(TT.COMMA); const idx = parseExpr(); eat(TT.COMMA); const item = parseExpr(); eat(TT.RPAREN);
-            return { type: 'ListInsertStmt', listName, item, index: idx, line: ln, col: cl };
+            eat(TT.LPAREN); const { value: listName, span: listSpan } = eatVarWithSpan(); eat(TT.COMMA); const idx = parseExpr(); eat(TT.COMMA); const item = parseExpr(); eat(TT.RPAREN);
+            return { type: 'ListInsertStmt', listName, listSpan, item, index: idx, line: ln, col: cl };
         }
         if (v === 'replace') {
-            eat(TT.LPAREN); const listName = eat(TT.VAR).value; eat(TT.COMMA); const idx = parseExpr(); eat(TT.COMMA); const item = parseExpr(); eat(TT.RPAREN);
-            return { type: 'ListReplaceStmt', listName, index: idx, item, line: ln, col: cl };
+            eat(TT.LPAREN); const { value: listName, span: listSpan } = eatVarWithSpan(); eat(TT.COMMA); const idx = parseExpr(); eat(TT.COMMA); const item = parseExpr(); eat(TT.RPAREN);
+            return { type: 'ListReplaceStmt', listName, listSpan, index: idx, item, line: ln, col: cl };
         }
         if (v === 'clear' || v === 'pop') {
-            eat(TT.LPAREN); const listName = eat(TT.VAR).value; eat(TT.RPAREN);
-            return { type: 'ListDeleteAllStmt', listName, line: ln, col: cl };
+            eat(TT.LPAREN); const { value: listName, span: listSpan } = eatVarWithSpan(); eat(TT.RPAREN);
+            return { type: 'ListDeleteAllStmt', listName, listSpan, line: ln, col: cl };
         }
         if (v === 'populateList' || v === 'populateArray') {
             eat(TT.LPAREN);
-            const listName = eat(TT.VAR).value;
+            const { value: listName, span: listSpan } = eatVarWithSpan();
             eat(TT.COMMA);
             const valueExpr = parseExpr();
             eat(TT.COMMA);
@@ -1191,7 +1197,7 @@ export function parse(tokens, opts = {}) {
             eat(TT.COMMA);
             const clearFirst = parseExpr();
             eat(TT.RPAREN);
-            return { type: 'PopulateListStmt', listName, valueExpr, countExpr, clearFirst, line: ln, col: cl };
+            return { type: 'PopulateListStmt', listName, listSpan, valueExpr, countExpr, clearFirst, line: ln, col: cl };
         }
 
         // Scratchroutine control
@@ -1334,7 +1340,7 @@ export function parse(tokens, opts = {}) {
     function parsePrimaryExpr() {
         const t = peek();
         if (check(TT.NUM)) { pos++; return { type: 'Num', value: t.value, line: t.line, col: t.col }; }
-        if (check(TT.STR)) { pos++; return { type: 'Str', value: t.value, line: t.line, col: t.col }; }
+        if (check(TT.STR)) { pos++; return { type: 'Str', value: t.value, line: t.line, col: t.col, endLine: t.endLine, endCol: t.endCol }; }
         if (check(TT.ISTR)) {
             pos++;
             // Interpolated string: parse each {expr} fragment, fold into joins
@@ -1445,8 +1451,8 @@ export function lint(ast) {
         return false;
     }
 
-    function warn(stmt, msg) {
-        items.push({ line: stmt.line || 1, col: stmt.col || 1, message: msg });
+    function warn(stmt, msg, category) {
+        items.push({ line: stmt.line || 1, col: stmt.col || 1, message: msg, category });
     }
 
     function lintBody(stmts) {
@@ -1454,7 +1460,7 @@ export function lint(ast) {
         let dead = false;
         for (const stmt of stmts) {
             if (dead) {
-                warn(stmt, 'Unreachable code — this statement can never execute after a terminator (stopAll, stopThis, forever)');
+                warn(stmt, 'Unreachable code', 'Unreachable');
                 lintChildren(stmt); // still recurse so nested issues are reported
                 continue;
             }
@@ -1486,7 +1492,7 @@ export function lint(ast) {
                 if (stmt.mode === 'unsafe') {
                     for (const s of stmt.statements) {
                         if (!ASM_OPCODES[s.opcode]) {
-                            warn(s, `__asm__ volatile unsafe: opcode \`${s.opcode}\` is not in the known schema table — argument wiring is a best-effort guess and may not execute correctly. It might even crash certain clients or cause a loading loop.`);
+                            warn(s, `Unknown opcode \`${s.opcode}\` — inputs are wired by guesswork`);
                         }
                     }
                 }
@@ -1496,12 +1502,12 @@ export function lint(ast) {
 
     for (const block of (ast.blocks || [])) {
         if (block.type === 'OrphanedBlock') {
-            warn(block, 'Orphaned block — no hat event to trigger it. Wrap with `on flag { }`, `on click { }`, etc.');
+            warn(block, 'Never runs — not under a hat block', 'Orphaned');
             lintChildren(block);
         } else if (block.type === 'StructDecl' || block.type === 'EnumDecl') {
             // compile-time declarations — not executable
         } else if (block.type !== 'OnBlock' && block.type !== 'DefineBlock' && block.type !== 'ScratchroutineStmt') {
-            warn(block, 'Orphaned statement — not inside an `on` or `define` block, will never run');
+            warn(block, 'Never runs — not inside `on` or `define`', 'Orphaned');
             lintChildren(block);
         } else {
             lintChildren(block);
@@ -1538,9 +1544,9 @@ export function typeCheckDiagnostics(ast, spriteName) {
                 const obj = node.object;
                 if (obj && obj.type === 'Var') {
                     if (varNames.has(obj.name)) {
-                        err(obj, `\`[${obj.name}]\` is a variable, not a list — \`.${node.method}()\` requires a list`);
+                        err(obj, `\`.${node.method}()\` needs a list; \`[${obj.name}]\` is a variable`);
                     } else if (!listNames.has(obj.name)) {
-                        err(obj, `\`[${obj.name}]\` is not defined — create a list in Scratch first`);
+                        err(obj, `\`[${obj.name}]\` isn't a list in Scratch`);
                     }
                 }
                 for (const a of (node.args || [])) checkExpr(a);
@@ -1576,14 +1582,14 @@ export function typeCheckDiagnostics(ast, spriteName) {
                 const firstArg = stmt.args && stmt.args[0];
                 if (LIST_BUILTINS.has(fn) && firstArg && firstArg.type === 'Var') {
                     if (varNames.has(firstArg.name)) {
-                        err(firstArg, `\`${fn}\` expects a list — [${firstArg.name}] is a variable`);
+                        err(firstArg, `\`${fn}\` needs a list; \`[${firstArg.name}]\` is a variable`);
                     } else if (!listNames.has(firstArg.name)) {
-                        err(firstArg, `\`${fn}\`: [${firstArg.name}] is not defined as a list`);
+                        err(firstArg, `\`[${firstArg.name}]\` isn't a list in Scratch`);
                     }
                 }
                 if (VAR_BUILTINS.has(fn) && firstArg && firstArg.type === 'Var') {
                     if (listNames.has(firstArg.name)) {
-                        err(firstArg, `\`${fn}\` expects a variable — [${firstArg.name}] is a list (use showList / hideList instead)`);
+                        err(firstArg, `\`${fn}\` needs a variable; \`[${firstArg.name}]\` is a list`);
                     }
                 }
                 for (const a of (stmt.args || [])) checkExpr(a);
@@ -1592,25 +1598,25 @@ export function typeCheckDiagnostics(ast, spriteName) {
             case 'SetVarStmt':
             case 'ChangeVarStmt': {
                 if (listNames.has(stmt.varName)) {
-                    err(stmt, `\`[${stmt.varName}]\` is a list — use list functions (listAdd, listReplace…) instead of set/change`);
+                    err(stmt, `\`[${stmt.varName}]\` is a list — use list functions`);
                 }
                 checkExpr(stmt.value);
                 break;
             }
             case 'PyForStmt': {
                 if (stmt.listName && varNames.has(stmt.listName)) {
-                    err(stmt, `\`pyfor … in [${stmt.listName}]\`: [${stmt.listName}] is a variable, not a list`);
+                    err(stmt, `\`pyfor\` needs a list; \`[${stmt.listName}]\` is a variable`);
                 } else if (stmt.listName && !listNames.has(stmt.listName)) {
-                    err(stmt, `\`pyfor … in [${stmt.listName}]\`: [${stmt.listName}] is not defined — create a list in Scratch first`);
+                    err(stmt, `\`[${stmt.listName}]\` isn't a list in Scratch`);
                 }
                 for (const s of (stmt.body || [])) checkStmt(s);
                 break;
             }
             case 'PopulateListStmt': {
                 if (varNames.has(stmt.listName)) {
-                    err(stmt, `\`populateList\` expects a list — [${stmt.listName}] is a variable`);
+                    err(stmt, `\`populateList\` needs a list; \`[${stmt.listName}]\` is a variable`);
                 } else if (!listNames.has(stmt.listName)) {
-                    err(stmt, `\`populateList\`: [${stmt.listName}] is not defined — create a list in Scratch first`);
+                    err(stmt, `\`[${stmt.listName}]\` isn't a list in Scratch`);
                 }
                 checkExpr(stmt.valueExpr);
                 checkExpr(stmt.countExpr);
@@ -1713,7 +1719,7 @@ function scanPointerUse(ast, vm, spriteName) {
     return use;
 }
 
-export function compileSource(source, vm, spriteName, { embedSource = false, embedUntilLine = Infinity, optimize = true } = {}) {
+export function compileSource(source, vm, spriteName, { embedSource = false, embedUntilLine = Infinity, optimize = true, projectFacts = null } = {}) {
     const tokens = tokenize(source);
     const { ast, errors: parseErrors } = parse(tokens);
     if (parseErrors.length > 0) return { blocks: {}, errors: parseErrors };
@@ -1735,7 +1741,8 @@ export function compileSource(source, vm, spriteName, { embedSource = false, emb
     if (ptrUse.ptr || helperInjected) ast._usesHeap = true;
 
     const heapVars = helperInjected ? PTR_TEMP_VARS : ast._usesHeap ? ['__heap_free'] : [];
-    const compileWith = (passes) => compileWithSLVM(ast, vm, spriteName, { passes, heapVars, heapStaticSlots: HEAP_STATIC_SLOTS });
+    const facts = optimize && projectFacts?.text === source ? projectFacts : null;
+    const compileWith = (passes) => compileWithSLVM(ast, vm, spriteName, { passes, heapVars, heapStaticSlots: HEAP_STATIC_SLOTS, facts });
     let compiled = compileWith(optimize ? ['O1'] : ['legalize']);
     let optimizerFallback = null;
     if (optimize && compiled.errors.some(error => error.message.startsWith('SLVM:'))) {
@@ -1745,5 +1752,5 @@ export function compileSource(source, vm, spriteName, { embedSource = false, emb
     if (compiled.errors.length > 0) return compiled;
     const declSpans = ast.blocks.filter(block => block.type === 'EnumDecl' || block.type === 'StructDecl').map(block => block.span);
     const comments = buildComments({ tags: compiled.tags, blocks: compiled.blocks, source, embedSource, embedUntilLine, declSpans });
-    return { ...compiled, comments, optimizerFallback };
+    return { ...compiled, comments, optimizerFallback, usedProjectFacts: !!facts };
 }

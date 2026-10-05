@@ -122,10 +122,10 @@ export function analyze(src, spriteName) {
         return sym;
     }
 
-    function addOcc(sym, span, isBracketed) {
+    function addOcc(sym, span, isBracketed, access = 'read') {
         if (!sym || !span) return;
-        sym.refs.push(span);
-        occurrences.push({ ...span, symbol: sym, isDef: false, isBracketed: !!isBracketed });
+        sym.refs.push({ ...span, access });
+        occurrences.push({ ...span, symbol: sym, isDef: false, isBracketed: !!isBracketed, access });
     }
 
     // Pass 1: document-scope declarations
@@ -184,15 +184,20 @@ export function analyze(src, spriteName) {
 
     // Resolve a [var]-style name, mirroring codegen's resolveVar precedence:
     // loop var / routine param first, then struct fields, then project vars.
-    function resolveVarName(name, span, ctx) {
+    function resolveVarName(name, span, ctx, access = 'read') {
         const local = lookupLocal(name);
-        if (local) { addOcc(local, span, true); return local; }
+        if (local) { addOcc(local, span, true, access); return local; }
         if (name.includes('.')) {
             const key = 'structField:' + name;
-            if (byKey.has(key)) { addOcc(byKey.get(key), span, true); return byKey.get(key); }
+            if (byKey.has(key)) { addOcc(byKey.get(key), span, true, access); return byKey.get(key); }
         }
-        if (projectLists.has(name)) { addOcc(projectSymbol(name, true), span, true); return byKey.get('projectList:' + name); }
-        if (projectVars.has(name))  { addOcc(projectSymbol(name, false), span, true); return byKey.get('projectVar:' + name); }
+        const preferList = ctx === 'list';
+        const isList = projectLists.has(name) && (preferList || !projectVars.has(name));
+        if (isList || projectVars.has(name)) {
+            const sym = projectSymbol(name, isList);
+            addOcc(sym, span, true, access);
+            return sym;
+        }
         if (name !== '_err_' && projectIndexed) {
             unresolved.push({ name, kindGuess: ctx || 'variable', ...span });
         }
@@ -275,7 +280,7 @@ export function analyze(src, spriteName) {
             case 'TernaryExpr': visitExpr(e.cond); visitExpr(e.then); visitExpr(e.alt); return;
             case 'DerefExpr': visitExpr(e.addr); return;
             case 'AddrExpr':
-                resolveVarName(e.varName, e.varSpan || spanOf(e), 'variable');
+                resolveVarName(e.varName, e.varSpan || spanOf(e), 'variable', 'readwrite');
                 return;
             default: return; // Num / Str / Hex / Bool / synthetic
         }
@@ -287,14 +292,25 @@ export function analyze(src, spriteName) {
             case 'AsmStmt':
                 return; // raw opcodes — out of scope for the symbol table
             case 'SetVarStmt': case 'ChangeVarStmt':
-                if (stmt.varSpan) resolveVarName(stmt.varName, stmt.varSpan, 'variable');
                 visitExpr(stmt.value);
+                if (stmt.varSpan) resolveVarName(stmt.varName, stmt.varSpan, 'variable', stmt.type === 'SetVarStmt' ? 'write' : 'readwrite');
                 return;
             case 'MemberCallStmt':
                 if (stmt.object && stmt.object.type === 'Var') {
-                    resolveVarName(stmt.object.name, spanOf(stmt.object), 'list');
+                    resolveVarName(stmt.object.name, spanOf(stmt.object), 'list', stmt.method === 'sort' ? 'readwrite' : 'read');
                 }
                 (stmt.args || []).forEach(visitExpr);
+                return;
+            case 'ListAddStmt': case 'ListDeleteStmt': case 'ListInsertStmt': case 'ListReplaceStmt':
+            case 'ListDeleteAllStmt': case 'PopulateListStmt':
+                [stmt.item, stmt.index, stmt.valueExpr, stmt.countExpr, stmt.clearFirst].forEach(visitExpr);
+                if (stmt.listSpan) resolveVarName(stmt.listName, stmt.listSpan, 'list', 'write');
+                return;
+            case 'ShowVarStmt': case 'HideVarStmt':
+                if (stmt.nameSpan) resolveVarName(stmt.name, stmt.nameSpan, 'variable');
+                return;
+            case 'ShowListStmt': case 'HideListStmt':
+                if (stmt.nameSpan) resolveVarName(stmt.name, stmt.nameSpan, 'list');
                 return;
             case 'CallStmt':
                 callTarget(stmt.name, spanOf(stmt), false);
@@ -439,36 +455,29 @@ export function semanticDiagnostics(analysis) {
                      message, category: 'Semantic' });
 
     for (const d of duplicates) {
-        push(d.line, d.col, d.len, `Semantic: duplicate ${d.kind} \`${d.name}\` — already declared in this file`);
+        push(d.line, d.col, d.len, `\`${d.name}\` is already declared`);
     }
 
     const defineNames  = [...byKey.keys()].filter(k => k.startsWith('define:')).map(k => k.slice(7));
     const routineNames = [...byKey.keys()].filter(k => k.startsWith('routine:')).map(k => k.slice(8));
     const enumNames    = [...byKey.keys()].filter(k => k.startsWith('enumMember:')).map(k => k.slice(11));
 
+    const didYouMean = similar => similar.length ? ` — did you mean ${similar.map(n => `\`${n}\``).join(', ')}?` : '';
     for (const u of unresolved) {
         const len = Math.max((u.endCol || u.col + 1) - u.col, u.name.length, 1);
         if (u.kindGuess === 'routine') {
-            const similar = fuzzyMatch(u.name, routineNames);
-            push(u.line, u.col, len, `Semantic: no scratchroutine named \`${u.name}\`.` +
-                (similar.length ? ` Did you mean: ${similar.join(', ')}?` : ''));
+            push(u.line, u.col, len, `Unknown scratchroutine \`${u.name}\`` + didYouMean(fuzzyMatch(u.name, routineNames)));
         } else if (u.kindGuess === 'call') {
-            const similar = fuzzyMatch(u.name, [...defineNames, ...routineNames, ...STMT_BUILTINS]);
-            push(u.line, u.col, len, `Semantic: unknown block \`${u.name}(...)\` — not a built-in, ` +
-                `\`define\`, or \`scratchroutine\`.` +
-                (similar.length ? ` Did you mean: ${similar.join(', ')}?` : ''));
+            push(u.line, u.col, len, `Unknown block \`${u.name}\`` +
+                didYouMean(fuzzyMatch(u.name, [...defineNames, ...routineNames, ...STMT_BUILTINS])));
         } else if (u.kindGuess === 'exprFn') {
-            const similar = fuzzyMatch(u.name, [...EXPR_FN_BUILTINS]);
-            push(u.line, u.col, len, `Semantic: unknown function \`${u.name}(...)\` in expression.` +
-                (similar.length ? ` Did you mean: ${similar.join(', ')}?` : ''));
+            push(u.line, u.col, len, `Unknown function \`${u.name}\`` + didYouMean(fuzzyMatch(u.name, [...EXPR_FN_BUILTINS])));
         } else if (u.kindGuess === 'reporter') {
             const similar = fuzzyMatch(u.name, [...enumNames, ...REPORTER_BUILTINS]);
-            push(u.line, u.col, len, `Semantic: unknown identifier \`${u.name}\` — not a reporter or ` +
-                `enum constant. Variables need brackets: \`[${u.name}]\`.` +
-                (similar.length ? ` Did you mean: ${similar.join(', ')}?` : ''));
+            push(u.line, u.col, len, `Unknown name \`${u.name}\`` +
+                (similar.length ? didYouMean(similar) : ` — variables need brackets: \`[${u.name}]\``));
         } else if (u.kindGuess === 'list' || u.kindGuess === 'variable') {
-            push(u.line, u.col, len, `Semantic: \`[${u.name}]\` is not defined — create it in Scratch ` +
-                `first, or check the spelling`);
+            push(u.line, u.col, len, `\`[${u.name}]\` doesn't exist in Scratch`);
         }
     }
 
@@ -478,7 +487,7 @@ export function semanticDiagnostics(analysis) {
         const got  = (node.args || []).length;
         if (want !== got) {
             push(node.line, node.col, (node.name || '').length,
-                `Semantic: \`${node.name}\` takes ${want} argument(s) (${(sym.meta.params || []).join(', ') || 'none'}) — got ${got}`);
+                `\`${node.name}\` takes ${want} argument${want === 1 ? '' : 's'}, got ${got}`);
         }
     }
     (function walk(n) {
@@ -494,7 +503,7 @@ export function semanticDiagnostics(analysis) {
                 arity(n, d, 'define');
                 if (!d.meta.returns) {
                     push(n.line, n.col, (n.name || '').length,
-                        `Semantic: \`${n.name}\` has no return value — declare it \`define ${n.name}(...) returns { }\` to use it in an expression`);
+                        `\`${n.name}\` doesn't return a value — add \`returns\` to its define`);
                 }
             }
         } else if (n.type === 'LaunchStmt' || n.type === 'AwaitStmt') {
@@ -520,7 +529,7 @@ export function semanticDiagnostics(analysis) {
         })(block.body);
         if (!hasReturn) {
             push(block.line, block.col, block.name.length,
-                `Semantic: \`${block.name}\` is declared \`returns\` but has no \`return <value>\` statement`);
+                `\`${block.name}\` is \`returns\` but never returns a value`);
         }
     }
 
@@ -529,11 +538,10 @@ export function semanticDiagnostics(analysis) {
         if ((sym.kind !== 'param' && sym.kind !== 'loopVar') || !sym.defRange) continue;
         if (analysis.projectVars.has(sym.name) || analysis.projectLists.has(sym.name)) {
             push(sym.defRange.line, sym.defRange.col, sym.name.length,
-                `Semantic: ${sym.kind === 'param' ? 'parameter' : 'loop variable'} \`${sym.name}\` shadows ` +
-                `the Scratch project variable of the same name — the local one wins inside this scope`);
+                `\`${sym.name}\` shadows the Scratch variable \`[${sym.name}]\``);
         } else if (byKey.has('enumMember:' + sym.name)) {
             push(sym.defRange.line, sym.defRange.col, sym.name.length,
-                `Semantic: \`${sym.name}\` shadows the enum constant of the same name`);
+                `\`${sym.name}\` shadows the enum constant`);
         }
     }
 
@@ -552,18 +560,8 @@ export function smellDiagnostics(analysis) {
     // Unused defines / routines / params / loop vars
     for (const sym of symbols) {
         if (!sym.defRange || sym.refs.length > 0) continue;
-        if (sym.kind === 'define')
-            push(sym.defRange.line, sym.defRange.col, sym.name.length,
-                `Smell: custom block \`${sym.name}\` is never called`);
-        else if (sym.kind === 'routine')
-            push(sym.defRange.line, sym.defRange.col, sym.name.length,
-                `Smell: scratchroutine \`${sym.name}\` is never launched, awaited, or cancelled`);
-        else if (sym.kind === 'param')
-            push(sym.defRange.line, sym.defRange.col, sym.name.length,
-                `Smell: parameter \`${sym.name}\` is never used in the body`);
-        else if (sym.kind === 'loopVar')
-            push(sym.defRange.line, sym.defRange.col, sym.name.length,
-                `Smell: loop variable \`${sym.name}\` is never used in the loop body`);
+        const unused = { define: 'is never called', routine: 'is never launched', param: 'is unused', loopVar: 'is unused' }[sym.kind];
+        if (unused) push(sym.defRange.line, sym.defRange.col, sym.name.length, `\`${sym.name}\` ${unused}`);
     }
 
     function subtreeHasBlocking(stmts) {
@@ -582,14 +580,6 @@ export function smellDiagnostics(analysis) {
     }
 
     const numCounts = new Map(); // value → [{line,col}]
-    let broadcasts = [];         // {msg, line, col}
-    const receives = new Set();  // messages with an `on receive` hat
-
-    for (const block of (ast.blocks || [])) {
-        if (block.type === 'OnBlock' && block.hat && block.hat.event === 'receive') {
-            receives.add(block.hat.msg);
-        }
-    }
 
     function checkBody(stmts, depth) {
         for (const stmt of (stmts || [])) checkStmt(stmt, depth);
@@ -605,7 +595,7 @@ export function smellDiagnostics(analysis) {
         if (stmt.type === 'SetVarStmt') {
             if (lastSet && lastSet.varName === stmt.varName && !exprReadsVar(stmt.value, stmt.varName)) {
                 push(lastSet.stmt.line, lastSet.stmt.col, 3,
-                    `Smell: this \`set [${stmt.varName}]\` is immediately overwritten on line ${stmt.line} — the first value is never read`);
+                    `Overwritten on line ${stmt.line} before it's read`);
             }
             lastSet = { varName: stmt.varName, stmt };
         } else {
@@ -614,34 +604,27 @@ export function smellDiagnostics(analysis) {
 
         collectNums(stmt);
 
-        if (stmt.type === 'BroadcastStmt' || stmt.type === 'BroadcastWaitStmt') {
-            const m = stmt.msg;
-            if (m && m.type === 'Str') broadcasts.push({ msg: m.value, line: stmt.line, col: stmt.col });
-        }
-
         const nested = depth + (isNesting(stmt.type) ? 1 : 0);
         if (isNesting(stmt.type) && nested > 4) {
             push(stmt.line, stmt.col, 4,
-                `Smell: control flow nested ${nested} levels deep — consider extracting a \`define\` or \`scratchroutine\``);
+                `Nested ${nested} levels deep — extract a \`define\``);
         }
 
         if ((stmt.type === 'ForeverStmt' || stmt.type === 'RepeatUntilStmt')) {
             const body = stmt.body || [];
             if (body.length === 0) {
-                push(stmt.line, stmt.col, 7, `Smell: empty \`${stmt.type === 'ForeverStmt' ? 'forever' : 'repeat until'}\` body`);
+                push(stmt.line, stmt.col, 7, `Empty \`${stmt.type === 'ForeverStmt' ? 'forever' : 'repeat until'}\``);
             } else if (stmt.type === 'ForeverStmt' &&
                        body.every(s => s.type === 'IfStmt') && !subtreeHasBlocking(body)) {
-                push(stmt.line, stmt.col, 7,
-                    `Smell: busy-wait — \`forever\` polls conditions with no \`wait\`/\`waitUntil\`; ` +
-                    `\`wait until (...)\` is cheaper and clearer`);
+                push(stmt.line, stmt.col, 7, `Busy-wait — use \`wait until\``);
             }
         }
         if ((stmt.type === 'RepeatStmt' || stmt.type === 'WhileStmt' || stmt.type === 'ForStmt' ||
              stmt.type === 'PyForStmt') && (stmt.body || []).length === 0) {
-            push(stmt.line, stmt.col, 6, `Smell: empty loop body`);
+            push(stmt.line, stmt.col, 6, `Empty loop`);
         }
         if (stmt.type === 'IfStmt' && (stmt.then || []).length === 0 && !stmt.alt) {
-            push(stmt.line, stmt.col, 2, `Smell: empty \`if\` body`);
+            push(stmt.line, stmt.col, 2, `Empty \`if\``);
         }
 
         // Recurse into bodies with a fresh consecutive-set tracker per body
@@ -707,14 +690,7 @@ export function smellDiagnostics(analysis) {
         if (sites.length >= 3) {
             const first = sites[0];
             push(first.line, first.col, String(value).length,
-                `Smell: magic number ${value} appears ${sites.length} times — consider an \`enum { NAME = ${value} }\` constant`);
-        }
-    }
-
-    for (const b of broadcasts) {
-        if (!receives.has(b.msg)) {
-            push(b.line, b.col, 9,
-                `Smell: broadcast "${b.msg}" has no \`on receive "${b.msg}"\` in this file — fine if another sprite listens, otherwise a typo`);
+                `${value} appears ${sites.length} times — make it an \`enum\` constant`);
         }
     }
 
