@@ -7,8 +7,6 @@ import { expand, mapExpandedError } from "./preprocess.js";
 // so it can be exercised outside the browser. All positions are 1-based
 // (line, col) matching the lexer; `end*` fields are one-past-the-end.
 
-// --- Built-in name sets -------------------------------------------------
-
 // Bare reporters usable without parens (mirrors genReporter + parser whitelist)
 const REPORTER_BUILTINS = new Set([
     'xPos', 'yPos', 'direction', 'size', 'timer', 'answer', 'mouseDown',
@@ -37,8 +35,6 @@ const BLOCKING_STMTS = new Set([
 
 // Literals too common to count as "magic numbers"
 const BORING_NUMBERS = new Set([-1, 0, 1, 2, 10, 100, 180, 360]);
-
-// --- Symbol table --------------------------------------------------------
 
 function mkSymbol(name, kind, defRange, meta) {
     return { name, kind, defRange: defRange || null, refs: [], meta: meta || {} };
@@ -75,8 +71,6 @@ function posInScope(scope, line, col) {
     if (line < scope.startLine || line > scope.endLine) return false;
     return true; // line-granular is enough for this DSL's block style
 }
-
-// --- Core analysis -------------------------------------------------------
 
 export function analyze(src, spriteName) {
     // #include expansion: header declarations are appended after the user's
@@ -403,8 +397,6 @@ export function analyze(src, spriteName) {
     };
 }
 
-// --- Position lookups ----------------------------------------------------
-
 export function symbolAt(analysis, line, col) {
     // binary search would work; linear is fine at userscript scale
     for (const occ of analysis.occurrences) {
@@ -729,8 +721,6 @@ export function smellDiagnostics(analysis) {
     return analysis._expand ? items.map(d => mapExpandedError(analysis._expand, d)) : items;
 }
 
-// --- Semantic tokens ------------------------------------------------------
-
 // Monaco-agnostic list: [{line, col, length, tokenType}] (1-based, single-line)
 const KIND_TO_TOKEN = {
     param: 'parameter',
@@ -760,8 +750,6 @@ export function buildSemanticTokens(analysis) {
     out.sort((a, b) => a.line - b.line || a.col - b.col);
     return out;
 }
-
-// --- Per-model cache -------------------------------------------------------
 
 const cache = new Map(); // uri → {versionId, spriteName, indexRef, analysis}
 
