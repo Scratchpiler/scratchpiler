@@ -2,11 +2,6 @@ import { tokenize, parse, fuzzyMatch, CALL_SIGS } from "./compiler.js";
 import { scratchIndex } from "./scratch-index.js";
 import { expand, mapExpandedError } from "./preprocess.js";
 
-// [A] Semantic analyzer — symbol table, occurrence index, scope-aware lookups,
-// semantic diagnostics and code-smell lints. Pure module: no Monaco imports,
-// so it can be exercised outside the browser. All positions are 1-based
-// (line, col) matching the lexer; `end*` fields are one-past-the-end.
-
 // Bare reporters usable without parens (mirrors genReporter + parser whitelist)
 const REPORTER_BUILTINS = new Set([
     'xPos', 'yPos', 'direction', 'size', 'timer', 'answer', 'mouseDown',
@@ -34,7 +29,7 @@ const BLOCKING_STMTS = new Set([
 ]);
 
 // Literals too common to count as "magic numbers"
-const BORING_NUMBERS = new Set([-1, 0, 1, 2, 10, 100, 180, 360]);
+const BORING_NUMBERS = new Set([-1, 0, 1, 2, 10, 90, 100, 180, 270, 360]);
 
 function mkSymbol(name, kind, defRange, meta) {
     return { name, kind, defRange: defRange || null, refs: [], meta: meta || {} };
@@ -445,8 +440,6 @@ export function visibleSymbols(analysis, line, col) {
     return out;
 }
 
-// --- Semantic diagnostics (category: "Semantic") --------------------------
-
 export function semanticDiagnostics(analysis) {
     const items = [];
     const { ast, byKey, unresolved, duplicates } = analysis;
@@ -547,8 +540,6 @@ export function semanticDiagnostics(analysis) {
 
     return analysis._expand ? items.map(d => mapExpandedError(analysis._expand, d)) : items;
 }
-
-// --- Code-smell lints (category: "Smell") ---------------------------------
 
 export function smellDiagnostics(analysis) {
     const items = [];
