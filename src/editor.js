@@ -1,4 +1,5 @@
 import { loadSettings } from './settings.js';
+import { OPTIMIZATION_LEVELS, DEFAULT_OPTIMIZATION_LEVEL } from './optimization-levels.js';
 import { LANG_ID, LS_KEY, LS_INJ_KEY } from "./constants.js";
 import { injectedBlockIds } from "./inject-state.js";
 import { acquireVM, scratchIndex, reindex } from "./vm.js";
@@ -678,11 +679,11 @@ export function compileAndInject({ minify = false } = {}) {
     let result;
     try {
         updateSpriteSource(sprite, source);
-        const { facts, reason } = settings.optimize && settings.optimizeProject
+        const { facts, reason } = settings.optimizeLevel > 0 && settings.optimizeProject
             ? projectFactsFor(sprite, (other, text) => injectedSource(other) === text)
             : { facts: null, reason: null };
         if (reason) logToOutput(`Whole-program optimizations skipped: ${reason}`, 'info');
-        result = compileSourceWithHeaders(source, currentVM, sprite, { embedSource: settings.embedSource && !minify, optimize: settings.optimize, projectFacts: facts });
+        result = compileSourceWithHeaders(source, currentVM, sprite, { embedSource: settings.embedSource && !minify, optimize: settings.optimizeLevel, projectFacts: facts });
     } catch (e) {
         console.error('[scratchpiler] compile exception', e);
         logToOutput(`Compiler crashed: ${e.message}`, 'error');
@@ -708,7 +709,7 @@ export function compileAndInject({ minify = false } = {}) {
 
     const blocks = Object.values(result.blocks);
     const scripts = blocks.filter(b => b.topLevel && !b.shadow).length;
-    const message = `Injected ${spriteLabel(sprite)}: ${plural(scripts, 'script')} (${plural(blocks.length, 'block')})${minify ? ', minified' : ''}`;
+    const message = `Injected ${spriteLabel(sprite)}: ${plural(scripts, 'script')} (${plural(blocks.length, 'block')})${minify ? ', minified' : ''}${settings.optimizeLevel === DEFAULT_OPTIMIZATION_LEVEL ? '' : `, optimization ${OPTIMIZATION_LEVELS[settings.optimizeLevel].name.toLowerCase()}`}`;
     lastInjectAt = Date.now();
     recordInjectedSource(sprite, source);
     saveFile({ kind: 'sprite', name: sprite });
@@ -972,6 +973,16 @@ export function compileMenuItems() {
         { text: 'Compile & inject', keys: 'Ctrl Enter', disabled: !!editingHeader, run: () => compileAndInject() },
         { text: 'Compile & inject minified', keys: 'Ctrl Shift Enter', disabled: !!editingHeader, run: () => compileAndInject({ minify: true }) },
         '-',
+        {
+            slider: {
+                label: 'Optimization',
+                stops: OPTIMIZATION_LEVELS.map(({ name }) => name),
+                value: settings.optimizeLevel,
+                describe: level => OPTIMIZATION_LEVELS[level].summary,
+                onChange: level => updateSetting('optimizeLevel', level),
+            },
+        },
+        '-',
         { text: 'Pull code from Scratch', keys: 'Alt Shift P', disabled: !!editingHeader, run: pullFromScratch },
         { text: 'Format document', keys: 'Alt Shift F', run: formatDocument },
     ];
@@ -1001,10 +1012,11 @@ function applySettings() {
     $('sp-setting-minimap').checked = settings.minimap;
     $('sp-setting-autosave').value = settings.autosave;
     $('sp-setting-embed-source').checked = settings.embedSource;
-    $('sp-setting-optimize').checked = settings.optimize;
+    $('sp-setting-optimize-level').value = String(settings.optimizeLevel);
+    $('sp-setting-optimize-level-hint').textContent = OPTIMIZATION_LEVELS[settings.optimizeLevel].summary;
     $('sp-setting-optimize-project').checked = settings.optimizeProject;
-    $('sp-setting-optimize-project').disabled = !settings.optimize;
-    $('sp-setting-optimize-project').closest('.sp-set').classList.toggle('sp-off', !settings.optimize);
+    $('sp-setting-optimize-project').disabled = settings.optimizeLevel === 0;
+    $('sp-setting-optimize-project').closest('.sp-set').classList.toggle('sp-off', settings.optimizeLevel === 0);
     $('sp-setting-lint-project').checked = settings.lintProject;
     $('sp-setting-lint-typecheck').checked = settings.lintTypecheck;
     $('sp-setting-lint-unreachable').checked = settings.lintUnreachable;
@@ -1040,6 +1052,8 @@ export function toggleSetting(key) {
 function setupSettings() {
     $('sp-setting-theme').addEventListener('change', e => updateSetting('theme', e.target.value));
     $('sp-setting-autosave').addEventListener('change', e => updateSetting('autosave', e.target.value));
+    $('sp-setting-optimize-level').innerHTML = OPTIMIZATION_LEVELS.map(({ level, name }) => `<option value="${level}">${name}</option>`).join('');
+    $('sp-setting-optimize-level').addEventListener('change', e => updateSetting('optimizeLevel', Number(e.target.value)));
     const step = d => updateSetting('fontSize', String(Math.min(24, Math.max(10, (parseInt(settings.fontSize, 10) || 14) + d))));
     $('sp-fontsize-down').addEventListener('click', () => step(-1));
     $('sp-fontsize-up').addEventListener('click', () => step(1));
@@ -1048,7 +1062,7 @@ function setupSettings() {
         if (b) updateSetting('tabSize', b.dataset.value);
     });
     const toggles = {
-        'sp-setting-wrap': 'wrap', 'sp-setting-minimap': 'minimap', 'sp-setting-embed-source': 'embedSource', 'sp-setting-optimize': 'optimize',
+        'sp-setting-wrap': 'wrap', 'sp-setting-minimap': 'minimap', 'sp-setting-embed-source': 'embedSource',
         'sp-setting-lint-typecheck': 'lintTypecheck', 'sp-setting-lint-unreachable': 'lintUnreachable',
         'sp-setting-lint-orphaned': 'lintOrphaned', 'sp-setting-lint-semantic': 'lintSemantic', 'sp-setting-lint-smells': 'lintSmells',
         'sp-setting-lint-project': 'lintProject', 'sp-setting-optimize-project': 'optimizeProject',

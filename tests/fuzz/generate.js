@@ -18,6 +18,8 @@ export const DEFAULT_FEATURES = {
     pointers: false,
     weirdLiterals: false,
     warpLoops: false,
+    earlyExits: false,
+    foreverLoops: false,
 };
 
 export function generateProgram(seed, features = DEFAULT_FEATURES) {
@@ -109,8 +111,21 @@ export function generateProgram(seed, features = DEFAULT_FEATURES) {
     function exitLine(ctx) {
         const allowed = [];
         if (ctx.loop && (ctx.loop !== 'for' || features.breakInFor)) allowed.push('break');
-        if (ctx.loop && (ctx.loop !== 'for' || features.continueInFor)) allowed.push('continue');
+        if (ctx.loop && !ctx.noContinue && (ctx.loop !== 'for' || features.continueInFor)) allowed.push('continue');
         return allowed.length ? block(`if ${cond(1, ctx)}`, [pick(allowed)]) : [];
+    }
+
+    function foreverLoop(d, ctx, shape) {
+        const g = `g${fresh++}`;
+        const limit = int(1, 4);
+        const inner = { ...ctx, loop: 'forever' };
+        const exit = shape === 'stop' ? 'stopThis()' : 'break';
+        const guard = block(`if [${g}] > ${limit}`, [exit]);
+        const counter = `change [${g}] by 1`;
+        const body = shape === 'middle'
+            ? [counter, ...stmts(d - 1, { ...inner, noContinue: true }, int(1, 2)), ...guard, ...stmts(d - 1, inner, int(1, 2))]
+            : [...guard, counter, ...stmts(d - 1, inner, int(1, 3))];
+        return [`set [${g}] to 0`, ...block('forever', body)];
     }
 
     function stmt(d, ctx) {
@@ -129,6 +144,7 @@ export function generateProgram(seed, features = DEFAULT_FEATURES) {
             [features.listSugar ? 1 : 0, () => [`set [${v}] to [L].${pick(['sum()', 'min()', 'max()', `count(${val(0, ctx)})`])}`]],
             [features.listSugar && !ctx.fixedList ? 1 : 0, () => [`populateList([L], ${val(1, ctx)}, ${int(0, 3)}, ${pick(['true', 'false', cond(0, ctx)])})`]],
             [ctx.loop ? 2 : 0, () => exitLine(ctx)],
+            [features.earlyExits && ctx.canExit ? 2 : 0, () => block(`if ${cond(1, ctx)}`, [pick(['return', 'stopThis()'])])],
             [features.pointers ? 2 : 0, () => [`set [p] to &[${v}]`]],
             [features.pointers ? 2 : 0, () => [`set *[p] to ${val(1, ctx)}`]],
             [features.pointers ? 2 : 0, () => {
@@ -164,6 +180,7 @@ export function generateProgram(seed, features = DEFAULT_FEATURES) {
                 const inner = nest({ loop: 'for', reads: [...ctx.reads, it], fixedList: true });
                 return block(`pyfor [${it}] in [L]`, stmts(d - 1, inner, int(1, 2)));
             }],
+            [features.foreverLoops ? 2 : 0, () => foreverLoop(d, ctx, pick(['leading', 'middle']))],
             [1, () => {
                 const g = `g${fresh++}`;
                 const inner = nest({ loop: 'do' });
@@ -203,21 +220,24 @@ export function generateProgram(seed, features = DEFAULT_FEATURES) {
         returning.push(name);
     }
     if (chance(0.5)) {
-        const ctx = { reads: VARS, param: 'x', callable: [...returning], plain: [], loop: null };
+        const ctx = { reads: VARS, param: 'x', callable: [...returning], plain: [], loop: null, canExit: true };
         budget -= 4;
         lines.push(...block('define p0(x)', stmts(1, ctx, int(1, 3))), '');
         plain.push('p0');
     }
 
     if (features.warpLoops) {
-        const ctx = { reads: VARS, param: 'x', callable: [...returning], plain: [], loop: null };
+        const ctx = { reads: VARS, param: 'x', callable: [...returning], plain: [], loop: null, canExit: true };
         budget -= 6;
         lines.push(...block('define w0(x) warp', stmts(2, ctx, int(1, 3))), '');
         plain.push('w0');
     }
 
-    const ctx = { reads: VARS, param: null, callable: [...returning], plain: [...plain], loop: null };
+    const ctx = { reads: VARS, param: null, callable: [...returning], plain: [...plain], loop: null, canExit: true };
     const main = ['set [a] to 3', 'set [b] to 5', 'set [c] to 0', 'listDeleteAll([L])', ...stmts(3, ctx, 12), 'say(join([a], join(" ", join([b], join(" ", [c])))))'];
+    if (features.foreverLoops && chance(0.7)) {
+        main.push(...foreverLoop(2, ctx, 'stop'));
+    }
     lines.push(...block('on flag', main));
     return `${lines.join('\n')}\n`;
 }

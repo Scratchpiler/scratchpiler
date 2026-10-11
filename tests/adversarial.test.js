@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { cast } from 'slvm';
 import { compileSource, tokenize, parse, lint } from '../src/compiler.js';
 import { decompile } from '../src/decompiler.js';
-import { loadSettings, DEFAULT_SETTINGS } from '../src/settings.js';
+import { loadSettings, DEFAULT_SETTINGS, SETTINGS_VERSION } from '../src/settings.js';
 import { makeMockVM } from './mock-vm.js';
 import { build, execute, haveVM, runInScratchVM } from './backend-harness.js';
 
@@ -211,7 +211,7 @@ test('code no longer wraps by default, and the old saved default is dropped once
     assert.equal(load({ wrap: true, fontSize: '16' }).wrap, false);
     assert.equal(load({ wrap: true, fontSize: '16' }).fontSize, '16');
     assert.equal(load({ wrap: true, version: 2 }).wrap, true);
-    assert.equal(load({ wrap: false }).version, 2);
+    assert.equal(load({ wrap: false }).version, SETTINGS_VERSION);
 });
 
 test('old backend preferences cannot select the removed compiler', () => {

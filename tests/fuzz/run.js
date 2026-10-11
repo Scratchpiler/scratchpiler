@@ -4,17 +4,18 @@ import { generateProgram, DEFAULT_FEATURES } from './generate.js';
 import { execute, haveVM, visible, projectFactsFor } from '../backend-harness.js';
 import { runOracle, OracleLimit } from './oracle.js';
 
-const USAGE = `usage: node tests/fuzz/run.js [--from N] [--count N] [--out dir] [--feature name ...] [--project-facts]
+const USAGE = `usage: node tests/fuzz/run.js [--from N] [--count N] [--out dir] [--feature name ...] [--project-facts] [--level 0-3]
 
 Generates random Scratchpiler programs, compiles through SLVM, and compares a
 headless scratch-vm execution with the independent source interpreter. Failing
 programs and reports are written to --out. Any failure produces a nonzero exit.
 --project-facts compiles with facts from Scratchpiler's project analysis, so
-loops in the script itself can be unrolled.
+loops in the script itself can be unrolled. --level picks the optimization level
+(default: the compiler's default).
 features: ${Object.keys(DEFAULT_FEATURES).join(', ')}`;
 
 const argv = process.argv.slice(2);
-const opts = { from: 0, count: 100, out: null, features: { ...DEFAULT_FEATURES }, projectFacts: false };
+const opts = { from: 0, count: 100, out: null, features: { ...DEFAULT_FEATURES }, projectFacts: false, level: undefined };
 for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--from') opts.from = Number(argv[++i]);
@@ -22,6 +23,7 @@ for (let i = 0; i < argv.length; i++) {
     else if (a === '--out') opts.out = argv[++i];
     else if (a === '--feature') opts.features[argv[++i]] = true;
     else if (a === '--project-facts') opts.projectFacts = true;
+    else if (a === '--level') opts.level = Number(argv[++i]);
     else { console.log(USAGE); process.exit(a === '-h' || a === '--help' ? 0 : 2); }
 }
 if (!haveVM) {
@@ -59,7 +61,7 @@ for (let seed = opts.from; seed < opts.from + opts.count; seed++) {
     totals.programs++;
     let result;
     try {
-        const compileOptions = opts.projectFacts ? { projectFacts: projectFactsFor(source, PROJECT) } : {};
+        const compileOptions = { ...(opts.level === undefined ? {} : { optimize: opts.level }), ...(opts.projectFacts ? { projectFacts: projectFactsFor(source, PROJECT) } : {}) };
         result = await execute(source, { maxFrames: 2000 }, PROJECT, compileOptions);
     } catch (error) {
         totals.runtimeErrors++;

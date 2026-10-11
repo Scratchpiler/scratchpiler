@@ -4,7 +4,7 @@ import { INTERNAL_VARIABLE_PREFIX } from "./constants.js";
 export const CLOUD_PREFIX = '☁ ';
 const SCRATCH_TYPE = { var: '', list: 'list' };
 
-export const isCompilerVariable = name => name.startsWith('__') || name.startsWith(INTERNAL_VARIABLE_PREFIX);
+export const isCompilerVariable = name => { const text = String(name); return text.startsWith('__') || text.startsWith(INTERNAL_VARIABLE_PREFIX); };
 
 export function stageOf(vm) {
     return vm.runtime.targets.find(t => t.isStage);
@@ -18,7 +18,7 @@ export function targetForSprite(vm, spriteName) {
 function describe(variable, target) {
     return {
         id: variable.id,
-        name: variable.name,
+        name: String(variable.name),
         kind: variable.type === 'list' ? 'list' : 'var',
         value: variable.value,
         isCloud: !!variable.isCloud,

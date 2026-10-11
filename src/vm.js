@@ -90,7 +90,7 @@ export function reindex(vm) {
         const costumes = target.sprite.costumes.map(c => c.name);
         const sounds   = target.sprite.sounds.map(s => s.name);
         const vars = Object.values(target.variables).filter(v => v.type === '' || v.type === 'list').map(v => ({
-            name: v.name, id: v.id, type: v.type === 'list' ? 'list' : 'variable',
+            name: String(v.name), id: v.id, type: v.type === 'list' ? 'list' : 'variable',
         }));
         if (target.isStage) {
             idx.stage.backdrops = costumes;

@@ -290,6 +290,12 @@ export function runOracle(source, { maxSteps = 200000, initialVars = {}, initial
                 else if (node.defaultBody) execBody(node.defaultBody, frame);
                 return;
             }
+            case 'ForeverStmt':
+                while (loopBody(node.body, frame)) tick();
+                return;
+            case 'StopStmt':
+                if (node.option !== 'this script') throw new Error(`oracle: cannot execute stop ${node.option}`);
+                throw new Return('');
             case 'BreakStmt': throw new Break();
             case 'ContinueStmt': throw new Continue();
             case 'ReturnStmt': throw new Return(node.value ? v(node.value) : '');
@@ -337,7 +343,11 @@ export function runOracle(source, { maxSteps = 200000, initialVars = {}, initial
 
     for (const block of ast.blocks) {
         if (block.type !== 'OnBlock' || block.hat.event !== 'flag') continue;
-        execBody(block.body, { params: new Map(), locals: new Map() });
+        try {
+            execBody(block.body, { params: new Map(), locals: new Map() });
+        } catch (e) {
+            if (!(e instanceof Return)) throw e;
+        }
     }
 
     const text = (x) => (Array.isArray(x) ? x.map(String) : String(x));

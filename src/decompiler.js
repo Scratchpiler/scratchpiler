@@ -66,7 +66,9 @@ function* indexProcedureNames(blocks) {
 function fieldVal(block, name) {
     const f = block?.fields?.[name];
     if (!f) return null;
-    return Array.isArray(f) ? f[0] : f.value;
+    const value = Array.isArray(f) ? f[0] : f.value;
+    // Scratch keeps a numeric variable/list name (e.g. "1") as a number
+    return typeof value === 'number' && (name === 'VARIABLE' || name === 'LIST') ? String(value) : value;
 }
 
 // Return the "active" block object for an input (reporter over shadow)
@@ -1176,11 +1178,11 @@ function* decompileSteps(vm, spriteName) {
     }
 
     const B = target.blocks._blocks;
-    variableNames = new Set([stageT, target].filter(Boolean).flatMap(owner => Object.values(owner.variables).map(variable => variable.name)));
+    variableNames = new Set([stageT, target].filter(Boolean).flatMap(owner => Object.values(owner.variables).map(variable => String(variable.name))));
     currentProcedureParams = new Map();
     routineSignatures = new Map();
     for (const variable of Object.values(stageT?.variables ?? {})) {
-        const signature = variable.name.match(/^__sroutine_(.+)_params$/);
+        const signature = String(variable.name).match(/^__sroutine_(.+)_params$/);
         if (signature && variable.type === 'list' && Array.isArray(variable.value)) {
             routineSignatures.set(signature[1], variable.value.map(String));
         }
@@ -1191,8 +1193,8 @@ function* decompileSteps(vm, spriteName) {
         if (!name || routineSignatures.has(name)) continue;
         const prefix = `__sroutine_${name}_`;
         const params = Object.values(stageT?.variables ?? {}).filter(variable => variable.type === ''
-            && variable.name.startsWith(prefix) && !['count', 'cancelled'].includes(variable.name.slice(prefix.length)))
-            .map(variable => variable.name.slice(prefix.length));
+            && String(variable.name).startsWith(prefix) && !['count', 'cancelled'].includes(String(variable.name).slice(prefix.length)))
+            .map(variable => String(variable.name).slice(prefix.length));
         routineSignatures.set(name, params);
     }
     const setup = captureState();

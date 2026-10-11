@@ -118,7 +118,8 @@
                     <div class="sp-set-group">
                         <h3><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></svg>Optimizations</h3>
                         <div class="sp-set-card">
-                        <div class="sp-set"><label for="sp-setting-optimize">Optimize compiled code<small>Inline small blocks, unroll constant loops in warp blocks, fold constants</small></label><span class="sp-switch"><input type="checkbox" id="sp-setting-optimize" /><span></span></span></div>
+                        <div class="sp-set"><label for="sp-setting-optimize-level">Optimization level<small id="sp-setting-optimize-level-hint"></small></label>
+                            <select id="sp-setting-optimize-level"></select></div>
                         <div class="sp-set sp-set-child"><label for="sp-setting-optimize-project">Whole-program optimizations<small>Also unroll loops in scripts that no other script can see or interrupt</small></label><span class="sp-switch"><input type="checkbox" id="sp-setting-optimize-project" /><span></span></span></div>
                         </div>
                     </div>

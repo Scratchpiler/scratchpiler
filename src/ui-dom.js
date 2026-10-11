@@ -99,6 +99,16 @@ let menuAnchor = null;
 let menuItems = [];
 export const isMenuOpen = () => $('sp-menu')?.classList.contains('sp-on');
 
+function sliderHtml({ label, stops, value, describe }, index) {
+    const names = stops.map(name => `<span>${escapeHtml(name)}</span>`).join('');
+    return `<div class="sp-slider" data-slider="${index}">
+        <div class="sp-slider-head"><span>${escapeHtml(label)}</span><b>${escapeHtml(stops[value])}</b></div>
+        <input type="range" min="0" max="${stops.length - 1}" step="1" value="${value}" aria-label="${escapeHtml(label)}" aria-valuetext="${escapeHtml(stops[value])}">
+        <div class="sp-slider-stops" aria-hidden="true">${names}</div>
+        <p>${escapeHtml(describe(value))}</p>
+    </div>`;
+}
+
 export function showMenu(items, { x, y, alignRight = false, anchor = null }) {
     const menu = $('sp-menu');
     closeMenu();
@@ -106,6 +116,7 @@ export function showMenu(items, { x, y, alignRight = false, anchor = null }) {
     menu.innerHTML = menuItems.map((item, i) => {
         if (item === '-') return '<hr>';
         if (item.label) return `<div class="sp-lbl">${escapeHtml(item.label)}</div>`;
+        if (item.slider) return sliderHtml(item.slider, i);
         const cls = item.danger ? ' class="sp-danger"' : '';
         return `<button role="menuitem" data-i="${i}"${cls}${item.disabled ? ' disabled' : ''}><span>${escapeHtml(item.text)}</span>${item.keys ? `<kbd>${escapeHtml(item.keys)}</kbd>` : ''}</button>`;
     }).join('');
@@ -140,11 +151,21 @@ export function setupMenu() {
         closeMenu();
         item.run();
     });
+    menu.addEventListener('input', e => {
+        const row = e.target.closest('.sp-slider');
+        if (!row) return;
+        const { slider } = menuItems[+row.dataset.slider];
+        const value = +e.target.value;
+        row.querySelector('.sp-slider-head b').textContent = slider.stops[value];
+        row.querySelector('p').textContent = slider.describe(value);
+        e.target.setAttribute('aria-valuetext', slider.stops[value]);
+        slider.onChange(value);
+    });
     menu.addEventListener('keydown', e => {
-        const buttons = [...menu.querySelectorAll('button:not(:disabled)')];
-        const i = buttons.indexOf(document.activeElement);
-        if (e.key === 'ArrowDown') { e.preventDefault(); buttons[(i + 1) % buttons.length]?.focus(); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); buttons[(i - 1 + buttons.length) % buttons.length]?.focus(); }
+        const focusable = [...menu.querySelectorAll('button:not(:disabled), input[type=range]')];
+        const i = focusable.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown') { e.preventDefault(); focusable[(i + 1) % focusable.length]?.focus(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); focusable[(i - 1 + focusable.length) % focusable.length]?.focus(); }
     });
     document.addEventListener('mousedown', e => {
         if (!isMenuOpen() || menu.contains(e.target) || menuAnchor?.contains(e.target)) return;

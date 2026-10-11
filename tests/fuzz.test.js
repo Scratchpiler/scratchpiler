@@ -68,3 +68,17 @@ for (const seed of [...Array.from({ length: 100 }, (_, i) => 200000 + i), 200103
         agreesWithOracle(result.runtime, runOracle(source, { initialVars: { p: 0, q: 0 }, initialLists: { L: [] } }));
     });
 }
+
+const STRUCTURE_FEATURES = { ...DEFAULT_FEATURES, recursion: true, continueInFor: true, breakInFor: true, earlyExits: true, foreverLoops: true, warpLoops: true };
+
+for (const level of [2, 3]) {
+    for (let seed = 300000; seed < 300016; seed++) {
+        test(`fuzz seed ${seed} at optimization level ${level}: early exits, break guards and forever loops agree with the reference interpreter`, { skip }, async () => {
+            const source = generateProgram(seed, STRUCTURE_FEATURES);
+            const result = await execute(source, { maxFrames: 2000 }, { lists: ['L'], vars: ['p', 'q'] }, { optimize: level });
+            assert.deepEqual(result.errors, [], source);
+            assert.equal(result.optimizerFallback, null, source);
+            agreesWithOracle(result.runtime, runOracle(source, { initialVars: { p: 0, q: 0 }, initialLists: { L: [] } }));
+        });
+    }
+}

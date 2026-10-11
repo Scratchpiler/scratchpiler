@@ -42,3 +42,23 @@ for (const [label, promote] of [['a promoted variable', true], ['a plain variabl
         assert.deepEqual(runtime.said, ['7']);
     });
 }
+
+test('a variable Scratch loaded with a numeric name (sb3 stores 1 as a number) does not break decompiling or the variable list', async () => {
+    const { reindex, scratchIndex } = await import('../src/vm.js');
+    const { isCompilerVariable, variablesInScope } = await import('../src/variables.js');
+    const vm = makeMockVM({ vars: ['score'] });
+    const stage = vm.runtime.targets[0], sprite = vm.runtime.targets[1];
+    stage.variables.numeric = { id: 'numeric', name: 1, type: '', value: 0 };
+    stage.variables.numericList = { id: 'numericList', name: 2, type: 'list', value: [] };
+    sprite.blocks._blocks = {
+        hat: { id: 'hat', opcode: 'event_whenflagclicked', next: 'set', topLevel: true, shadow: false, fields: {}, inputs: {}, x: 0, y: 0 },
+        set: { id: 'set', opcode: 'data_setvariableto', parent: 'hat', next: null, topLevel: false, shadow: false, fields: { VARIABLE: { name: 'VARIABLE', value: 1, id: 'numeric' } },
+            inputs: { VALUE: { name: 'VALUE', block: 'n', shadow: 'n' } } },
+        n: { id: 'n', opcode: 'math_number', parent: 'set', next: null, topLevel: false, shadow: true, fields: { NUM: { name: 'NUM', value: '5' } }, inputs: {} },
+    };
+    assert.match(decompile(vm, 'Sprite1'), /set \[1\] to 5/);
+    reindex(vm);
+    assert.ok(scratchIndex.globalVariables.every(v => typeof v.name === 'string'));
+    assert.ok(variablesInScope(vm, 'Sprite1').global.every(v => typeof v.name === 'string'));
+    assert.equal(isCompilerVariable(1), false);
+});

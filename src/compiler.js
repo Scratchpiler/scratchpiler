@@ -2,6 +2,7 @@ import { KEYWORDS } from "./constants.js";
 import { scratchIndex } from "./scratch-index.js";
 import { ASM_OPCODES } from "./asm-opcodes.js";
 import { compileWithSLVM } from "./slvm-backend.js";
+import { optimizationLevel, pipelineFor } from "./optimization-levels.js";
 import { buildComments } from "./metadata.js";
 
 // [L] DSL Compiler
@@ -1702,9 +1703,9 @@ function scanPointerUse(ast, vm, spriteName) {
     const sprite = vm.runtime.targets.find(t => spriteName === '__stage__' ? t.isStage : !t.isStage && t.sprite.name === spriteName);
     const stage = vm.runtime.targets.find(t => t.isStage);
     const scalars = new Set([sprite, stage].filter(Boolean).flatMap(t =>
-        Object.values(t.variables).filter(v => v.type === '').map(v => v.name)));
+        Object.values(t.variables).filter(v => v.type === '').map(v => String(v.name))));
     const lists = new Set([sprite, stage].filter(Boolean).flatMap(t =>
-        Object.values(t.variables).filter(v => v.type === 'list').map(v => v.name)));
+        Object.values(t.variables).filter(v => v.type === 'list').map(v => String(v.name))));
     (function walk(n) {
         if (!n || typeof n !== 'object') return;
         if (Array.isArray(n)) { n.forEach(walk); return; }
@@ -1741,11 +1742,12 @@ export function compileSource(source, vm, spriteName, { embedSource = false, emb
     if (ptrUse.ptr || helperInjected) ast._usesHeap = true;
 
     const heapVars = helperInjected ? PTR_TEMP_VARS : ast._usesHeap ? ['__heap_free'] : [];
-    const facts = optimize && projectFacts?.text === source ? projectFacts : null;
+    const level = optimizationLevel(optimize);
+    const facts = level > 0 && projectFacts?.text === source ? projectFacts : null;
     const compileWith = (passes) => compileWithSLVM(ast, vm, spriteName, { passes, heapVars, heapStaticSlots: HEAP_STATIC_SLOTS, facts });
-    let compiled = compileWith(optimize ? ['O1'] : ['legalize']);
+    let compiled = compileWith(pipelineFor(level));
     let optimizerFallback = null;
-    if (optimize && compiled.errors.some(error => error.message.startsWith('SLVM:'))) {
+    if (level > 0 && compiled.errors.some(error => error.message.startsWith('SLVM:'))) {
         optimizerFallback = compiled.errors[0].message;
         compiled = compileWith(['legalize']);
     }
