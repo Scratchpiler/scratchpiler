@@ -92,11 +92,15 @@
 
 #scratchpiler-overlay .sp-main { --sp-side-col: var(--sp-side-w, 264px); --sp-dock-col: var(--sp-dock-w, 320px); grid-row: 3; display: grid; grid-template-columns: 48px var(--sp-side-col) minmax(0, 1fr) var(--sp-dock-col); min-height: 0; }
 #scratchpiler-overlay .sp-main.sp-no-side { --sp-side-col: 0px; }
+#scratchpiler-overlay .sp-main > .sp-rail { grid-column: 1; }
+#scratchpiler-overlay .sp-main > .sp-side { grid-column: 2; }
+#scratchpiler-overlay .sp-main > .sp-ed { grid-column: 3; }
+#scratchpiler-overlay .sp-main > .sp-dock { grid-column: 4; }
 #scratchpiler-overlay .sp-main.sp-no-side .sp-side { display: none; }
 #scratchpiler-overlay .sp-main.sp-no-dock { --sp-dock-col: 0px; }
 #scratchpiler-overlay .sp-main.sp-no-dock .sp-dock { display: none; }
 #scratchpiler-overlay .sp-main.sp-dock-float { position: relative; --sp-dock-col: 0px; }
-#scratchpiler-overlay .sp-main.sp-dock-float .sp-dock { position: absolute; z-index: 20; top: 0; right: 0; bottom: 0; width: min(var(--sp-dock-w, 320px), calc(100% - 64px)); box-shadow: -18px 0 40px -12px rgba(0, 0, 0, .55); }
+#scratchpiler-overlay .sp-main.sp-dock-float .sp-dock { position: absolute; grid-column: 1 / -1; z-index: 20; top: 0; right: 0; bottom: 0; width: min(var(--sp-dock-w, 320px), calc(100% - 64px)); box-shadow: -18px 0 40px -12px rgba(0, 0, 0, .55); }
 
 #scratchpiler-overlay .sp-rail { background: var(--ink-0); border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; }
 #scratchpiler-overlay .sp-rail button { width: 36px; height: 36px; display: grid; place-items: center; border-radius: var(--r-md); color: var(--faint); position: relative; }
