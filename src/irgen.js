@@ -101,6 +101,7 @@ export const SLVM_OPCODE_SCHEMA = {
     motion_turnleft: { params: [{ name: 'DEGREES', kind: 'input', valueType: 'number' }] },
     pen_setPenColorToColor: { params: [{ name: 'COLOR', kind: 'input', valueType: 'color' }] },
     looks_costumenumbername: { params: [{ name: 'NUMBER_NAME', kind: 'field', valueType: 'menu' }] },
+    argument_reporter_boolean: { params: [{ name: 'VALUE', kind: 'field', valueType: 'string' }] },
 };
 
 const rand4 = () => Math.random().toString(36).slice(2, 6).padEnd(4, '0');
@@ -291,6 +292,7 @@ export function irgen(ast, env) {
     function readVar(name, node) {
         if (b.scope.has(name)) return value('var.get', [sym(b.scope.get(name))]);
         if (b.params.has(name)) return value('arg', [{ name }]);
+        if (node?.unknownArgument) return sb('argument_reporter_boolean', {}, { VALUE: name }, true);
         if (isPromoted(name)) return value('list.get', [sym(heap), lit(promoted.get(name))]);
         if (!known.get(name)?.has('var') && !env.lookup(name, 'var') && (known.get(name)?.has('list') || env.lookup(name, 'list'))) {
             return value('list.contents', [sym(data(name, 'list', node))]);

@@ -21,6 +21,8 @@ const TT = {
 const KW_SET = new Set(KEYWORDS);
 const DEFINE_MODIFIERS = ['returns', 'warp', 'noinline'];
 
+const UNKNOWN_ARGUMENT_MARKER = /^\s*\/\* decompiler: unknown argument \*\//;
+
 export function tokenize(src, opts = {}) {
     const tokens = [];
     let i = 0, line = 1, col = 1;
@@ -42,6 +44,14 @@ export function tokenize(src, opts = {}) {
                 col += i - from;
                 tokens.push({ type: 'COMMENT', value: src.slice(from, i), line: cLine, col: cCol, endLine: line, endCol: col });
             }
+            continue;
+        }
+        if (src[i] === '/' && src[i+1] === '*') {
+            const from = i, cLine = line, cCol = col;
+            advance(); advance();
+            while (i < src.length && !(src[i] === '*' && src[i+1] === '/')) advance();
+            if (i < src.length) { advance(); advance(); }
+            if (opts.comments) tokens.push({ type: 'COMMENT', value: src.slice(from, i), line: cLine, col: cCol, endLine: line, endCol: col });
             continue;
         }
         const startLine = line, startCol = col;
@@ -110,7 +120,8 @@ export function tokenize(src, opts = {}) {
             while (i < src.length && src[i] !== ']') s += advance();
             const unterminated = src[i] !== ']';
             if (!unterminated) advance();
-            tokens.push({ type: TT.VAR, value: s.trim(), unterminated, line: startLine, col: startCol, endLine: line, endCol: col });
+            const unknownArgument = UNKNOWN_ARGUMENT_MARKER.test(src.slice(i, i + 64));
+            tokens.push({ type: TT.VAR, value: s.trim(), unterminated, unknownArgument, line: startLine, col: startCol, endLine: line, endCol: col });
             continue;
         }
 
@@ -1378,7 +1389,7 @@ export function parse(tokens, opts = {}) {
         if (check(TT.HEX)) { pos++; return { type: 'Hex', value: t.value, line: t.line, col: t.col }; }
         if (check(TT.VAR)) {
             pos++;
-            const varExpr = { type: 'Var', name: t.value, line: t.line, col: t.col, endLine: t.endLine, endCol: t.endCol };
+            const varExpr = { type: 'Var', name: t.value, unknownArgument: t.unknownArgument, line: t.line, col: t.col, endLine: t.endLine, endCol: t.endCol };
             if (check(TT.DOT)) {
                 pos++; // consume '.'
                 const mTok = peek();

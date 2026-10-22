@@ -463,7 +463,10 @@ true  false                           // boolean literals
 
 ```
 // Everything after // is stripped by the tokenizer, never to be seen by the VM.
+/* So is everything between these, even across lines or in the middle of an expression. */
 ```
+
+Pull code from Scratch uses `/* decompiler: unknown … */` after anything it cannot translate: a reporter with no Scratchpiler equivalent becomes `"" /* decompiler: unknown <opcode> */`, and an argument reporter used outside its custom block (like TurboWarp's `[is compiled?]`) keeps its name followed by `/* decompiler: unknown argument */`. With that comment present the reporter compiles back to the same argument reporter block and gets no "Variable not found" error.
 
 With source embedding on, the text of each script (comments included) is also saved in a Scratch comment and restored by Pull. See [comment-metadata.md](comment-metadata.md).
 

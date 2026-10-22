@@ -169,8 +169,11 @@ function decompExpr(block, B) {
         case 'text':         return JSON.stringify(String(fieldVal(block, 'TEXT') ?? '')).replace(/{/g, '{{').replace(/}/g, '}}');
         case 'data_variable':return sourceVariable(fieldVal(block, 'VARIABLE') ?? '');
         case 'argument_reporter_string_number':
-        case 'argument_reporter_boolean':
-            return `[${currentProcedureParams.get(fieldVal(block, 'VALUE')) ?? fieldVal(block, 'VALUE') ?? ''}]`;
+        case 'argument_reporter_boolean': {
+            const argument = fieldVal(block, 'VALUE') ?? '';
+            const known = currentProcedureParams.get(argument);
+            return known === undefined ? `[${argument}] /* decompiler: unknown argument */` : `[${known}]`;
+        }
         case 'data_listcontents': return `[${fieldVal(block, 'LIST') ?? ''}]`;
         case 'colour_picker': return fieldVal(block, 'COLOUR') ?? '#000000';
 
@@ -319,7 +322,7 @@ function decompExpr(block, B) {
             return `[${listName}].indexOf(${decompInput(block,'ITEM',B,false)})`;
         }
 
-        default: return `/* ${block.opcode} */`;
+        default: return `"" /* decompiler: unknown ${block.opcode} */`;
     }
 }
 

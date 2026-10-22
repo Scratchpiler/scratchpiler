@@ -97,6 +97,7 @@ export function registerLanguage(monaco) {
         tokenizer: {
             root: [
                 [/\/\/.*$/, 'comment'],
+                [/\/\*/, { token: 'comment', next: '@blockComment' }],
                 [/\b__asm__\b/, { token: 'keyword', next: '@asmHeader' }],
                 [/"[^"]*"/, 'string'],
                 [/\[[^\]]+\]/, 'variable'],
@@ -112,6 +113,11 @@ export function registerLanguage(monaco) {
                 }],
                 [/[{}()[\],:]/, 'delimiter'],
                 [/(?:!=|<=|>=|[+\-*\/<>=?&])/, 'operator'],
+            ],
+            blockComment: [
+                [/[^*]+/, 'comment'],
+                [/\*\//, { token: 'comment', next: '@pop' }],
+                [/\*/, 'comment'],
             ],
             // __asm__ [volatile] [unsafe] ( ... ) — consumes the header keywords up to the opening '('
             asmHeader: [
@@ -804,7 +810,7 @@ export function registerLanguage(monaco) {
     });
 
     monaco.languages.setLanguageConfiguration(LANG_ID, {
-        comments: { lineComment: '//' },
+        comments: { lineComment: '//', blockComment: ['/*', '*/'] },
         brackets: [['{', '}'], ['(', ')'], ['[', ']']],
         autoClosingPairs: [
             { open: '{', close: '}' },
