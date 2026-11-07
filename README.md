@@ -20,7 +20,7 @@ Every compile uses SLVM IR for verification, inlining of small custom blocks and
 
 ## What it is
 
-Scratchpiler lets you write Scratch programs in a real text editor (Monaco, the one from VS Code), then injects the compiled blocks directly into the running Scratch project. You can also decompile existing Scratch scripts back into scratchpiler source. It's not magic — it's just a Tampermonkey userscript doing unspeakable, borderline-sacrilegious things to the Scratch VM's internal block registry.
+Scratchpiler lets you write Scratch programs in a real text editor (Monaco, the one from VS Code), then injects the compiled blocks directly into the running Scratch project. You can also decompile existing Scratch scripts back into scratchpiler source. It's not magic - it's just a Tampermonkey userscript doing unspeakable, borderline-sacrilegious things to the Scratch VM's internal block registry.
 
 The language maps 1:1 with Scratch's block palette. Every statement, every reporter, every hat block has a text equivalent. The goal isn't to replace Scratch; it's to give programmers a faster path to the same output, shielding them from the blinding glare of Scratch's default aesthetic while they contemplate their life choices.
 
@@ -31,14 +31,14 @@ The language maps 1:1 with Scratch's block palette. Every statement, every repor
 - [Tampermonkey](https://www.tampermonkey.net/) (Chrome) or [Violentmonkey](https://violentmonkey.github.io/) (Firefox/Chrome) to run our payload.
 - A modern browser capable of rendering the Monaco editor before it exhausts your system memory.
 - A Scratch account, or at least an open project at `scratch.mit.edu/projects/*/editor` where you can summon your creation.
-- The ability to tolerate a DSL that uses `camelCase` for everything, because the Scratch VM's internals demand it and it lacks any concept of self-respect.
+- The ability to tolerate a DSL that uses `loweCamelCase` for everything, because the Scratch VM's internals demand it and it lacks any concept of self-respect.
 
 ---
 
 ## Installation
 
 1. Open Tampermonkey → Dashboard → **+** (new script)
-2. Paste the contents of `scratchpiler.user.js`
+2. Paste the contents of `scratchpiler.user.js` (remember to use the minimized build, the full version will crash Tampermonkey)
 3. Save
 4. Navigate to a Scratch project editor
 
