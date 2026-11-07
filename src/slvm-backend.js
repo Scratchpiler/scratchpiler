@@ -1,6 +1,7 @@
 import { runPipeline, slc, LegalizeError, SlcError, VerificationError } from 'slvm';
 import { irgen, SLVM_OPCODE_SCHEMA } from './irgen.js';
 import { uid } from './compiler.js';
+import { procedureSourceNames } from './decompiler.js';
 
 const VARIABLE_TYPES = { var: '', list: 'list' };
 
@@ -23,13 +24,21 @@ function indexVariables(target) {
 }
 
 function indexPrototypes(target) {
-    const prototypes = new Map();
-    for (const block of Object.values(target.blocks._blocks ?? {})) {
-        if (block.opcode !== 'procedures_prototype') continue;
-        const name = block.mutation?.proccode?.split(' %')[0].trim();
-        if (name && !prototypes.has(name)) prototypes.set(name, block);
+    const blocks = target.blocks._blocks ?? {};
+    const byProccode = new Map();
+    const byRawName = new Map();
+    for (const block of Object.values(blocks)) {
+        if (block.opcode !== 'procedures_prototype' || !block.mutation?.proccode) continue;
+        const { proccode } = block.mutation;
+        if (!byProccode.has(proccode)) byProccode.set(proccode, block);
+        const rawName = proccode.split(' %')[0].trim();
+        if (rawName && !byRawName.has(rawName)) byRawName.set(rawName, block);
     }
-    return (name) => prototypes.get(name);
+    const bySourceName = new Map();
+    for (const [proccode, name] of procedureSourceNames(blocks)) {
+        if (byProccode.has(proccode) && !bySourceName.has(name)) bySourceName.set(name, byProccode.get(proccode));
+    }
+    return (name) => bySourceName.get(name) ?? byRawName.get(name);
 }
 
 const parseList = (json) => {
@@ -98,7 +107,7 @@ export function applyProjectFacts(module, spriteName, facts, hiddenOwners) {
     }
 }
 
-export function compileWithSLVM(ast, vm, spriteName, { passes = ['legalize'], heapVars = [], heapStaticSlots = 64, facts = null } = {}) {
+export function compileWithSLVM(ast, vm, spriteName, { passes = ['legalize'], heapVars = [], heapStaticSlots = 64, facts = null, verifyEach = false } = {}) {
     const { stage, sprite } = vmTargets(vm, spriteName);
     if (!sprite) return { blocks: {}, errors: [{ line: 1, col: 1, len: 1, message: `Sprite not found: ${spriteName}` }] };
     let findStageVariable = indexVariables(stage);
@@ -147,7 +156,7 @@ export function compileWithSLVM(ast, vm, spriteName, { passes = ['legalize'], he
         const { module, errors, hiddenOwners } = irgen(ast, env);
         if (errors.length) return { blocks: {}, errors };
         if (facts) applyProjectFacts(module, spriteName, facts, hiddenOwners);
-        runPipeline(module, passes);
+        runPipeline(module, passes, { verifyEach });
         out = slc(module, {
             uid,
             opcodes: SLVM_OPCODE_SCHEMA,

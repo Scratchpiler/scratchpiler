@@ -15,11 +15,14 @@ let linkOptions = { monitored: new Set() };
 let run = null;
 let progress = { running: false, done: 0, total: 0, label: '' };
 let changeTimer = null;
+let isActive = () => true;
+let changedWhileInactive = false;
 
 const nextTask = () => globalThis.scheduler?.yield?.() ?? new Promise(resolve => setTimeout(resolve));
 
-export function configureProjectService({ getSource }) {
+export function configureProjectService({ getSource, isActive: active = () => true }) {
     sourceOf = getSource;
+    isActive = active;
 }
 
 export const onProjectChange = listener => {
@@ -57,17 +60,20 @@ export function decompiledSource(sprite) {
     return decompiled.get(sprite)?.text ?? null;
 }
 
-function fingerprint(target) {
-    let hash = 0x811c9dc5;
-    const mix = text => {
-        for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
-    };
+const SNAPSHOT_SLICE_MS = 8;
+
+async function snapshotOf(target, signal) {
+    const parts = [];
+    let sliceStart = performance.now();
     for (const [id, block] of Object.entries(target.blocks._blocks)) {
-        mix(id);
-        mix(JSON.stringify(block) ?? '');
+        parts.push(id, JSON.stringify(block) ?? '');
+        if (parts.length % 64 !== 0 || performance.now() - sliceStart < SNAPSHOT_SLICE_MS) continue;
+        await nextTask();
+        signal?.throwIfAborted();
+        sliceStart = performance.now();
     }
-    for (const comment of Object.values(target.comments ?? {})) mix(comment.text ?? '');
-    return hash >>> 0;
+    for (const comment of Object.values(target.comments ?? {})) parts.push(comment.text ?? '');
+    return parts.join('\u0000');
 }
 
 function targetFor(sprite) {
@@ -128,14 +134,14 @@ async function sourceFor(sprite, current) {
     if (own !== null) return own;
     const target = targetFor(sprite);
     if (!target) return '';
-    const print = fingerprint(target);
+    const snapshot = await snapshotOf(target, run.controller.signal);
     const cached = decompiled.get(sprite);
-    if (cached && cached.fingerprint === print) return cached.text;
+    if (cached && cached.snapshot === snapshot) return cached.text;
     const text = await decompileAsync(vm, sprite, {
         onProgress: fraction => setProgress({ running: true, total: spriteNamesOf(scratchIndex).length, done: current + fraction * 0.9, label: sprite }),
         signal: run.controller.signal,
     });
-    decompiled.set(sprite, { text, fingerprint: print });
+    decompiled.set(sprite, { text, snapshot });
     return text;
 }
 
@@ -180,16 +186,40 @@ export function analyzeProject(machine) {
 
 export function projectChangedInScratch() {
     clearTimeout(changeTimer);
-    changeTimer = setTimeout(() => {
-        if (!vm || progress.running) return;
-        const stale = spriteNamesOf(scratchIndex).some(sprite => {
-            if (sourceOf(sprite) !== null) return false;
-            const target = targetFor(sprite);
-            return target && decompiled.get(sprite)?.fingerprint !== fingerprint(target);
-        });
-        if (stale || syncIndex()) analyzeProject();
-        else if (project.index) { refreshOptions(); notify(); }
-    }, 1200);
+    if (!isActive()) {
+        changedWhileInactive = true;
+        return;
+    }
+    changeTimer = setTimeout(checkScratchForChanges, 1200);
+}
+
+export function resumeProjectService() {
+    if (!vm) return;
+    if (changedWhileInactive) {
+        changedWhileInactive = false;
+        analyzeProject();
+    } else if (project.index && !progress.running) {
+        refreshOptions();
+        notify();
+    }
+}
+
+async function checkScratchForChanges() {
+    if (!vm || progress.running) return;
+    const startedDuring = run;
+    for (const sprite of spriteNamesOf(scratchIndex)) {
+        if (sourceOf(sprite) !== null) continue;
+        const target = targetFor(sprite);
+        if (!target) continue;
+        const snapshot = await snapshotOf(target);
+        if (progress.running || run !== startedDuring) return;
+        if (decompiled.get(sprite)?.snapshot !== snapshot) {
+            analyzeProject();
+            return;
+        }
+    }
+    if (syncIndex()) analyzeProject();
+    else if (project.index) { refreshOptions(); notify(); }
 }
 
 export function forgetDecompiledSources() {

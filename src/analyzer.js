@@ -46,19 +46,21 @@ function spanOf(node) {
 }
 
 // Compute the max line of an AST subtree — used to approximate scope extents.
-function subtreeMaxLine(node) {
+function subtreeMaxLine(node, memo) {
+    if (!node || typeof node !== 'object') return 0;
+    if (memo.has(node)) return memo.get(node);
     let max = 0;
-    (function walk(n) {
-        if (!n) return;
-        if (Array.isArray(n)) { n.forEach(walk); return; }
-        if (typeof n !== 'object') return;
-        if (typeof n.line === 'number' && n.line > max) max = n.line;
-        if (typeof n.endLine === 'number' && n.endLine > max) max = n.endLine;
-        for (const k of Object.keys(n)) {
-            const v = n[k];
-            if (v && typeof v === 'object') walk(v);
+    if (Array.isArray(node)) {
+        for (const item of node) max = Math.max(max, subtreeMaxLine(item, memo));
+    } else {
+        if (typeof node.line === 'number' && node.line > max) max = node.line;
+        if (typeof node.endLine === 'number' && node.endLine > max) max = node.endLine;
+        for (const k of Object.keys(node)) {
+            const v = node[k];
+            if (v && typeof v === 'object') max = Math.max(max, subtreeMaxLine(v, memo));
         }
-    })(node);
+    }
+    memo.set(node, max);
     return max;
 }
 
@@ -159,9 +161,10 @@ export function analyze(src, spriteName) {
     // Pass 2: reference walk with scope stack
     const scopeStack = [];  // innermost last: {symbols: Map(name→sym), startLine, endLine}
 
+    const maxLines = new WeakMap();
     function pushScope(startNode, entries) {
         const scope = {
-            startLine: startNode.line, endLine: subtreeMaxLine(startNode) + 1,
+            startLine: startNode.line, endLine: subtreeMaxLine(startNode, maxLines) + 1,
             symbols: new Map(entries.map(s => [s.name, s])),
         };
         scopes.push(scope);

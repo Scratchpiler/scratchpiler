@@ -42,7 +42,8 @@ SLVM            Verifies and legalizes the IR, preserving values across calls
     ▼
 Injector        Deletes any blocks previously injected by scratchpiler for
                 this sprite, then writes the new blocks into the live VM's
-                block pool. Triggers a workspace refresh. It is a merciless
+                block pool. Scratch's own block canvas is re-rendered when
+                the overlay closes (src/scratch-view.js). It is a merciless
                 purge of the old stack.
     │
     ▼
@@ -102,7 +103,7 @@ Press **Ctrl+Enter** or **Ctrl+S** (or click the button). The compiler:
 3. Generates fresh block objects with new UIDs for everything.
 4. Deletes the blocks from the previous scratchpiler compile for this sprite. It tracks them by ID and purges them with extreme prejudice.
 5. Injects the new blocks into the target sprite's block pool.
-6. Triggers a workspace refresh so Scratch re-renders the block canvas, flashing the screen briefly as your new blocks are born.
+6. Tells Scratch to re-render the block canvas. While the overlay is open nobody can see that canvas, so the re-render waits until you close the overlay, and then happens once for the sprite you ended on. On a 10,000-block sprite that render takes Scratch several seconds, and doing it on every compile (or every time you switched sprites in the overlay) used to freeze the page each time.
 
 Step 4 is the atomicity guarantee: each compile replaces the previous one rather than accumulating. If you compile three times, you have one set of blocks, not three. Old blocks don't linger. They die so new ones may live.
 

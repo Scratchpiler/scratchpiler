@@ -117,7 +117,7 @@ The status bar mirrors the error and warning counts, shows when you last injecte
 
 ### Project analysis
 
-The first time you open the overlay, Scratchpiler reads **every sprite**: the ones you have open, the ones saved in this browser, and the rest decompiled from Scratch in the background. A thin orange line runs across the top of the editor and the status bar says *Analyzing Player · 4/12* while it works. The editor stays usable, and the cross-sprite features switch on as soon as it finishes. After that, only the sprite you're editing is re-read as you type. If blocks change in Scratch itself, just those sprites are decompiled again. **Analyze project again** in the palette starts over.
+The first time you open the overlay, Scratchpiler reads **every sprite**: the ones you have open, the ones saved in this browser, and the rest decompiled from Scratch in the background. A thin orange line runs across the top of the editor and the status bar says *Analyzing Player · 4/12* while it works. The editor stays usable, and the cross-sprite features switch on as soon as it finishes. After that, only the sprite you're editing is re-read as you type. If blocks change in Scratch itself, just those sprites are decompiled again; changes made while the overlay is closed are picked up the next time you open it, so editing in Scratch never waits on the analysis. **Analyze project again** in the palette starts over.
 
 That analysis is what powers broadcast links, `N listeners` hints, cross-sprite references and rename, the project-wide checks and the event flow view. See [code-intelligence.md](code-intelligence.md#across-sprites).
 
@@ -198,6 +198,8 @@ Menus work with the arrow keys, and Escape closes them without also closing the 
 **Esc** closes whatever is on top: a menu, the palette, Search Nowhere, the event flow, or Monaco's own popups (autocomplete, find, rename, hover, the references peek). Only when nothing else is open does it close the overlay. If you're typing in a sidebar field, Escape belongs to that field.
 
 **Alt+M** toggles the overlay from anywhere. Your open tabs and unsaved edits are still there when you come back.
+
+Closing the overlay is when Scratch catches up. Injecting and switching sprites inside the overlay change the project right away, but Scratch's block canvas (hidden behind the overlay) only re-renders when you close it, once, for the sprite you were last on. Scratch takes a few seconds to draw a very large sprite, so a short pause on close is that render. Scripts that run while the overlay is open work normally; their glow just shows up after you close it.
 
 ---
 

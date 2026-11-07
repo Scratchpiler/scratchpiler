@@ -329,6 +329,7 @@ export function irgen(ast, env) {
             case 'Var': return readVar(node.name, node);
             case 'UnaryOp':
                 if (node.op === 'not') return value('not', [cond(node.operand)]);
+                if (node.operand?.type === 'Num') return lit(-node.operand.value);
                 return value('sub', [lit(0), expr(node.operand)]);
             case 'BinOp': {
                 const op = BINARY_OPS[node.op];

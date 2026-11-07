@@ -22,6 +22,13 @@ const KW_SET = new Set(KEYWORDS);
 const DEFINE_MODIFIERS = ['returns', 'warp', 'noinline'];
 
 const UNKNOWN_ARGUMENT_MARKER = /^\s*\/\* decompiler: unknown argument \*\//;
+const NUMBER_AT = /(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?/y;
+const WHITESPACE = /\s/;
+
+const isSpace = code => code === 32 || (code >= 9 && code <= 13) || (code > 127 && WHITESPACE.test(String.fromCharCode(code)));
+const isDigit = code => code >= 48 && code <= 57;
+const isIdentStart = code => (code >= 97 && code <= 122) || (code >= 65 && code <= 90) || code === 95;
+const isIdentPart = code => isIdentStart(code) || isDigit(code);
 
 export function tokenize(src, opts = {}) {
     const tokens = [];
@@ -34,8 +41,9 @@ export function tokenize(src, opts = {}) {
     }
 
     while (i < src.length) {
-        // Skip whitespace
-        if (/\s/.test(src[i])) { advance(); continue; }
+        const code = src.charCodeAt(i);
+        if (code === 10) { i++; line++; col = 1; continue; }
+        if (isSpace(code)) { i++; col++; continue; }
         // Line comment
         if (src[i] === '/' && src[i+1] === '/') {
             const from = i, cLine = line, cCol = col;
@@ -126,17 +134,21 @@ export function tokenize(src, opts = {}) {
         }
 
         // Number (including negative handled at parser level)
-        if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i+1]))) {
-            const s = src.slice(i).match(/^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?/)[0];
-            for (let digit = 0; digit < s.length; digit++) advance();
+        if (isDigit(code) || (code === 46 && isDigit(src.charCodeAt(i + 1)))) {
+            NUMBER_AT.lastIndex = i;
+            const s = NUMBER_AT.exec(src)[0];
+            i += s.length;
+            col += s.length;
             tokens.push({ type: TT.NUM, value: parseFloat(s), line: startLine, col: startCol, endLine: line, endCol: col });
             continue;
         }
 
         // Identifier / keyword
-        if (/[a-zA-Z_]/.test(c)) {
-            let s = '';
-            while (i < src.length && /[\w]/.test(src[i])) s += advance();
+        if (isIdentStart(code)) {
+            const from = i;
+            while (i < src.length && isIdentPart(src.charCodeAt(i))) i++;
+            const s = src.slice(from, i);
+            col += i - from;
             tokens.push({ type: KW_SET.has(s) ? s : TT.IDENT, value: s, line: startLine, col: startCol, endLine: line, endCol: col });
             continue;
         }
@@ -1731,7 +1743,7 @@ function scanPointerUse(ast, vm, spriteName) {
     return use;
 }
 
-export function compileSource(source, vm, spriteName, { embedSource = false, embedUntilLine = Infinity, optimize = true, projectFacts = null } = {}) {
+export function compileSource(source, vm, spriteName, { embedSource = false, embedUntilLine = Infinity, optimize = true, projectFacts = null, verifyEach = false } = {}) {
     const tokens = tokenize(source);
     const { ast, errors: parseErrors } = parse(tokens);
     if (parseErrors.length > 0) return { blocks: {}, errors: parseErrors };
@@ -1755,7 +1767,7 @@ export function compileSource(source, vm, spriteName, { embedSource = false, emb
     const heapVars = helperInjected ? PTR_TEMP_VARS : ast._usesHeap ? ['__heap_free'] : [];
     const level = optimizationLevel(optimize);
     const facts = level > 0 && projectFacts?.text === source ? projectFacts : null;
-    const compileWith = (passes) => compileWithSLVM(ast, vm, spriteName, { passes, heapVars, heapStaticSlots: HEAP_STATIC_SLOTS, facts });
+    const compileWith = (passes) => compileWithSLVM(ast, vm, spriteName, { passes, heapVars, heapStaticSlots: HEAP_STATIC_SLOTS, facts, verifyEach });
     let compiled = compileWith(pipelineFor(level));
     let optimizerFallback = null;
     if (level > 0 && compiled.errors.some(error => error.message.startsWith('SLVM:'))) {

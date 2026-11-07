@@ -29,6 +29,7 @@ const withSourceNames = (names, decompileBody) => {
 const sourceString = value => JSON.stringify(String(value ?? '')).replace(/{/g, '{{').replace(/}/g, '}}');
 const sourceNumber = value => /^-?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/.test(String(value))
     ? String(value) : sourceString(value);
+const sourceColor = value => /^#[0-9a-fA-F]{6}$/.test(String(value ?? '')) ? String(value) : sourceString(value);
 const procedureName = proccode => procedureNames.get(proccode) ?? proccode.split(' ')[0];
 const rawProcedureName = proccode => proccode.split(' %')[0].trim();
 const CLAMP_HELPER = /^_scratchpiler_internal_[a-z0-9]{4}_clamp %s %s %s$/;
@@ -60,6 +61,11 @@ function* indexProcedureNames(blocks) {
         names.set(code, name);
     }
     return names;
+}
+
+export function procedureSourceNames(blocks) {
+    const steps = indexProcedureNames(blocks);
+    for (let step = steps.next(); ; step = steps.next()) if (step.done) return step.value;
 }
 
 // Read a field value from either internal {name,value} or sb3 [value,id] format
@@ -109,6 +115,7 @@ function decompInputRaw(input, B, isNum) {
             // inline primitive: [4,"10"] = number, [10,"text"] = string, [12,"var",id] = variable
             const t = ref[0];
             if (t === 4 || t === 5 || t === 6 || t === 7 || t === 8) return sourceNumber(ref[1] ?? '0');
+            if (t === 9) return sourceColor(ref[1] ?? '#000000');
             if (t === 10) return sourceString(ref[1] ?? '');
             if (t === 11) return sourceString(ref[1] ?? '');  // broadcast name
             if (t === 12) return sourceVariable(ref[1]);
@@ -175,7 +182,7 @@ function decompExpr(block, B) {
             return known === undefined ? `[${argument}] /* decompiler: unknown argument */` : `[${known}]`;
         }
         case 'data_listcontents': return `[${fieldVal(block, 'LIST') ?? ''}]`;
-        case 'colour_picker': return fieldVal(block, 'COLOUR') ?? '#000000';
+        case 'colour_picker': return sourceColor(fieldVal(block, 'COLOUR') ?? '#000000');
 
         case 'motion_xposition':  return 'xPos';
         case 'motion_yposition':  return 'yPos';

@@ -8,7 +8,7 @@ source → include expansion → tokenize → parse → irgen → legalize → s
 
 ## Source and API
 
-Use `compileSource(source, vm, sprite)` or `compileSourceWithHeaders(source, vm, sprite)`. Both return `{ blocks, comments, errors }`; the header version also returns include metadata. An optional fourth argument takes `{ embedSource }`. `comments` is a list of `{ blockId, text }` that the injector attaches to the emitted blocks; see [comment-metadata.md](comment-metadata.md). Compilation does not depend on them. Compilation stops on errors before injection.
+Use `compileSource(source, vm, sprite)` or `compileSourceWithHeaders(source, vm, sprite)`. Both return `{ blocks, comments, errors }`; the header version also returns include metadata. An optional fourth argument takes `{ embedSource, optimize, projectFacts, verifyEach }`. `comments` is a list of `{ blockId, text }` that the injector attaches to the emitted blocks; see [comment-metadata.md](comment-metadata.md). Compilation does not depend on them. Compilation stops on errors before injection.
 
 The frontend, source syntax, Monaco providers, headers and injector keep their existing interfaces. `src/compiler.js` handles tokenization, parsing, diagnostics and pointer helper insertion. `src/irgen.js` resolves source constructs into structured IR. `src/slvm-backend.js` connects that IR to the live project and emits Scratch blocks through SLVM.
 
@@ -22,13 +22,15 @@ The frontend, source syntax, Monaco providers, headers and injector keep their e
 - Scratchroutine arguments follow their declared parameter order.
 - Hidden loop and temporary variables belong to the sprite, so clones have independent copies.
 - Existing custom blocks are imported as external procedure signatures; calls use their real argument IDs.
+- A `define` that matches a custom block already in the sprite keeps that block's signature. The match is by the name the decompiler gives it (`Do Day Night Cycle` pulls as `Do_Day_Night_Cycle`) and the input count. Labels between inputs, number (`%n`) and boolean (`%b`) inputs, and argument IDs all survive, so Pull, edit and inject replaces Scratch-made custom blocks instead of adding a second copy next to them. Before this, every one of Paper Minecraft's 274 custom blocks came back renamed and duplicated.
+- A negative number literal such as `-1` compiles to a number field, not `0 - 1`.
 - Pointer operations retain the `__heap` / `__ptab` layout. Failed compilation restores heap preparation and promotions.
 
 ## Pipeline and performance
 
 Motion, looks, sound, pen and sensing use `sb` operations described by `ASM_OPCODES` and `SLVM_OPCODE_SCHEMA`. Variables, lists, arithmetic, calls and control flow use core IR operations. Syntax sugar is expanded during IR generation; returns, breaks and continues remain explicit until legalization.
 
-The legalization pipeline runs `lower-ret`, `lower-break`, `rotate-cond`, `materialize-bool` and `spill`. It verifies after each pass, then `slc` verifies legal IR before emitting blocks. Values are materialized only when their uses or intervening effects require storage. Compiler variables retain recognizable names for the decompiler.
+The legalization pipeline runs `lower-ret`, `lower-break`, `rotate-cond`, `materialize-bool` and `spill`. `slc` verifies the final IR, in legal mode, before emitting blocks; an invalid module raises an SLVM error and the optimizer falls back to plain legalization. Verifying after every pass as well cost about a third of compile time on large sprites, so the editor doesn't. `compileSource(…, { verifyEach: true })` turns it back on, and the test harness and fuzzer always pass it, so a pass that breaks the IR is still caught at the pass that broke it. Values are materialized only when their uses or intervening effects require storage. Compiler variables retain recognizable names for the decompiler.
 
 ## Optimization
 

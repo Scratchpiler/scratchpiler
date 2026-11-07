@@ -1,5 +1,6 @@
 import { uid } from "./compiler.js";
 import { INTERNAL_VARIABLE_PREFIX } from "./constants.js";
+import { scratchBlocksChanged } from "./scratch-view.js";
 
 export const CLOUD_PREFIX = '☁ ';
 const SCRATCH_TYPE = { var: '', list: 'list' };
@@ -55,10 +56,6 @@ function nameTaken(vm, target, name, kind) {
     return [target, stage].some(t => Object.values(t.variables).some(v => v.type === type && v.name === name));
 }
 
-export function refreshScratchWorkspace(vm) {
-    try { vm.emitWorkspaceUpdate(); } catch (e) { console.warn('[scratchpiler] workspace refresh failed', e); }
-}
-
 export function createVariable(vm, spriteName, rawName, { kind, global }) {
     const name = rawName.trim().replace(/[[\]]/g, '');
     const noun = kind === 'list' ? 'list' : 'variable';
@@ -67,7 +64,7 @@ export function createVariable(vm, spriteName, rawName, { kind, global }) {
     if (!target) return { error: 'That sprite no longer exists in Scratch' };
     if (nameTaken(vm, target, name, kind)) return { error: `A ${noun} named [${name}] already exists` };
     target.createVariable(uid(), name, SCRATCH_TYPE[kind]);
-    refreshScratchWorkspace(vm);
+    scratchBlocksChanged(vm);
     return { name, global: target.isStage };
 }
 
@@ -102,7 +99,7 @@ export function renameVariable(vm, targetId, variableId, rawName) {
             }
         }
     }
-    refreshScratchWorkspace(vm);
+    scratchBlocksChanged(vm);
     return { oldName, newName, kind: kind === 'list' ? 'list' : 'variable', scope: target.isStage ? 'global' : 'local', spriteName: target.isStage ? '__stage__' : target.sprite.name };
 }
 
@@ -121,14 +118,14 @@ export function deleteVariable(vm, targetId, variableId) {
     const snapshot = { id: variable.id, name: variable.name, type: variable.type, isCloud: variable.isCloud, value: Array.isArray(variable.value) ? [...variable.value] : variable.value };
     if (typeof target.deleteVariable === 'function') target.deleteVariable(variableId);
     else delete target.variables[variableId];
-    refreshScratchWorkspace(vm);
+    scratchBlocksChanged(vm);
     return {
         name: snapshot.name,
         kind: snapshot.type === 'list' ? 'list' : 'var',
         restore() {
             target.createVariable(snapshot.id, snapshot.name, snapshot.type, snapshot.isCloud);
             target.variables[snapshot.id].value = snapshot.value;
-            refreshScratchWorkspace(vm);
+            scratchBlocksChanged(vm);
         },
     };
 }
@@ -154,6 +151,6 @@ export function renameBroadcast(vm, oldName, newName) {
             }
         }
     }
-    refreshScratchWorkspace(vm);
+    scratchBlocksChanged(vm);
     return { oldName, newName };
 }

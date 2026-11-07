@@ -10,7 +10,7 @@ export const haveVM = hasScratchVM;
 export const compileWith = compileSourceWithHeaders;
 
 export function build(source, vm = makeMockVM(), sprite = SPRITE, options = {}) {
-    const { blocks, errors, comments, optimizerFallback, usedProjectFacts } = provisionAndCompile((src, machine, name) => compileWith(src, machine, name, options), source, vm, sprite);
+    const { blocks, errors, comments, optimizerFallback, usedProjectFacts } = provisionAndCompile((src, machine, name) => compileWith(src, machine, name, { verifyEach: true, ...options }), source, vm, sprite);
     const targets = vm.runtime.targets.map((t) => ({
         kind: t.isStage ? 'stage' : 'sprite',
         name: t.isStage ? 'Stage' : t.sprite.name,

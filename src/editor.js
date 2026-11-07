@@ -15,6 +15,7 @@ import { lint, typeCheckDiagnostics } from "./compiler.js";
 import { compileSourceWithHeaders, expand } from "./preprocess.js";
 import { readHeader, writeHeader } from "./headers.js";
 import { decompileAsync } from "./decompiler.js";
+import { attachScratchView, showInScratch, scratchBlocksChanged, flushScratchView, forgetScratchView } from "./scratch-view.js";
 import { injectBlocks } from "./injector.js";
 import { getAnalysis, semanticDiagnostics, smellDiagnostics } from "./analyzer.js";
 import { registerSemanticProviders } from "./semantic-providers.js";
@@ -24,7 +25,7 @@ import { setupPalette, openPalette } from "./palette.js";
 import { setupVariablesPanel, setDock, isDockOpen, renderVariablesPanel, tickVariablesPanel } from "./variables-panel.js";
 import { projectRunState } from "./variables.js";
 import { setupTooltips } from "./tooltips.js";
-import { configureProjectService, analyzeProject, projectAnalysis, projectChangedInScratch, forgetDecompiledSources, decompiledSource, updateSpriteSource, onProjectChange, projectProgress, projectFactsFor, stableMessageCounts } from "./project-service.js";
+import { configureProjectService, analyzeProject, projectAnalysis, projectChangedInScratch, resumeProjectService, forgetDecompiledSources, decompiledSource, updateSpriteSource, onProjectChange, projectProgress, projectFactsFor, stableMessageCounts } from "./project-service.js";
 import { diagnosticsFor as projectDiagnosticsFor, STAGE, parseVarKey, varKey, renameEdits } from "./project-analysis.js";
 import { renderProblemsView, toggleProblemGroup, toggleProblemHints, problemsShowHints } from "./problems-view.js";
 import { revealVariable } from "./variables-panel.js";
@@ -237,7 +238,7 @@ function switchScratchEditingTarget(sprite) {
     const target = sprite === '__stage__'
         ? currentVM.runtime.targets.find(t => t.isStage)
         : currentVM.runtime.targets.find(t => !t.isStage && t.isOriginal !== false && t.sprite.name === sprite);
-    if (target) { try { currentVM.setEditingTarget(target.id); } catch (_) {} }
+    showInScratch(currentVM, target);
 }
 
 export function selectSidebarSprite(sprite) {
@@ -842,7 +843,7 @@ export function resetAllChanges() {
     injectedBlockIds.clear();
     removeLocalStorageKeys(k => k.startsWith('scratchpiler-content-') || k.startsWith(`${LS_INJ_KEY}-`) || k === LS_KEY);
     forgetInjectedSources();
-    try { currentVM.setEditingTarget(currentVM.editingTarget.id); } catch (_) {}
+    scratchBlocksChanged(currentVM);
     reindex(currentVM);
     reloadAllSprites();
     const message = `Removed ${plural(removed, 'injected script')} and cleared saved code`;
@@ -1104,7 +1105,7 @@ export function openOverlay() {
     renderExplorer();
     if (!activeFile()) selectSidebarSprite(currentSpriteContext || '__stage__');
     if (currentVM && monacoEditor) {
-        if (!analysisStarted) { analysisStarted = true; analyzeProject(currentVM); } else projectChangedInScratch();
+        if (!analysisStarted) { analysisStarted = true; analyzeProject(currentVM); } else resumeProjectService();
     }
     monacoEditor?.layout();
     monacoEditor?.focus();
@@ -1116,6 +1117,7 @@ export function closeOverlay() {
     closeScrims();
     $('scratchpiler-overlay').style.display = 'none';
     overlayVisible = false;
+    flushScratchView();
     const trigger = $('scratchpiler-trigger');
     if (trigger) trigger.style.display = '';
 }
@@ -1229,7 +1231,10 @@ function registerHotkeys() {
 function createEditor() {
     registerLanguage(monaco);
     registerSemanticProviders(monaco);
-    configureProjectService({ getSource: sprite => modelFor({ kind: 'sprite', name: sprite })?.getValue() ?? cachedSpriteText(sprite) });
+    configureProjectService({
+        getSource: sprite => modelFor({ kind: 'sprite', name: sprite })?.getValue() ?? cachedSpriteText(sprite),
+        isActive: () => overlayVisible,
+    });
     onProjectChange(onProjectAnalysisChange);
 
     monacoEditor = monaco.editor.create($('scratchpiler-editor-container'), {
@@ -1300,10 +1305,12 @@ function createEditor() {
 
 function onVMFound(vm) {
     currentVM = vm;
+    attachScratchView(vm, () => overlayVisible);
     updateStatusBarVM('ok');
     reindex(vm);
     vm.on('targetsUpdate', () => { reindex(vm); if (overlayVisible) { renderExplorer(); renderVariablesPanel(); } });
     vm.runtime.on('PROJECT_LOADED', () => {
+        forgetScratchView();
         removeLocalStorageKeys(k => k.startsWith(`${LS_INJ_KEY}-`));
         forgetInjectedSources();
         injectedBlockIds.clear();

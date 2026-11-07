@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { writeHeader } from '../src/headers.js';
+import { decompile } from '../src/decompiler.js';
 import { makeMockVM, provisionAndCompile } from './mock-vm.js';
 import { SPRITE, haveVM, compileWith, build, visible, runInScratchVM } from './backend-harness.js';
 
@@ -129,6 +130,100 @@ test('slvm backend: calls a custom block that only exists as blocks in the proje
     }));
     const { vars } = await runInScratchVM({ targets }, { runFor: 30 });
     assert.equal(Number(vars.count), 7);
+});
+
+function scratchAuthoredBumper(countId) {
+    const blocks = {};
+    const block = (id, opcode, rest = {}) => {
+        blocks[id] = { id, opcode, next: null, parent: null, inputs: {}, fields: {}, shadow: false, topLevel: false, ...rest };
+        return blocks[id];
+    };
+    const input = (parent, name, child) => {
+        blocks[parent].inputs[name] = { name, block: child, shadow: blocks[child].shadow ? child : null };
+        blocks[child].parent = parent;
+    };
+    const number = (id, value) => block(id, 'math_number', { shadow: true, fields: { NUM: { name: 'NUM', value: String(value) } } });
+    const text = (id, value) => block(id, 'text', { shadow: true, fields: { TEXT: { name: 'TEXT', value } } });
+    const argument = (id, opcode, name) => block(id, opcode, { fields: { VALUE: { name: 'VALUE', value: name } } });
+    const change = (id, amount) => {
+        block(id, 'data_changevariableby', { fields: { VARIABLE: { name: 'VARIABLE', value: 'count', id: countId, variableType: '' } } });
+        input(id, 'VALUE', amount);
+    };
+    const mutation = { tagName: 'mutation', children: [], proccode: 'Move By %n steps %b', argumentids: '["argDist","argFast"]', warp: 'false' };
+
+    block('def', 'procedures_definition', { topLevel: true, x: 0, y: 0 });
+    block('proto', 'procedures_prototype', { shadow: true, mutation: { ...mutation, argumentnames: '["dist","fast?"]', argumentdefaults: '["","false"]' } });
+    input('def', 'custom_block', 'proto');
+    argument('protoDist', 'argument_reporter_string_number', 'dist').shadow = true;
+    argument('protoFast', 'argument_reporter_boolean', 'fast?').shadow = true;
+    input('proto', 'argDist', 'protoDist');
+    input('proto', 'argFast', 'protoFast');
+    block('branch', 'control_if_else', { parent: 'def' });
+    blocks.def.next = 'branch';
+    input('branch', 'CONDITION', argument('readFast', 'argument_reporter_boolean', 'fast?').id);
+    block('double', 'operator_multiply');
+    input('double', 'NUM1', argument('readDist1', 'argument_reporter_string_number', 'dist').id);
+    input('double', 'NUM2', number('two', 2).id);
+    change('fastChange', 'double');
+    change('slowChange', argument('readDist2', 'argument_reporter_string_number', 'dist').id);
+    input('branch', 'SUBSTACK', 'fastChange');
+    input('branch', 'SUBSTACK2', 'slowChange');
+
+    block('flag', 'event_whenflagclicked', { topLevel: true, x: 400, y: 0 });
+    block('slowCall', 'procedures_call', { parent: 'flag', mutation });
+    blocks.flag.next = 'slowCall';
+    input('slowCall', 'argDist', number('three', 3).id);
+    block('fastCall', 'procedures_call', { parent: 'slowCall', mutation });
+    blocks.slowCall.next = 'fastCall';
+    input('fastCall', 'argDist', number('four', 4).id);
+    block('yes', 'operator_equals');
+    input('yes', 'OPERAND1', text('one1', '1').id);
+    input('yes', 'OPERAND2', text('one2', '1').id);
+    input('fastCall', 'argFast', 'yes');
+    return blocks;
+}
+
+async function countAfterRunning(vm, blocks) {
+    const targets = vm.runtime.targets.map((t) => ({
+        kind: t.isStage ? 'stage' : 'sprite',
+        name: t.isStage ? 'Stage' : t.sprite.name,
+        variables: Object.values(t.variables).map((v) => ({ id: v.id, name: v.name, type: v.type })),
+        blocks: t.isStage ? {} : blocks,
+    }));
+    const { vars } = await runInScratchVM({ targets }, { runFor: 30 });
+    return Number(vars.count);
+}
+
+test('slvm backend: recompiling a Scratch-made custom block keeps its signature, so inject replaces it', { skip: !haveVM && 'slvm/testing with scratch-vm is not installed' }, async () => {
+    const vm = makeMockVM({ vars: ['count'] });
+    const countId = Object.values(vm.runtime.targets[0].variables).find((v) => v.name === 'count').id;
+    const original = scratchAuthoredBumper(countId);
+    const sprite = vm.runtime.targets.find((t) => !t.isStage);
+    sprite.blocks._blocks = { ...original };
+    assert.equal(await countAfterRunning(vm, original), 11);
+
+    const source = decompile(vm, SPRITE);
+    for (const optimize of [0, 1]) {
+        const { blocks, errors } = compileWith(source, vm, SPRITE, { optimize });
+        assert.deepEqual(errors, []);
+        const proto = Object.values(blocks).find((b) => b.opcode === 'procedures_prototype');
+        assert.equal(proto.mutation.proccode, 'Move By %n steps %b');
+        assert.equal(proto.mutation.argumentids, '["argDist","argFast"]');
+        assert.equal(blocks[proto.inputs.argFast.block].opcode, 'argument_reporter_boolean');
+        const definition = Object.values(blocks).find((b) => b.opcode === 'procedures_definition');
+        const condition = blocks[blocks[definition.next].inputs.CONDITION.block];
+        assert.equal(condition.opcode, 'argument_reporter_boolean');
+        const calls = Object.values(blocks).filter((b) => b.opcode === 'procedures_call');
+        assert.ok(calls.every((call) => call.mutation.proccode === 'Move By %n steps %b'));
+        if (optimize === 0) {
+            assert.deepEqual(calls.map((call) => Object.keys(call.inputs).sort()), [['argDist'], ['argDist', 'argFast']]);
+        }
+        assert.equal(await countAfterRunning(vm, blocks), 11);
+    }
+
+    const { blocks } = compileWith(source, vm, SPRITE, { optimize: 0 });
+    sprite.blocks._blocks = blocks;
+    assert.equal(decompile(vm, SPRITE), source);
 });
 
 test('slvm backend: an `on timer > …` threshold can be an expression', () => {
