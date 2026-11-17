@@ -6,7 +6,7 @@ import { runOracle } from './fuzz/oracle.js';
 import { execute, haveVM, visible } from './backend-harness.js';
 
 const ALL_FEATURES = Object.fromEntries(Object.keys(DEFAULT_FEATURES).map((k) => [k, true]));
-const skip = !haveVM && 'slvm/testing with scratch-vm is not installed';
+const skip = !haveVM && 'scratch-vm is not installed';
 
 function agreesWithOracle(vm, oracle) {
     const vars = visible(vm.vars);

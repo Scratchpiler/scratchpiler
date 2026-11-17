@@ -3,3 +3,6 @@ node_modules/*
 scratchpiler.user.js
 
 run/
+
+# Local binaries and downloaded/generated tools
+/bin/

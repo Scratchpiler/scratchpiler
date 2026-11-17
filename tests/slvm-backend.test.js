@@ -46,7 +46,7 @@ on flag {
 }
 `;
 
-test('slvm backend: recursive returning calls keep each frame\'s value', { skip: !haveVM && 'slvm/testing with scratch-vm is not installed' }, async () => {
+test('slvm backend: recursive returning calls keep each frame\'s value', { skip: !haveVM && 'scratch-vm is not installed' }, async () => {
     const { errors, compiled } = build(FIB);
     assert.deepEqual(errors, []);
     const { vars } = await runInScratchVM(compiled, { runFor: 30 });
@@ -82,7 +82,7 @@ const LOOPS = `on flag {
 }
 `;
 
-test('slvm backend: continue and break inside for and do-while', { skip: !haveVM && 'slvm/testing with scratch-vm is not installed' }, async () => {
+test('slvm backend: continue and break inside for and do-while', { skip: !haveVM && 'scratch-vm is not installed' }, async () => {
     const { errors, compiled } = build(LOOPS);
     assert.deepEqual(errors, []);
     const { vars } = await runInScratchVM(compiled, { runFor: 60 });
@@ -106,7 +106,7 @@ test('slvm backend: output decompiles to source the compiler accepts', async () 
     }
 });
 
-test('slvm backend: calls a custom block that only exists as blocks in the project', { skip: !haveVM && 'slvm/testing with scratch-vm is not installed' }, async () => {
+test('slvm backend: calls a custom block that only exists as blocks in the project', { skip: !haveVM && 'scratch-vm is not installed' }, async () => {
     const vm = makeMockVM();
     const existing = provisionAndCompile(compileWith, 'define bump(n) {\n    change [count] by n\n}\n', vm, SPRITE);
     assert.deepEqual(existing.errors, []);
@@ -194,7 +194,7 @@ async function countAfterRunning(vm, blocks) {
     return Number(vars.count);
 }
 
-test('slvm backend: recompiling a Scratch-made custom block keeps its signature, so inject replaces it', { skip: !haveVM && 'slvm/testing with scratch-vm is not installed' }, async () => {
+test('slvm backend: recompiling a Scratch-made custom block keeps its signature, so inject replaces it', { skip: !haveVM && 'scratch-vm is not installed' }, async () => {
     const vm = makeMockVM({ vars: ['count'] });
     const countId = Object.values(vm.runtime.targets[0].variables).find((v) => v.name === 'count').id;
     const original = scratchAuthoredBumper(countId);

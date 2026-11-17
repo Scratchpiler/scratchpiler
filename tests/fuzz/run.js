@@ -27,7 +27,7 @@ for (let i = 0; i < argv.length; i++) {
     else { console.log(USAGE); process.exit(a === '-h' || a === '--help' ? 0 : 2); }
 }
 if (!haveVM) {
-    console.error('fuzz: slvm/testing with scratch-vm is not installed');
+    console.error('fuzz: scratch-vm is not installed');
     process.exit(2);
 }
 if (opts.out) fs.mkdirSync(opts.out, { recursive: true });

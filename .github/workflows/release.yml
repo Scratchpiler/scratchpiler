@@ -1,8 +1,9 @@
-name: Release Userscript
+name: Test, Build and Release Userscript
 
 on:
   push:
     branches: [main]
+  pull_request:
 
 permissions:
   contents: write
@@ -16,16 +17,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
-
-      # fix ci now that sp depends on slvm
-      - name: Clone SLVM locally
-        run: git clone --depth 1 https://github.com/Scratchpiler/slvm.git ../slvm
 
       - run: npm ci
 
-      - run: npm run prod
+      - run: npm run check
 
       - name: Generate LoC badge JSON
         run: |
@@ -34,6 +31,7 @@ jobs:
           printf '{"schemaVersion":1,"label":"lines of code","message":"%s","color":"blue"}\n' "$LOC_FMT" > loc.json
 
       - name: Publish to latest release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

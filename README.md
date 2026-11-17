@@ -14,7 +14,7 @@
 A text-based DSL that compiles directly into Scratch's block VM. Because sometimes you want to write a platformer without playing Tetris with puzzle pieces, or because you've finally realized that Scratch is a turing-complete ISA waiting to be compiled against.
 
 
-Every compile uses SLVM IR for verification, inlining of small custom blocks and legalization before Scratch block emission. See [the compiler documentation](docs/slvm-backend.md) for the pipeline and verification.
+Every compile uses SLVM IR for verification, inlining of small custom blocks and legalization before Scratch block emission. npm downloads a pinned SLVM revision automatically; no manual sibling checkout is needed. See [the compiler documentation](docs/slvm-backend.md) for the pipeline and verification.
 
 ---
 
@@ -197,4 +197,25 @@ The original 7,200-line monolith of despair has been shattered into beautifully 
 
 ## File extension
 
-Scratchpiler source files conventionally use `.sdsl`. There is no toolchain, no build step, no `package.json`. You just have a file.
+Scratchpiler source files conventionally use `.sdsl`. Users write these files directly in the overlay; the userscript handles compilation.
+
+## Development
+
+Use Git and Node.js 22.22.2+, 24.15.0+, or 26+. From a checkout of this repository:
+
+```sh
+npm ci
+npm run check
+```
+
+`npm ci` fetches the pinned SLVM Git dependency into the ignored `node_modules/slvm/` directory along with the other dependencies. `npm run setup` is an alias for this clean installation.
+
+`npm run check` runs the editor/compiler tests, the installed SLVM tests, and the production build. It writes `scratchpiler.user.js`, ready to install in your userscript manager. No manually managed sibling repositories are required.
+
+- `npm test` runs all tests, including the headless Scratch VM comparisons.
+- `npm run dev` rebuilds the userscript as source files change.
+- `npm run prod` builds the production userscript.
+- `npm run slopt -- -p O1 node_modules/slvm/examples/fold.sl` runs the IR optimizer.
+- `npm run slc -- -p legalize node_modules/slvm/examples/fib.sl` emits Scratch blocks from IR.
+
+SLVM remains bundled into the userscript by esbuild. Its source, tests, examples, CLI tools, and AGPL-3.0-only license come from [the pinned SLVM revision](https://github.com/Scratchpiler/slvm/tree/a3f4fcaa2254af4207197d5ddf768802f0b51867). The dependency is pinned in `package.json` and `package-lock.json`; update both together when upgrading. Downloaded dependencies and the root `bin/` directory are ignored by Git.
