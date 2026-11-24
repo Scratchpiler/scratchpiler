@@ -69,13 +69,13 @@ function posInScope(scope, line, col) {
     return true; // line-granular is enough for this DSL's block style
 }
 
-export function analyze(src, spriteName) {
+export function analyze(src, spriteName, options = {}) {
     // #include expansion: header declarations are appended after the user's
     // text (line numbers stay 1:1); appended-region positions are mapped back
     // onto the include line before anything reaches the editor.
     let _expand = null;
     if (src.includes('#include')) {
-        const ex = expand(src);
+        const ex = expand(src, { readHeader: options.readHeader });
         if (ex.segments.length > 0 || ex.errors.length > 0) {
             _expand = ex;
             src = ex.text;

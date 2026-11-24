@@ -3,12 +3,16 @@
   "version": "1.0.0",
   "description": "A text-based DSL that compiles directly into Scratch's block VM. Because sometimes you want to write a platformer without playing Tetris with puzzle pieces, or because you've finally realized that dragging colorful plastic shapes with a mouse is a slow descent into developer madness.",
   "main": "scratchpiler.user.js",
+  "bin": {
+    "scratchpiler": "./cli/scratchpiler.js"
+  },
   "directories": {
     "doc": "docs",
     "example": "examples"
   },
   "scripts": {
     "test": "node --test tests/*.test.js && npm run test:slvm",
+    "cli": "node cli/scratchpiler.js",
     "build": "node build.js",
     "dev": "node build.js --watch",
     "prod": "node build.js --prod",

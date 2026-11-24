@@ -23,7 +23,8 @@ const ALLOWED_TOP = new Set(['DefineBlock', 'ScratchroutineStmt', 'EnumDecl', 'S
 //   headerRoots     { defineOrRoutineName → header } for decompiler round-trip marking
 //   includes        header names in first-include order
 // }
-export function expand(src) {
+export function expand(src, options = {}) {
+    const getHeader = typeof options.readHeader === 'function' ? options.readHeader : readHeader;
     const errors = [];
     const segments = [];
     const headerRoots = {};
@@ -49,18 +50,22 @@ export function expand(src) {
         const { name, includeLine, stack } = queue.shift();
         if (!HEADER_NAME_RE.test(name)) {
             errors.push({ line: includeLine, col: 1, len: userLines[includeLine - 1]?.length || 8,
+                code: 'INVALID_HEADER_NAME', headerName: name,
                 message: `Invalid header name <${name}> — header names use letters/digits/_/- and end with .h` });
             continue;
         }
         if (seen.has(name)) continue; // duplicate include = no-op
         if (stack.includes(name)) {
+            const cycle = [...stack, name];
             errors.push({ line: includeLine, col: 1, len: userLines[includeLine - 1]?.length || 8,
-                message: `Include cycle: ${[...stack, name].join(' → ')}` });
+                code: 'INCLUDE_CYCLE', cycle,
+                message: `Include cycle: ${cycle.join(' → ')}` });
             continue;
         }
-        const content = readHeader(name);
-        if (content === null) {
+        const content = getHeader(name);
+        if (content === null || content === undefined) {
             errors.push({ line: includeLine, col: 1, len: userLines[includeLine - 1]?.length || 8,
+                code: 'MISSING_HEADER', missingHeader: name,
                 message: `Header not found: ${name} — create it in the Headers panel first` });
             continue;
         }
@@ -83,16 +88,23 @@ export function expand(src) {
         const { ast, errors: parseErrors } = parse(tokenize(hdrText));
         if (parseErrors.length > 0) {
             for (const pe of parseErrors) {
+                const hdrLine = pe.line || 1;
+                const hdrCol = pe.col || 1;
                 errors.push({ line: includeLine, col: 1, len: userLines[includeLine - 1]?.length || 8,
-                    message: `${name}:${pe.line}:${pe.col}: ${pe.message}` });
+                    origin: { header: name, line: hdrLine, col: hdrCol, len: pe.len || 1, includeLine, rawMessage: pe.message },
+                    message: `${name}:${hdrLine}:${hdrCol}: ${pe.message}` });
             }
             continue;
         }
         let bad = false;
         for (const block of ast.blocks || []) {
             if (!ALLOWED_TOP.has(block.type)) {
+                const hdrLine = block.line || 1;
+                const hdrCol = block.col || 1;
+                const rawMessage = 'headers may only contain `define`, `scratchroutine`, `enum` and `struct` declarations';
                 errors.push({ line: includeLine, col: 1, len: userLines[includeLine - 1]?.length || 8,
-                    message: `${name}:${block.line || 1}: headers may only contain \`define\`, \`scratchroutine\`, \`enum\` and \`struct\` declarations` });
+                    origin: { header: name, line: hdrLine, col: hdrCol, len: 1, includeLine, rawMessage },
+                    message: `${name}:${hdrLine}: ${rawMessage}` });
                 bad = true;
             }
         }
@@ -121,6 +133,7 @@ export function mapExpandedError(ex, err) {
         if (err.line >= seg.startLine && err.line < seg.startLine + seg.lineCount) {
             const hdrLine = err.line - seg.startLine + 1;
             return { ...err, line: seg.includeLine, col: 1, len: 200,
+                origin: { header: seg.header, line: hdrLine, col: err.col || 1, len: err.len || 1, includeLine: seg.includeLine, rawMessage: err.message },
                 message: `${seg.header}:${hdrLine}:${err.col}: ${err.message}` };
         }
     }
@@ -131,7 +144,7 @@ export function mapExpandedError(ex, err) {
 // returns { blocks, errors, headerRoots } where headerRoots maps define /
 // scratchroutine names that came from headers to their header file name.
 export function compileSourceWithHeaders(source, vm, spriteName, options = {}) {
-    const ex = expand(source);
+    const ex = expand(source, { readHeader: options.readHeader });
     if (ex.errors.length > 0) return { blocks: {}, comments: [], errors: ex.errors, headerRoots: {} };
     const r = compileSource(ex.text, vm, spriteName, { ...options, embedUntilLine: ex.userLineCount });
     return { blocks: r.blocks, comments: r.comments ?? [], optimizerFallback: r.optimizerFallback ?? null, usedProjectFacts: !!r.usedProjectFacts, errors: r.errors.map(e => mapExpandedError(ex, e)), headerRoots: ex.headerRoots };

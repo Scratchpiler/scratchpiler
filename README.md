@@ -171,6 +171,7 @@ The original 7,200-line monolith of despair has been shattered into beautifully 
 | File | Contents |
 |---|---|
 | [docs/getting-started.md](docs/getting-started.md) | Tutorial: from zero to first program |
+| [docs/cli.md](docs/cli.md) | Command-line tool (`check`, `build`, `unpack`, `init`, `fmt`, `watch`, `info`) |
 | [docs/quick-reference.md](docs/quick-reference.md) | All syntax and functions on one page |
 | [docs/editor.md](docs/editor.md) | The editor itself: explorer, tabs, Variables panel, command palette, find and replace, shortcuts |
 | [docs/overview.md](docs/overview.md) | How the pipeline works |
